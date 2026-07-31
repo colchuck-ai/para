@@ -51,6 +51,7 @@ not exist on that noun, and naming it is an error.
 
 | Field | project | area | objective | key-result | dir | skill |
 | --- | --- | --- | --- | --- | --- | --- |
+| `created` | opt (now) | opt (now) | opt (now) | opt (now) | opt (now) | opt (now) |
 | `name` | req | req | req | req | req | req |
 | `summary` | req | req | req | req | req | — |
 | `description` | — | — | — | — | — | req |
@@ -66,6 +67,12 @@ not exist on that noun, and naming it is an error.
 | `target` | — | — | — | req | — | — |
 
 `id` and `parent` exist on every noun but are not `add` flags — see Grammar.
+
+`created` defaults to now and is settable, taking the same progressive precision as a log
+entry's `--at` (§5.1). Backdate it when you `import` a directory that has been alive for years,
+or when a key-result's clock should start at the top of the quarter rather than the day you got
+around to writing it down (§6.2). Future values are rejected, and `unset <locator> created` is an
+error — everything has a creation time.
 
 Rationale for the required ones: `add` requires `--name` and `--summary` on every noun — the
 name so compiled headings read well, the summary as a nudge to record context while it is
@@ -154,9 +161,19 @@ slugified basename of the imported path.
 
 ## 3.3 Notes on every mutation
 
-- `--note` is optional on every mutation — `add`, `import`, `set`, `unset` — and writes a log
-  entry. So `log list` shows manual notes and field changes interleaved, and a field change
-  resets the SLA clock.
+- **Every field change writes a log entry**, recording the field, the old value, and the new
+  one. `--note` is optional on `add`, `import`, `set`, and `unset`, and supplies that entry's
+  body. So `log list` shows manual notes and field changes interleaved, always — not only when
+  you remembered to explain yourself.
+- **Only some entries reset the SLA clock**: a note you write by hand with `log add`, a
+  key-result measurement, and a change to `status`. Every other field change is recorded but
+  does not count as attention, with or without a `--note`.
+- The line is between reporting and planning. `blocked`, `in-progress`, and `done` are claims
+  about the world, and so is a measurement. A new due date, a re-tag, a sharper summary, a tuned
+  `log-sla` — those are edits to your own plan, and editing the plan is not the same as looking
+  at the thing.
+- So pushing a deadline out never buys quiet from `review`, and tuning `log-sla` never resets
+  the clock it just retimed. See §5.3 for how the SLA clock and `updated` differ.
 - `remove` takes no `--note`; the entity it would annotate is gone.
 
 ## 3.4 Safety
@@ -165,7 +182,22 @@ slugified basename of the imported path.
   `set <locator> parent`. Plain field changes don't need it.
 - `remove` confirms interactively before deleting anything. `--force` skips the prompt for scripts.
 
-## 3.5 Output
+## 3.5 Removing a container
+
+`remove` takes the whole subtree — the entity, every entity nested inside it, and every other
+file in its directory. It is the one command that can destroy content para never created, so:
+
+- The confirmation names the blast radius rather than asking a bare "are you sure": the count of
+  descendant entities by noun, and the count of other files that will go with them.
+- `--dry-run` prints the full list instead of the counts.
+- `--keep-files` removes only para's `.para/` directories throughout the subtree, leaving every
+  other byte where it is. The tree stops tracking the thing; your notes survive. This is the
+  inverse of `import`, and it is the safe option when the content predates para.
+
+Nothing here is the way to get something out of sight — `dropped` and `archived` already do
+that, and §4.1 keeps locators stable for life. `remove` means delete.
+
+## 3.6 Output
 
 - `--json` on every read command: `list`, `show`, `review`, `search`, `doctor`, `log list`,
   `log show`, `config list`, `config show`.
@@ -250,8 +282,15 @@ slugified basename of the imported path.
   travel or a DST shift.
 - Backdating is allowed and is the point of `--at`. Future timestamps are rejected — that is
   what `--due` is for.
-- The SLA clock reads the newest log timestamp and reports whole days. A backdated entry never
-  resets it; a field change from `--note` lands at now, so it does.
+- `updated` — the sort key — reads the newest log timestamp of any kind. A bare field change
+  bumps it, because the entity genuinely was touched.
+- The SLA clock is narrower: it reads the newest entry that *resets* it — a hand-written note, a
+  measurement, or a `status` change (§3.3) — and reports whole days. When an entity has no such
+  entry it falls back to `created`.
+- A backdated entry never resets the clock, since it is not the newest; a resetting change made
+  now lands at now, so it does.
+- In practice a key-result is kept fresh by measuring it and an area by reviewing it, since
+  neither has a settable non-terminal status to change.
 
 ---
 
@@ -277,7 +316,8 @@ slugified basename of the imported path.
 - With no measurements logged yet, `progress` is 0. No progress has been demonstrated, and
   saying so plainly is what lets an untouched key-result go `at-risk` instead of sitting quiet.
 - `pace = progress / elapsed`, where `elapsed = (today − start-date) / (due − start-date)`.
-- The start date is the key-result's `created` — not the date of the first measurement. The
+- The start date is the key-result's `created` — not the date of the first measurement, and
+  settable (§1.3), so the clock can be moved to the day the commitment really began. The
   clock starts when you commit to the target, not when you get around to baselining it. So the
   start *value* and the start *date* can come from different moments, deliberately: baseline
   four weeks late and you have genuinely burned four weeks of the window.
@@ -309,8 +349,8 @@ Without `--due` there is no pace and no deadline, so a key-result only ever read
 - `list` takes a container path positionally (see §3.2) and filters with `--tags`,
   `--match <text>`, `--status`, `--priority`, `--overdue`, `--direct`, and `--all`.
 - `--status`, `--priority`, and `--overdue` apply only to nouns that have those fields.
-- `--match` searches that noun's own text — name, summary, tags, and log bodies. On a skill it
-  searches name, description, body, and tags.
+- `--match` searches that noun's own text — name, summary, tags, and log bodies. On a skill,
+  `description` and `body` stand in for `summary`; log bodies count there too.
 
 ## 7.2 Sorting and limiting
 
@@ -455,6 +495,10 @@ got unblocked
 instead. Having all three kinds in one stream is what makes §3.3's promise real: `log list`
 interleaves manual notes with field changes because they are the same kind of file.
 
+A `kind: change` entry written without `--note` simply has an empty body; the entry still exists,
+so the history stays complete either way. Whether an entry resets the SLA clock is decided by its
+`kind` and its `field` — never by whether it has a body (§3.3).
+
 `offset` is the only part of the instant a filename cannot carry, so the recorded instant is
 filename + offset (§5.3).
 
@@ -486,8 +530,27 @@ Placement is always `--parent`, so an entity is always a *direct* child of its c
 walk therefore reads each entity's immediate subdirectories, descends only into those that hold
 `.para/entity.md`, and never recurses into adopted content. It is O(entities), not O(files).
 
-That is also its one weakness: `mv` an entity down into a plain content subdirectory by hand and
-it silently vanishes from every `list`, `search`, and `review` — no error, just absence. `para
+Sorting by `updated` stays free — it is the lexically greatest filename in `.para/log/`, no file
+opened. `review --stale` costs more, because it needs the newest entry that resets the clock:
+read filenames newest-first and open until one qualifies, falling back to `created`. A run of
+bookkeeping edits makes that a handful of opens rather than one, bounded by the entity's own log.
+
+Neither timestamp is ever stored. Caching them in `entity.md` would save roughly one open per
+entity and cost the property in §9.4 that concurrent appends merge cleanly — two machines each
+adding a note would stop conflicting in the log directory and start conflicting on two scalar
+fields. It would also make a hand-added entry or a `log remove` silently wrong, which is exactly
+the drift §9.2 exists to rule out.
+
+If the read path ever does need help, the shape is already determined. An entry's `kind` and
+`field` are fixed at creation — `log set` can change `note`, `value`, and `id`, but never what
+kind of entry it is — so the log directory's *filename set* fully determines both timestamps.
+That makes a single `readdir` a complete validator: cache the pair per entity under
+`.para/cache/`, keyed on that filename set, and `--stale` drops to one open plus one readdir,
+with no way to return a stale answer. Derived, gitignored, `rm -rf` to rebuild. Not worth
+building until it can be measured, since it changes no observable behavior.
+
+The walk's one weakness: `mv` an entity down into a plain content subdirectory by hand and it
+silently vanishes from every `list`, `search`, and `review` — no error, just absence. `para
 doctor` is the deep scan that finds it.
 
 ## 9.7 para doctor
@@ -577,6 +640,7 @@ para project add my-started-project --name "My Started Project" --summary "Alrea
 para project add my-deadline-project --name "My Deadline Project" --summary "This one has to land by the end of the quarter" --due 2026-09-30
 para project import ./projects/my-existing-project --id my-existing-project --name "My Existing Project" --summary "This is a project that already existed, but that I want to start tracking"
 para project import ./projects/finished-thing --id finished-thing --name "Finished Thing" --summary "Already wrapped up before I started tracking" --status done --dry-run
+para project import ./projects/long-runner --id long-runner --name "Long Runner" --summary "This has been going since spring" --created 2026-03-14
 
 para project list
 para project list --all
@@ -604,6 +668,7 @@ para project set my-project name "My Project!"
 para project set my-project summary "This is a new summary of the exciting project" --note "the old one had drifted"
 para project set my-project tags some-tag,other-tag,best-tag
 para project unset my-project tags --note "the tags stopped earning their keep"
+para project set my-project created 2026-01-04 --note "it really started the week before I wrote it down"
 para project set my-project id my-whoopsie-id-project --note "fat-fingered the rename"
 para project set my-whoopsie-id-project id my-project
 
@@ -722,6 +787,7 @@ para objective log remove my-project.obj-1.2026-01-01T000000
 para key-result add kr-1 --name "Key Result 1" --parent my-project.obj-1 --summary "How we know we've achieved the objective" --type ratio --start 880/11000 --target 110/11000 --due 2026-09-30 --tags okr-2026
 para key-result add signups --name "10k signups" --parent my-project.obj-1 --summary "Total self-serve signups" --type number --start 0 --target 10000 --due 2026-09-30
 para key-result add shipped --name "Shipped to production" --parent my-project.obj-1 --summary "Whether it is live for all customers" --type boolean --target true
+para key-result add latency --name "p99 under 200ms" --parent my-project.obj-1 --summary "Tail latency at the edge" --type number --start 480 --target 200 --due 2026-09-30 --created 2026-07-01 --note "the clock starts at the top of the quarter, not today"
 para key-result add churn --name "Churn under 2%" --parent my-project.obj-1 --summary "Monthly logo churn" --type ratio --target 20/1000 --note "no baseline yet, the first measurement becomes the start"
 
 para key-result list
@@ -877,6 +943,8 @@ para dir unset resources.rust-reference parent --note "back out to the root buck
 para dir remove root.my-root-dir --dry-run
 para dir remove root.my-root-dir
 para dir remove root.rust-reference --force
+para dir remove resources.kafka-notes --keep-files --dry-run
+para dir remove resources.kafka-notes --keep-files
 ```
 
 ### para dir log add|set|remove|show|list
@@ -913,5 +981,15 @@ Why the non-obvious calls went the way they did, recorded so they don't get re-l
 - **Key-results have no priority.** Inheritance from the objective is a fact about how to read
   them, not a field. Making it a real sort key would mean deriving through a parent, which no
   other derived field does.
+- **Notes, measurements, and status changes reset the SLA; no other field change does.**
+  Everything is still logged, so the history is complete either way — but attention is measured
+  only by entries that report on the world. Keying on the presence of `--note` instead was the
+  obvious alternative and is worse in two specific ways: it lets tuning `log-sla` reset the very
+  clock being tuned, and it lets pushing a deadline out buy quiet from `review`.
+- **`remove` deletes the subtree, and `--keep-files` is the escape hatch.** The design already
+  has a non-destructive way to put something aside — `dropped` and `archived` — so `remove` is
+  free to mean what it says. `--keep-files` exists because para's whole footprint inside an
+  entity is its `.para/` directory, which makes "stop tracking this but leave my notes" a clean
+  operation rather than a special case.
 - **`--sort at` is ascending like every other key.** Folding a direction into one key would cost
   more than the redundancy of spelling the `log list` default as `--sort at --reverse`.
