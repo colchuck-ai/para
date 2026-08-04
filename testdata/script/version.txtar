@@ -1,0 +1,9 @@
+# para --version reports the version and exits 0.
+
+[para:phase0] para --version
+[para:phase0] stdout '^para \S+\n$'
+[para:phase0] ! stderr .
+
+# phase-gate sanity check: an unlanded phase's condition must be false, so a
+# stanza guarded by its negation always runs.
+[!para:phase99] exists $WORK
