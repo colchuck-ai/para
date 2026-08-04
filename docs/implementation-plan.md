@@ -154,6 +154,10 @@ Errors carry a kind so script tests assert on the kind, not on prose.
 
 ## Phase 0 — Bootstrap, installability, harness
 
+**Status: done** (`a1f9278`, branch `impl`). `go install`/`scripts/install.sh` both produce a working
+`para --version`; `make test`, `make lint`, `make build` are green; CI runs the linux/macos matrix, lint,
+and a clean-module-cache install check.
+
 Nothing domain-specific. The goal is a repo where a test can be written on day one of Phase 1, and a
 binary the author can install and dogfood immediately.
 
