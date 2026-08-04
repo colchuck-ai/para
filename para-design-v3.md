@@ -1,16 +1,29 @@
 # structure
 
-.para-config.toml
 .para/
-  audit.log (jsonl)
-  data.json
+  logs/ 
+    20260101T080801.log
+  para.toml
+  para-config.toml
 .agents/
   rules/
-    para-rule-1.md
+    .para/
+      rule-1/
+        .para/
+          logs/
+            20260101T080801.log
+          rule-config.toml
+          rule.toml
+        rule-1.md
     ...
   skills/
     para-skill-1/
       SKILL.md
+      .para/
+        logs/
+          20260101T080801.log
+        skill-config.toml
+        skill.toml  
       ...
     ...
 README.md
@@ -22,35 +35,75 @@ projects/
   AGENTS.md
   CLAUDE.md
   ACTIVITY.md
+  .para/
+    logs/
+      20260101T080801.log
+    projects-config.toml
+    projects.toml
   <project-id>/
     README.md
     ACTIVITY.md
+    .para/
+      logs/
+        20260101T080801.log
+      project-config.toml
+      project.toml
     objectives/
       <objective-id>/
         README.md
         ACTIVITY.md
+        .para/
+          logs/
+            20260101T080801.log
+          objective-config.toml
+          objective.toml
         <key-result-id>/
           README.md
           ACTIVITY.md
           MEASUREMENTS.csv
+          .para/
+            logs/
+              20260101T080801.log
+            key-result-config.toml
+            key-result.toml
       ...
     ...
   ...
-areas
+areas/
   README.md
   AGENTS.md
   CLAUDE.md
   ACTIVITY.md
+  .para/
+    logs/
+      20260101T080801.log
+    areas-config.toml
+    areas.toml
   <area-id>/
     README.md
     ACTIVITY.md
+    .para/
+      logs/
+        20260101T080801.log
+      area-config.toml
+      area.toml
     ...
   <area-2-id>/
     README.md
     ACTIVITY.md
+    .para/
+      logs/
+        20260101T080801.log
+      area-config.toml
+      area.toml
     <sub-area-id>/
       README.md
       ACTIVITY.md
+      .para/
+        logs/
+          20260101T080801.log
+        area-config.toml
+        area.toml
       some-sub-dir/
     ...
 resouces/
@@ -58,65 +111,127 @@ resouces/
   AGENTS.md
   CLAUDE.md
   ACTIVITY.md
+  .para/
+    logs/
+      20260101T080801.log
+    resources-config.toml
+    resources.toml
   <resource-area-id>/
     README.md
+    ACTIVITY.md
+    .para/
+      logs/
+        20260101T080801.log
+      resource-area-config.toml
+      resource-area.toml
     untracked-resource-area-dir/
 archive/
+  README.md
+  AGENTS.md
+  CLAUDE.md
+  ACTIVITY.md
+  .para/
+    logs/
+      20260101T080801.log
+    archive-config.toml
+    archive.toml
   projects/
+    README.md
+    AGENTS.md
+    CLAUDE.md
+    ACTIVITY.md
+    .para/
+      logs/
+        20260101T080801.log
+      archive-projects-config.toml
+      archive-projects.toml
     <archived-project-id>/
       README.md
       ACTIVITY.md
+      .para/
       ...
     ...
   areas/
+    README.md
+    AGENTS.md
+    CLAUDE.md
+    ACTIVITY.md
+    .para/
+      logs/
+        20260101T080801.log
+      archive-areas-config.toml
+      archive-areas.toml
     <archived-area-id>/
       README.md
       ACTIVITY.md
+      .para/
       ...
     <archived-sub-area-parent-id>/
       <archived-sub-area-id>/
         README.md
         ACTIVITY.md
+        .para/
         ...
     <archived-area-that-was-parent-to-other-sub-areas>/
       <archived-sub-area-2-id>/
         README.md
         ACTIVITY.md
+        .para/
         ...
       <archived-sub-area-3-id>/
         README.md
         ACTIVITY.md
+        .para/
         ...
   resources/
-     <archived-resource-area-id>/
+    README.md
+    AGENTS.md
+    CLAUDE.md
+    ACTIVITY.md
+    .para/
+      logs/
+        20260101T080801.log
+      archive-resources-config.toml
+      archive-resources.toml
+    <archived-resource-area-id>/
       README.md
       ACTIVITY.md
+      .para/
       ...
     <archived-sub-resource-area-parent-id>/
       <archived-sub-resource-area-id>/
         README.md
         ACTIVITY.md
+        .para/
         ...
     <archived-resource-area-that-was-parent-to-other-sub-resource-areas>/
       <archived-sub-resource-area-2-id>/
         README.md
         ACTIVITY.md
+        .para/
         ...
       <archived-sub-resource-area-3-id>/
         README.md
         ACTIVITY.md
+        .para/
         ...
 
 ## notes
 
-- all READMEs, ACTIVITYs, AGENTS, and CLAUDE files shown here are managed by the para cli tool. on any change, they are overwritten based on the data and logs under .para/
+- configuration is distributed to entities. para e.g configures a project at `./projects/<project-id>/project.toml`
+
+- a user on github must be able to look at README.md and/or ACTIVITY.md to get a sense for the project. the README.md has a frontmatter section that is managed by para, but the rest can be human written. ACTIVITY.md files are almost like change logs. they document daily digests of events that happened within the logs. think a more human readable form of the logs, grouped by day. days where nothing happened are not included.
+
+- logs are stored with the director or entity under it's .para directory
 
 - if a child area or resource directory is archived, the area or resource directory is moved to the archive with a path that represents the parent path at the time of archival.
 
-- para only manages AGENTS.md and CLAUDE.md files directly under the root or under the projects, areas, resources, archive directories.
-
-- use skills whenever possible
-
+- para only manages AGENTS.md and CLAUDE.md files directly under the root or under the projects, areas, resources, archive directories. they are there to give agents a sense for the purpose of each framework based directory (e.g the AGENTS.md in the root explains the PARA framework, the AGENTS.md in projects explains the projects in some more depth, etc.)
 - rules and AGENTS.md should be kept as small as possible. common recommendation is to use a rule to reference skills that the model should use in particular scenarios.
 
-- 
+- CLAUDE.md files point to their corresponding AGENTS.md files with `@AGENTS.md` in the body.
+
+- skills are used to encapsulate workflows and procedures that are run within particular scopes of the para hierarhcy, they live in the .agents/skills directory. rules are paired with skills to ensure that a skill is run when the right event happens in a particular scope. an entity or directories skills that are used are reference in the enetiy or directory's .para/*-config.toml file.
+
+- current state of an entity is stored in it's .para/<entity/dir>.toml file.
+- configuration of an entity or dir is in it's .para/<entity/dir>-config.toml.
