@@ -1,3 +1,5 @@
 # Git is a precondition; entity.md merge conflicts are resolved by hand
 
+> **Superseded by [ADR 0003](0003-no-merge-driver-git-not-a-precondition.md).** v4 reverses the premise — git is not a precondition and para never invokes it — while keeping the conclusion that no merge driver ships and the repair is resolve-truth-then-`rebuild`.
+
 Para's tree is assumed to live in a git repository — that's what makes emitted output "committed" (§8.4) meaningful, and what makes storing timestamps in `entity.md` safe rather than reckless (§10.2, §10.3): the log is authoritative and merges cleanly by filename, so a conflicting `entity.md` projection is always repairable by resolving the conflict and running `para rebuild`. We decided against shipping a git merge driver that would automate this (e.g., always preferring the later `updated` timestamp) — the manual resolve-then-rebuild path is simpler to reason about, avoids a driver silently picking a wrong resolution on entries a heuristic can't judge (like a `create`-ordering violation), and keeps para's footprint out of git configuration.
