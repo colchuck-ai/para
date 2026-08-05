@@ -40,5 +40,6 @@ func newRootCmd() *cobra.Command {
 	}
 	root.SetVersionTemplate("para {{.Version}}\n")
 	root.AddCommand(newPathCmd())
+	root.AddCommand(newConfigCmd())
 	return root
 }

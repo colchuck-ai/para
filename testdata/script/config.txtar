@@ -1,0 +1,114 @@
+# §26's `para config` block, against a hand-planted tree. The tree is planted
+# by this script rather than by `para init`, whose full file set is a later
+# phase's job (§0.1).
+#
+# One departure from §26, deliberate: the block shows `config set --at …`
+# printing nothing at all, while §23 says mutations print what they wrote, one
+# line per file. The prose wins — a `set` that writes a file and says nothing
+# is the one case where a user cannot tell whether --at landed where they meant.
+
+# The chain is built deliberately, one level at a time (§22).
+[para:phase7] cd brain
+[para:phase7] exec para config set --at projects project.stale-after 30
+[para:phase7] stdout '^wrote  projects/\.para/config\.toml\n$'
+
+# §22's worked example, byte for byte: the resolved value, then every level
+# consulted, nearest first, with the winner marked.
+[para:phase7] exec para config show project.stale-after projects.acme-migration
+[para:phase7] cmp stdout $WORK/want-chain.txt
+
+# The written file holds exactly the key that was set.
+[para:phase7] cmp projects/.para/config.toml $WORK/want-projects-config.txt
+
+# Resolution is nearest-wins, so the same key at the root is a different answer
+# for anything outside projects/ (§7).
+[para:phase7] exec para config show project.stale-after
+[para:phase7] stdout '^14\n'
+
+# A value set at a level, from inside that level's subtree, using "." (§14).
+[para:phase7] cd projects/acme-migration
+[para:phase7] exec para config set --at . project.stale-after 3
+[para:phase7] stdout '^wrote  projects/acme-migration/\.para/config\.toml\n$'
+[para:phase7] exec para config show project.stale-after .
+[para:phase7] stdout '^3\n'
+[para:phase7] cd $WORK/brain
+
+# emit.claude is the root's knob (§6.1). Rendering its consequences — eight
+# CLAUDE.md files and the .claude/skills mirror that §26 shows next — is
+# Phase 13's; what this phase owns is the config write.
+[para:phase7] exec para config set emit.claude true
+[para:phase7] stdout '^wrote  \.para/config\.toml\n$'
+[para:phase7] grep '^emit\.claude = true$' .para/config.toml
+
+# Setting a key to the value it already holds writes nothing and says so (§23).
+[para:phase7] exec para config set emit.claude true
+[para:phase7] stdout '^no change\n$'
+
+# unset removes the value and resolution continues up the chain (§7).
+[para:phase7] exec para config unset --at projects project.stale-after
+[para:phase7] stdout '^wrote  projects/\.para/config\.toml\n$'
+[para:phase7] exec para config show project.stale-after projects.other-project
+[para:phase7] stdout '^14\n'
+
+# A skill's chain is its own config.toml and then the root, with nothing in
+# between, because .agents/ is not in the PARA tree (§7).
+[para:phase7] exec para config set --at skills.signups-report review.cadence 90
+[para:phase7] stdout '^wrote  \.agents/skills/para-signups-report/\.para/config\.toml\n$'
+[para:phase7] exec para config show review.cadence skills.signups-report
+[para:phase7] cmp stdout $WORK/want-skill-chain.txt
+
+# `config list` names every knob para reads and where each value came from.
+[para:phase7] exec para config list --prefix emit
+[para:phase7] stdout 'emit\.claude +true +<root>'
+[para:phase7] stdout 'emit\.claude-skills +symlink +\(default\)'
+[para:phase7] ! stdout 'stale-after'
+
+# Refusals. A key para does not read is a knob the user would believe in
+# forever, so a typo is refused rather than written.
+[para:phase7] ! exec para config set project.stale-aftr 30
+[para:phase7] stderr 'unknown config key'
+[para:phase7] ! exec para config set project.stale-after soon
+[para:phase7] stderr 'whole number'
+[para:phase7] ! exec para config set emit.claude-skills hardlink
+[para:phase7] stderr 'symlink, copy'
+[para:phase7] ! exec para config set --at projects.nope project.stale-after 30
+[para:phase7] stderr 'projects.nope does not exist'
+
+# Config is a property of a tree, so every config command needs one.
+[para:phase7] cd $WORK/outside
+[para:phase7] ! exec para config list
+[para:phase7] stderr 'no para tree found'
+
+-- brain/.para/tree.toml --
+schema = 1
+
+-- brain/.para/config.toml --
+project.stale-after = 14
+
+-- brain/projects/.para/state.toml --
+name = "Projects"
+
+-- brain/projects/acme-migration/.para/state.toml --
+name = "Acme migration"
+
+-- brain/projects/other-project/.para/state.toml --
+name = "Other project"
+
+-- brain/.agents/skills/para-signups-report/.para/state.toml --
+name = "Signups report"
+
+-- want-chain.txt --
+30
+
+  projects.acme-migration      —
+→ projects                     30
+  <root>                       14
+-- want-projects-config.txt --
+project.stale-after = 30
+-- want-skill-chain.txt --
+90
+
+→ skills.signups-report      90
+  <root>                     —
+-- outside/.keep --
+not a para tree

@@ -2,6 +2,8 @@ package ptoml
 
 import (
 	"bytes"
+	"math"
+	"slices"
 	"testing"
 	"unicode/utf8"
 
@@ -219,4 +221,154 @@ func FuzzEncodeDecode_String(f *testing.F) {
 			t.Fatalf("round trip mismatch: got %q, want %q (encoded = %q)", got, s, data)
 		}
 	})
+}
+
+func TestDocumentKeysFlattensNestedTablesInLexicalOrder(t *testing.T) {
+	tests := []struct {
+		name string
+		toml string
+		want []string
+	}{
+		{
+			name: "dotted keys flatten back to the dotted form they were written as",
+			toml: "emit.claude = true\nemit.claude-skills = \"symlink\"\nlog.rotate-bytes = 4194304\n",
+			want: []string{"emit.claude", "emit.claude-skills", "log.rotate-bytes"},
+		},
+		{
+			name: "a [table] header flattens the same way, so both spellings read alike",
+			toml: "[emit]\nclaude = true\ngitattributes = false\n",
+			want: []string{"emit.claude", "emit.gitattributes"},
+		},
+		{
+			name: "order is lexical, not the order the file happened to be written in",
+			toml: "zeta = 1\nalpha = 2\nmiddle = 3\n",
+			want: []string{"alpha", "middle", "zeta"},
+		},
+		{
+			name: "top-level scalars and nested tables sort together",
+			toml: "project.stale-after = 14\narea.stale-after = 30\nreview.cadence = 90\n",
+			want: []string{"area.stale-after", "project.stale-after", "review.cadence"},
+		},
+		{
+			name: "an empty document has no keys",
+			toml: "",
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc, err := Decode([]byte(tt.toml))
+			if err != nil {
+				t.Fatalf("Decode: %v", err)
+			}
+			got, err := doc.Keys()
+			if err != nil {
+				t.Fatalf("Keys(): %v", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("Keys() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// Keys is what lets a config.toml be rewritten without dropping a key para
+// does not recognise, so every key it reports must be readable back through
+// Value.
+func TestDocumentKeysReachEveryValue(t *testing.T) {
+	const doc = `s = "str"
+i = 12
+f = 0.5
+b = true
+a = ["x", "y"]
+nested.deep.key = "here"
+`
+	d, err := Decode([]byte(doc))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	keys, err := d.Keys()
+	if err != nil {
+		t.Fatalf("Keys(): %v", err)
+	}
+	want := []string{"a", "b", "f", "i", "nested.deep.key", "s"}
+	if !slices.Equal(keys, want) {
+		t.Fatalf("Keys() = %v, want %v", keys, want)
+	}
+	for _, k := range keys {
+		if _, ok := d.Value(k); !ok {
+			t.Errorf("Value(%q) missing, but Keys() reported it", k)
+		}
+	}
+}
+
+// TOML has literal spellings for the three floats that are not numbers, and
+// they are not Go's. Appending ".0" to "NaN" — which is what the
+// make-it-look-like-a-float fixup did before it learned about these — writes
+// a file no reader can parse, and para would have written it over a file the
+// user could still read.
+func TestEncodeFloatsThatAreNotNumbers(t *testing.T) {
+	tests := []struct {
+		name  string
+		value float64
+		want  string
+	}{
+		{"not a number", math.NaN(), "v = nan\n"},
+		{"positive infinity", math.Inf(1), "v = inf\n"},
+		{"negative infinity", math.Inf(-1), "v = -inf\n"},
+		{"negative zero keeps its sign", math.Copysign(0, -1), "v = -0.0\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Encode([]Field{{Key: "v", Value: Float64(tt.value)}})
+			if err != nil {
+				t.Fatalf("Encode: %v", err)
+			}
+			if string(got) != tt.want {
+				t.Fatalf("Encode() = %q, want %q", got, tt.want)
+			}
+			// The point of the exercise: what para writes, para can read.
+			doc, err := Decode(got)
+			if err != nil {
+				t.Fatalf("Decode(%q): %v", got, err)
+			}
+			back, ok := doc.Float64("v")
+			if !ok {
+				t.Fatalf("Float64(v) missing after decoding %q", got)
+			}
+			if math.Float64bits(back) != math.Float64bits(tt.value) {
+				t.Errorf("round trip gave %v, want %v", back, tt.value)
+			}
+		})
+	}
+}
+
+// A key para cannot write back is worse than a key it refuses to read: the
+// two spellings "a.b" (one quoted key) and [a] b (a table) flatten to the
+// same dotted string, so a document holding both has two different facts
+// under one name. Keys reports that rather than handing back a list with a
+// duplicate in it.
+func TestDocumentKeysRefusesKeysItCannotReproduce(t *testing.T) {
+	tests := []struct {
+		name string
+		toml string
+	}{
+		{"a quoted key containing a dot collides with a real table", "\"a.b\" = 1\n\n[a]\nb = 2\n"},
+		{"a quoted key containing a dot, alone", "\"a.b\" = 1\n"},
+		{"a quoted key containing a space", "\"my key\" = 1\n"},
+		{"a quoted key outside the bare charset", "\"café\" = 1\n"},
+		{"a quoted key inside a table", "[emit]\n\"my key\" = 1\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc, err := Decode([]byte(tt.toml))
+			if err != nil {
+				t.Fatalf("Decode: %v", err)
+			}
+			if _, err := doc.Keys(); err == nil {
+				t.Errorf("Keys() = nil error, want a refusal naming the key")
+			}
+		})
+	}
 }

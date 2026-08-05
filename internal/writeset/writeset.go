@@ -196,6 +196,17 @@ func appendAll(logsDir string, events []journal.Event, rotate int64) (Ops, error
 	return ops, nil
 }
 
+// WriteFile atomically replaces the file at path, creating its directory if
+// needed.
+//
+// It is the same primitive Apply uses for every file in a mutation, exported
+// for the writes that are not mutations of an entity: a config.toml is truth
+// but not state (§2.1), so `config set` writes one file and appends no event,
+// and it should still be as crash-safe as everything else para writes.
+func WriteFile(path string, data []byte) error {
+	return writeAtomic(path, data)
+}
+
 // writeAtomic replaces path's contents in one step: write a temp file in the
 // same directory so the rename cannot cross a filesystem boundary, fsync it so
 // the bytes are durable before anything points at them, rename it into place,

@@ -18,7 +18,9 @@ package ptoml
 
 import (
 	"fmt"
+	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -116,7 +118,7 @@ func encodeValue(v Value) (string, error) {
 	case KindInt64:
 		return strconv.FormatInt(v.Int, 10), nil
 	case KindFloat64:
-		return formatFloat(v.Float), nil
+		return FormatFloat(v.Float), nil
 	case KindBool:
 		if v.Bool {
 			return "true", nil
@@ -136,10 +138,24 @@ func encodeValue(v Value) (string, error) {
 	}
 }
 
-// formatFloat renders f as a TOML float literal that always carries a
+// FormatFloat renders f as a TOML float literal that always carries a
 // decimal point — "1" would reparse as a TOML integer, changing the value's
 // type on round-trip, so a whole number renders as "1.0".
-func formatFloat(f float64) string {
+//
+// The three floats that are not numbers get TOML's own spellings, which are
+// not Go's: nan, inf, -inf. Without that case the decimal-point fixup turns
+// Go's "NaN" into "NaN.0", which is not TOML at all — and para would have
+// written it over a file that parsed a moment earlier, leaving a level no
+// command can read and none can repair.
+func FormatFloat(f float64) string {
+	switch {
+	case math.IsNaN(f):
+		return "nan"
+	case math.IsInf(f, 1):
+		return "inf"
+	case math.IsInf(f, -1):
+		return "-inf"
+	}
 	s := strconv.FormatFloat(f, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
 		s += ".0"
@@ -199,6 +215,55 @@ func Decode(data []byte) (Document, error) {
 		return Document{}, paraerr.Wrap(paraerr.KindValidation, err, "invalid TOML")
 	}
 	return Document{values: m}, nil
+}
+
+// Keys returns every scalar key in the document in its flattened dotted
+// form, lexically ordered. Both of TOML's spellings of the same fact —
+// `emit.claude = true` and a `[emit]` header with `claude = true` — decode to
+// the same map tree and so report the same key.
+//
+// It exists for config.toml (§7), the one file para rewrites without owning
+// every key in it: a key written by a newer para version must survive an
+// older one's `config set`, and preserving what it cannot interpret means
+// first being able to enumerate it. Lexical order rather than file order
+// because a Document carries no file order (see the package doc), and one
+// declared order is what keeps the rewrite byte-stable.
+//
+// A key outside TOML's bare-key charset is an error rather than a result,
+// because the flattened form cannot represent it faithfully. The sharp case
+// is a quoted key that contains a dot: `"a.b" = 1` and `[a]` with `b = 2` are
+// two different facts that flatten to the same string, so a document holding
+// both would report one name twice and a rewrite would drop one value and
+// emit a duplicate key. Refusing to enumerate is what stops a caller from
+// rewriting a file it has misread.
+func (d Document) Keys() ([]string, error) {
+	var keys []string
+	if err := collectKeys(d.values, "", &keys); err != nil {
+		return nil, err
+	}
+	slices.Sort(keys)
+	return keys, nil
+}
+
+func collectKeys(m map[string]any, prefix string, out *[]string) error {
+	for k, v := range m {
+		if !keySegmentPattern.MatchString(k) {
+			return paraerr.Newf(paraerr.KindValidation,
+				"key %q is not a bare TOML key, so para cannot write it back unchanged (bare keys only: letters, digits, - and _, separated by dots)", k)
+		}
+		full := k
+		if prefix != "" {
+			full = prefix + "." + k
+		}
+		if sub, ok := v.(map[string]any); ok {
+			if err := collectKeys(sub, full, out); err != nil {
+				return err
+			}
+			continue
+		}
+		*out = append(*out, full)
+	}
+	return nil
 }
 
 // lookup walks a dotted key through nested tables, as produced by decoding

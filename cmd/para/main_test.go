@@ -25,6 +25,7 @@ func TestMain(m *testing.M) {
 var implementedPhases = map[int]bool{
 	0: true,
 	4: true,
+	7: true,
 }
 
 const phaseConditionPrefix = "para:phase"

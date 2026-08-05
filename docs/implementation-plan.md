@@ -381,6 +381,79 @@ that span rotations, and the write-count test pins the invariant.
 
 ## Phase 7 — Config, and the printable chain
 
+**Status: done** (branch `impl`). `internal/config` lands: §7's table as a closed key registry, a
+byte-stable `config.toml` codec that preserves keys para does not recognise, chain resolution that
+returns the winning value *and* every level consulted, and `para config set|unset|list|show` with
+`--at`, `--prefix`, and `--json`. `ptoml.Document` gains `Keys()`, and `writeset` exports `WriteFile`.
+
+Four decisions worth recording, because later phases inherit them:
+
+- **The key set is closed; the file's key set is not.** `config set` refuses a key para does not
+  read, because a `project.stale-aftr` that writes cleanly is a knob the user believes in and nothing
+  ever consults. But a key already *in* a file survives every rewrite: it may belong to a newer para,
+  and deleting it would make `config set` a data-loss operation. Reporting it is `doctor`'s `invalid`
+  finding (§10). The one thing `Decode` refuses outright is a value it cannot carry — a TOML datetime,
+  a mixed array — since accepting it would mean dropping it silently at the next write.
+- **Only §7's four emit/log knobs have defaults.** The three thresholds (`<kind>.stale-after`,
+  `key-result.at-risk-pace`, `review.cadence`) deliberately have none: §7 says "unset everywhere means
+  the check never fires", so a default would make `review` fire on a tree that never asked it to.
+  `Resolution.Found` is false for such a key, and that is the answer, not a missing case.
+- **The built-in default is a level of the chain, printed as `(default)`.** §22's example only shows
+  chains whose winner is a file, but the arrow marks the winner, and a value coming from nowhere with
+  no arrow anywhere would leave `config show emit.claude-skills` unexplainable.
+- **`config set` prints `wrote <file>`, though §26's first example shows it printing nothing.** §23's
+  prose — "mutations print what they wrote, one line per file" — wins over the example, because a
+  `set --at` that writes a file and says nothing is precisely the case where the user cannot tell
+  whether `--at` landed where they meant.
+
+Two slips in §22 found while transcribing it, both resolved in favour of the prose:
+
+- §22's first code line comments `para config set project.stale-after 30 # in the nearest
+  config.toml`, which its own next paragraph contradicts — "`set`/`unset` write the **root's**
+  `config.toml` unless `--at <locator>` names a level" — as does §25's "**`config set` defaults to the
+  root**". Root wins. "Nearest" is also the more surprising rule: it would make the file a `set`
+  writes depend on the working directory.
+- §26's `config set --at projects …` prints nothing; §23 says mutations print what they wrote. See
+  above.
+
+**Four codec defects the review found, all of the same shape: para rewriting a file it had misread,
+leaving a `config.toml` no reader could parse and no `para config` command could repair.** Each is now
+a test.
+
+- A float that is not a number was written as Go spells it. `strconv.FormatFloat` gives `NaN`, which
+  carries no decimal point, so the make-it-look-like-a-float fixup appended one: `NaN.0`, which is not
+  TOML. `ptoml.FormatFloat` now emits TOML's `nan`/`inf`/`-inf`, and the thresholds refuse a
+  non-finite value outright, since a threshold that is not a number is a check that can never fire.
+- `"a.b" = 1` and `[a]` with `b = 2` are two different facts that flatten to one dotted string, so
+  `Keys()` reported one name twice and a rewrite dropped a value and emitted a duplicate key.
+  `ptoml.Document.Keys` now returns an error for any key outside TOML's bare-key charset — which also
+  fixes the quieter version, a quoted key that read back fine and then failed to encode, stranding the
+  whole level.
+- `File.Set` appended blindly, so `emit = "x"` (a hand edit) plus `config set emit.claude true` wrote
+  a value and a table under one name. It now refuses, naming the key it collides with.
+- Float equality used `==`, so setting NaN over NaN reported a change on every run and `-0.0` over
+  `0.0` reported none. The no-op rule asks whether the file's *bytes* would change, so floats now
+  compare by their bits.
+
+### Carry-forward obligations from Phase 7
+
+- **Phase 8 owes the journal event for a config change.** §8.1 says the root's journal carries "init,
+  config changes, and `child` events for the four buckets", and `config set` currently appends
+  nothing. It was deferred rather than guessed at: `change` carries `field`/`from`/`to` (§3.1), which
+  are §15 field names, and the `ACTIVITY.md` line template for a config change is prose §27 defers.
+  Phase 8 owns both the `change` event and the write path that re-renders `ACTIVITY.md` with it.
+- **Phase 13 owes the emit consequences of `config set emit.claude true`.** §26 shows the same command
+  writing eight `CLAUDE.md` files and the `.claude/skills` mirror; this phase writes the config file
+  alone. Until then the honest repair is `rebuild` (Phase 12).
+- **Phase 8+ should resolve through `config.Resolver`, one per command.** It caches each `config.toml`
+  it reads, which is what keeps a `list` over a few thousand entities from re-reading the root's
+  config once per row. `RenderConfig` and `RotateBytes` are the two ready-made seams: the first fills
+  `render.Config`, the second `writeset.Mutation.RotateBytes`.
+- **Phase 10/11 read provenance from `Resolution.Source()`**, whose `Level.File` is the root-relative
+  `…/.para/config.toml` path §16.1 prints. `config.StaleKey(kind)` is where §20's "a skill's threshold
+  is `review.cadence`, not `stale-after`, and a container has none" is encoded, so no review group
+  should re-derive it.
+
 **Tasks**
 
 1. `config.toml` read/write at any level; the root's alongside `tree.toml`.
