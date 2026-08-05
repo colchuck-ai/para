@@ -258,6 +258,11 @@ property test passes, and a golden test proves two runs of every writer produce 
 
 ## Phase 4 — The tree: discovery, walk, resolution, placement
 
+**Status: done** (branch `impl`). `internal/tree` lands: root discovery via `.para/tree.toml` with
+`$PARA_HOME` override, the §8.5 walk (container/entity classification, archive-stub recognition,
+symlink safety, and a parallel scan of `.agents/skills/`), `Exists`/`ParentExists` placement-legality
+checks, `.`-resolution, and the `para path` command.
+
 First phase to touch a filesystem.
 
 **Tasks**

@@ -24,6 +24,7 @@ func TestMain(m *testing.M) {
 // implementation plan's ground rules (§0.1).
 var implementedPhases = map[int]bool{
 	0: true,
+	4: true,
 }
 
 const phaseConditionPrefix = "para:phase"

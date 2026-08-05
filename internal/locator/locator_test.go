@@ -88,6 +88,50 @@ func TestParseStringRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBucket(t *testing.T) {
+	cases := []struct {
+		loc  string
+		want string
+	}{
+		{"projects.acme-migration", "projects"},
+		{"archive.areas.health", "archive"},
+		{"skills.signups-report", "skills"},
+	}
+	for _, tc := range cases {
+		loc, err := Parse(tc.loc)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", tc.loc, err)
+		}
+		if got := loc.Bucket(); got != tc.want {
+			t.Errorf("Parse(%q).Bucket() = %q, want %q", tc.loc, got, tc.want)
+		}
+	}
+	if got := (Locator{}).Bucket(); got != "" {
+		t.Errorf("empty Locator.Bucket() = %q, want \"\"", got)
+	}
+}
+
+func TestIsArchived(t *testing.T) {
+	cases := []struct {
+		loc  string
+		want bool
+	}{
+		{"projects.acme-migration", false},
+		{"archive.areas.health", true},
+		{"archive.projects.old-migration", true},
+		{"skills.signups-report", false},
+	}
+	for _, tc := range cases {
+		loc, err := Parse(tc.loc)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", tc.loc, err)
+		}
+		if got := loc.IsArchived(); got != tc.want {
+			t.Errorf("Parse(%q).IsArchived() = %v, want %v", tc.loc, got, tc.want)
+		}
+	}
+}
+
 func TestIsReserved(t *testing.T) {
 	for _, w := range ReservedWords {
 		if !IsReserved(w) {

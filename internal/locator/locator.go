@@ -56,6 +56,23 @@ func (l Locator) String() string {
 	return strings.Join(l, ".")
 }
 
+// Bucket returns the locator's first segment — the bucket or bucket-like
+// prefix (projects, areas, resources, archive, skills) everything else
+// hangs off of — or "" for an empty locator.
+func (l Locator) Bucket() string {
+	if len(l) == 0 {
+		return ""
+	}
+	return l[0]
+}
+
+// IsArchived reports whether the locator names something under archive/
+// (§1.6). Archival never changes a locator's shape otherwise — it only
+// prepends this one segment.
+func (l Locator) IsArchived() bool {
+	return l.Bucket() == "archive"
+}
+
 // Path converts the locator to its relative filesystem path, applying the
 // one exception §1.4 defines: a two-segment "skills.<id>" locator maps to
 // ".agents/skills/para-<id>", the "para-" prefix belonging to the directory

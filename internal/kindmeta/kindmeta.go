@@ -71,7 +71,7 @@ func KindOf(loc locator.Locator) (Info, error) {
 
 	segs := []string(loc)
 	archived := false
-	if segs[0] == "archive" {
+	if loc.IsArchived() {
 		archived = true
 		segs = segs[1:]
 		if len(segs) == 0 {
