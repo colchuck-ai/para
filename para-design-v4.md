@@ -425,7 +425,7 @@ no events are absent.
 - Note: waiting on the ingest team.
 
 ## 2026-01-03
-- Measured **signups** at 880/11000 (8.0%) — 47% of target.
+- Measured **signups** at 880/11000 (8.0%) — 24% of target.
 ```
 
 Two mechanics that matter:
@@ -501,6 +501,13 @@ invalidate every measurement already logged. Delete and recreate instead.
 - `progress = (current − start) / (target − start)`. Direction falls out of the arithmetic; there is
   no up/down flag. **Not clamped**: overshoot reads above 1 and a regression below baseline reads
   negative, because both are true and both are worth seeing.
+  **`start` is subtracted from both sides**, which is the one thing easy to get wrong and the reason
+  the worked example is spelled out here rather than left to the reader. For the `signups`
+  key-result used throughout this document — `start 480/9000`, `target 2000/12000`, a reading of
+  `880/11000` — the three decimals are `0.0533`, `0.1667`, and `0.0800`, so
+  `progress = (0.0800 − 0.0533) / (0.1667 − 0.0533) = 0.2353`. Not `0.0800 / 0.1667 = 0.48`: that
+  is progress toward the target *from zero*, which is a different and less useful question, because
+  it credits a key-result for the ground it had already covered before you committed to it.
 - **No measurements yet → progress 0.** No progress has been demonstrated, and saying so plainly is
   what lets an untouched key-result go `at-risk` instead of sitting quiet.
 - `pace = progress / elapsed`, where `elapsed = (today − created) / (due − created)`.
@@ -535,8 +542,8 @@ A projection of the key-result's `measurement` events, oldest first, one row per
 
 ```csv
 at,value,decimal,progress,note
-2026-01-03T09:02:11-08:00,880/11000,0.0800,0.4700,
-2026-01-17T09:10:04-08:00,1320/12400,0.1065,0.6800,denominator grew after the launch
+2026-01-03T09:02:11-08:00,880/11000,0.0800,0.2353,
+2026-01-17T09:10:04-08:00,1320/12400,0.1065,0.4687,denominator grew after the launch
 ```
 
 - `value` is the reading exactly as logged, in the type's grammar.
@@ -1263,7 +1270,7 @@ Acme migration
 
 status       in-progress
 priority     high
-due          2026-09-30        in 58 days
+due          2026-09-30        in 181 days
 tags         consumer, kafka
 created      2026-01-01
 attention    2026-03-02        31 days ago
@@ -1272,12 +1279,12 @@ attention    2026-03-02        31 days ago
 objectives
   q1-growth  Grow signups                          in-progress
     signups  Weekly signups                        at-risk
-             480/9000 → 880/11000 / 2000/12000     progress 0.47   pace 0.68
+             480/9000 → 880/11000 / 2000/12000     progress 0.24   pace 0.70
 
 skills       signups-report (from skills.signups-report, scope projects)
 ```
 
-- Derived values announce themselves by being *computed lines* — `in 58 days`, `31 days ago`, `stale`,
+- Derived values announce themselves by being *computed lines* — `in 181 days`, `31 days ago`, `stale`,
   `progress`, `pace`, and a key-result's status are never stored (§2.5).
 - **`stale` names where its threshold came from**, because §7's chain resolution is only defensible if
   it is visible (§7). Same for any other resolved knob `show` reports.
@@ -1629,7 +1636,7 @@ it is the reason `show` also names where a resolved threshold came from (§16.1)
 
 ```
 $ para measure projects.acme.objectives.q1-growth.key-results.signups 880/11000
-measured signups = 880/11000   progress 0.47   at-risk
+measured signups = 880/11000   progress 0.24   at-risk
 
 wrote  projects/…/key-results/signups/.para/logs/20260101T081502.jsonl
        projects/…/key-results/signups/.para/state.toml
@@ -1807,7 +1814,7 @@ error: kind would change (project → area); create the target and move your con
 
 ```
 $ para measure …key-results.signups 880/11000 --at 2026-01-03
-measured signups = 880/11000   decimal 0.0800   progress 0.47   at-risk
+measured signups = 880/11000   decimal 0.0800   progress 0.24   at-risk
 
 $ para measure …key-results.signups 0.08
 error: value 0.08 is not a ratio (type ratio expects <numerator>/<denominator>)
@@ -1818,7 +1825,7 @@ error: a measurement already exists at 2026-01-03T00:00:00-08:00
 $ para log projects.acme-migration --kind change --limit 3
 $ para activity projects.acme-migration --recursive --since 2026-01-01
 2026-01-05  …objectives            added objective q1-growth
-2026-01-03  …key-results.signups   measured 880/11000 (8.0%) — 47% of target
+2026-01-03  …key-results.signups   measured 880/11000 (8.0%) — 24% of target
 2026-01-01  projects.acme-migration created
 ```
 
@@ -1851,7 +1858,7 @@ stale (3)
   areas.fitness.training                    61 days   stale-after 30
   …
 behind (1)
-  …key-results.signups                      pace 0.68   at-risk-pace 0.80
+  …key-results.signups                      pace 0.70   at-risk-pace 0.80
 
 $ echo "hand-edited" >> projects/acme-migration/ACTIVITY.md
 $ para doctor
