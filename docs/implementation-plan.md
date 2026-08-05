@@ -233,6 +233,10 @@ written, and `progress` is verified negative below baseline and above 1 on overs
 
 ## Phase 3 — Codecs, and the byte-stability guarantee
 
+**Status: done** (branch `impl`). `internal/ptoml`, `internal/mdfile` (frontmatter+body codec and the
+`AGENTS.md` delimited-block codec), `internal/csvfile`, and `internal/journal` land with full unit and
+fuzz coverage.
+
 The phase that makes §0.2 real.
 
 **Tasks**
