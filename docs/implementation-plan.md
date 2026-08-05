@@ -310,6 +310,45 @@ file position, and a table test walks every event kind against the clock rule.
 
 ## Phase 6 — The projection engine
 
+**Status: done** (branch `impl`). `internal/truth` (state.toml + tree.toml codecs), `internal/render`
+(the `Renderer` interface and all eight artifacts, with `ACTIVITY.md`'s two modes), and
+`internal/writeset` (the truth-first ordered atomic write) land, plus `journal.ReadOnOrAfter` for the
+cheap incremental read and a marker-parameterised delimited-block codec in `mdfile` for
+`.gitattributes`.
+
+Three decisions worth recording, because later phases inherit them:
+
+- **`created` contributes a line to `ACTIVITY.md`**, so the file and `activity` agree by construction
+  (§16.4) and §26's `created` line has a home. Its cost is a constraint on the write path:
+  `render.CreatedDay` must be included in `ActivityRenderer.Days` when creating the file (`add`) or
+  changing `created` (`set`), or the incremental path drops a line the full re-derivation produces.
+- **`progress` follows §4.2's formula**, `(current − start) / (target − start)`. The worked lines in
+  §3.5, §4.4, and §16.1 print `0.47` for values the formula puts at `0.235`; they were computed as
+  `current ÷ target` with `start` dropped. The formula is normative and `krvalue` already implements
+  it, so the examples' arithmetic is the thing that is wrong.
+- **A skill owns `SKILL.md` and its derived rule, and nothing else** — no `README.md`, no
+  `ACTIVITY.md`. §5.1's file listing shows only `SKILL.md`, the author's `scripts/`/`references/`, and
+  `.para/`, and says "everything except `SKILL.md`'s frontmatter is yours"; §2.2's `ACTIVITY.md` row
+  pulls the other way, since a skill is a real entity with a journal. The listing wins, but this is
+  the phase's one genuinely reversible call — **if it flips, `doctor` and `rebuild` change with it.**
+  Its `SKILL.md` frontmatter is `name` and `description` alone, since that file is read by agent
+  harnesses with their own schema.
+- **`ACTIVITY.md`'s measurement line carries no locator**: `- Measured 880/11000 (8.0%) — 24% of
+  target.` §3.5's example shows `Measured **signups** at …`, but that example is a composite of three
+  events that cannot share one journal (a `child` on a container, a `note`, a `measurement` on the
+  key-result), and §26's `activity --recursive` output puts the locator in its own column. A locator
+  inside the line would be duplicated there, and redundant in the file itself, which is by definition
+  one entity's own fold.
+
+**Left open, deliberately** — a Phase 5 question this phase surfaced. §3.4 promises "a directory
+listing of `logs/` reads as a chronology, and the newest file is the last one lexically", and
+`journal.newestFile` plus `ReadOnOrAfter`'s scan both depend on it. But `ptime.JournalFilename`
+formats in the event's own location and puts **no offset in the name**, so an event at
+`2026-08-04T23:00:00+13:00` (10:00Z) sorts *after* a later event at `2026-08-04T12:00:00-07:00`
+(19:00Z). Carry a tree between timezones and `Append` can reopen a logically closed file, breaking
+§3.4's immutability guarantee. Naming files from `e.At.UTC()` fixes it and costs only that the
+filename no longer reads as local wall-clock — which is a §3.4 decision, not a Phase 6 one.
+
 The spine. Every later phase writes through it.
 
 **Tasks**

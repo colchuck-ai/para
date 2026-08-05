@@ -179,3 +179,41 @@ func TestRoundTrip_Block(t *testing.T) {
 
 	testutil.AssertRoundTrip(t, data, decode, encode)
 }
+
+func TestReplaceDelimited_HashMarkersPreserveHumanLines(t *testing.T) {
+	// .gitattributes has no Markdown comment syntax, so the same block
+	// mechanism has to work with `#` markers (§2.2's "append-only to an
+	// existing file", §9).
+	data := []byte("*.png binary\n" +
+		HashMarkers.Begin + "\n" +
+		"old generated lines\n" +
+		HashMarkers.End + "\n" +
+		"*.pdf binary\n")
+
+	got, err := ReplaceDelimited(HashMarkers, data, []byte("**/logs/*.jsonl merge=union\n"))
+	if err != nil {
+		t.Fatalf("ReplaceDelimited: %v", err)
+	}
+	want := "*.png binary\n" +
+		HashMarkers.Begin + "\n" +
+		"**/logs/*.jsonl merge=union\n" +
+		HashMarkers.End + "\n" +
+		"*.pdf binary\n"
+	if string(got) != want {
+		t.Errorf("ReplaceDelimited() =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestExtractDelimited_HashMarkers(t *testing.T) {
+	data, err := ReplaceDelimited(HashMarkers, nil, []byte("a\nb\n"))
+	if err != nil {
+		t.Fatalf("ReplaceDelimited: %v", err)
+	}
+	got, err := ExtractDelimited(HashMarkers, data)
+	if err != nil {
+		t.Fatalf("ExtractDelimited: %v", err)
+	}
+	if string(got) != "a\nb\n" {
+		t.Errorf("ExtractDelimited() = %q, want %q", got, "a\nb\n")
+	}
+}

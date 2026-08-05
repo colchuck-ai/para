@@ -1,0 +1,438 @@
+package render
+
+import (
+	"bytes"
+	"fmt"
+	"regexp"
+	"slices"
+	"sort"
+	"strings"
+
+	"github.com/colchuck-ai/para/internal/journal"
+	"github.com/colchuck-ai/para/internal/kindmeta"
+	"github.com/colchuck-ai/para/internal/krvalue"
+	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/paraerr"
+)
+
+// ActivityRenderer renders ACTIVITY.md, the human-readable digest of one
+// entity's own journal, grouped by day, newest day first (§3.5).
+//
+// Days selects the mode, and the two modes are the reason this type is
+// exported while every other renderer is not:
+//
+//   - Days empty is **full** mode. Every section is derived from In.Events,
+//     which must be the entity's whole history across every rotated file. This
+//     is what rebuild writes and what doctor compares against (§10, §21.1).
+//
+//   - Days non-empty is **incremental** mode, the write path. Only those days'
+//     sections are re-derived; every other day is copied out of
+//     In.Existing byte for byte, because it was already written when it was
+//     today and prior days are never recomputed (§3.5). In.Events must contain
+//     every event falling on those days.
+//
+// For the same history the two modes produce identical bytes. That equivalence
+// is what makes the cheap write safe and what gives §10's drift report a day to
+// name; it is asserted as a property test rather than assumed.
+//
+// **A key-result must use full mode**, and asking for incremental is an error
+// rather than a caveat. Every measurement line ends in "N% of target", a
+// function of `start` and `target` — both settable (§15) — and of the oldest
+// reading, which is the default baseline (§4.1). So `set --target`, or a
+// measurement backdated before every existing one, changes lines on days
+// incremental mode would never revisit. Refusing costs nothing: rewriting the
+// same mutation's MEASUREMENTS.csv already requires the whole measurement
+// history (§2.3, §4.4), so for a key-result there is no cheap read to protect.
+type ActivityRenderer struct {
+	Days []string
+}
+
+// activityFile is the filename, at every level that has one (§1.1).
+const activityFile = "ACTIVITY.md"
+
+// activityTitle is the file's first line. ACTIVITY.md is wholly generated
+// (§2.2), so there is no human-owned heading to preserve.
+const activityTitle = "# Activity\n"
+
+func (ActivityRenderer) Path(in In) (string, error) {
+	dir, err := in.dir()
+	if err != nil {
+		return "", err
+	}
+	return join(dir, activityFile), nil
+}
+
+func (r ActivityRenderer) Render(in In) ([]byte, error) {
+	derived, err := activitySections(in)
+	if err != nil {
+		return nil, err
+	}
+	if len(r.Days) == 0 {
+		return renderActivity(derived), nil
+	}
+	if in.Kind == kindmeta.KindKeyResult {
+		return nil, paraerr.Newf(paraerr.KindInternal,
+			"render: %s must be rendered in full for a key-result, whose measurement lines depend on start, target, and the oldest reading",
+			activityFile)
+	}
+
+	path, err := Activity.Path(in)
+	if err != nil {
+		return nil, err
+	}
+	prior, err := parseActivity(in.existing(path))
+	if err != nil {
+		return nil, err
+	}
+	return renderActivity(spliceSections(prior, derived, r.Days)), nil
+}
+
+// section is one day's worth of the file: its date header and the rendered
+// lines beneath it, each newline-terminated.
+type section struct {
+	Day  string
+	Body []byte
+}
+
+// renderActivity assembles sections newest-day-first. The layout is fixed —
+// title, then one blank line before each day header — because parseActivity has
+// to reproduce it exactly for the incremental path to be byte-equivalent to the
+// full one.
+func renderActivity(sections []section) []byte {
+	var b bytes.Buffer
+	b.WriteString(activityTitle)
+	for _, s := range sections {
+		b.WriteString("\n## ")
+		b.WriteString(s.Day)
+		b.WriteString("\n")
+		b.Write(s.Body)
+	}
+	return b.Bytes()
+}
+
+var dayHeaderPattern = regexp.MustCompile(`^## (\d{4}-\d{2}-\d{2})$`)
+
+// parseActivity recovers the day sections of an existing ACTIVITY.md, keeping
+// each one's lines exactly as found. What it deliberately does not recover is
+// the structure between sections: the title and the blank separator lines are
+// re-emitted by renderActivity from the fixed layout, so a file whose
+// separators drifted is normalised rather than perpetuated.
+//
+// CRLF is normalised to LF. ACTIVITY.md is wholly generated (§2.2), so unlike
+// README.md there is no human-authored byte here to preserve — which makes
+// normalising safe, and makes it necessary: a checkout with git's
+// core.autocrlf on hands back a CRLF file, and a parser that failed to
+// recognise its day headers would drop every prior day on the next mutation.
+//
+// Anything else this parser cannot account for is refused rather than dropped.
+// Silently discarding a line is the one failure mode that loses history, and
+// history is the only thing in this file worth anything; refusing names the
+// repair instead (§2.4: doctor reports, rebuild repairs).
+func parseActivity(data []byte) ([]section, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, nil
+	}
+	normalised := strings.ReplaceAll(string(data), "\r\n", "\n")
+
+	var sections []section
+	var current *section
+	for _, line := range strings.SplitAfter(normalised, "\n") {
+		if line == "" {
+			continue
+		}
+		text := strings.TrimSuffix(line, "\n")
+		if m := dayHeaderPattern.FindStringSubmatch(text); m != nil {
+			sections = append(sections, section{Day: m[1]})
+			current = &sections[len(sections)-1]
+			continue
+		}
+		if current == nil {
+			// Before the first day header only the title and blank lines
+			// belong. Anything else is content this parser would silently
+			// lose on re-render.
+			if trimmed := strings.TrimSpace(text); trimmed != "" && trimmed+"\n" != activityTitle {
+				return nil, paraerr.Newf(paraerr.KindValidation,
+					"%s has content before its first day heading (%q) — run `para rebuild` to regenerate it",
+					activityFile, trimmed)
+			}
+			continue
+		}
+		current.Body = append(current.Body, line...)
+	}
+
+	// An empty section is dropped rather than carried: §3.5 says days with no
+	// events are absent, and full mode never emits one.
+	kept := sections[:0]
+	for _, s := range sections {
+		if s.Body = normalizeSectionBody(s.Body); len(s.Body) > 0 {
+			kept = append(kept, s)
+		}
+	}
+	sections = kept
+
+	if err := assertDescending(sections); err != nil {
+		return nil, err
+	}
+	return sections, nil
+}
+
+// normalizeSectionBody reduces a parsed section body to exactly its lines: the
+// blank separator that precedes the next day header is dropped, a body of
+// nothing but blank lines becomes empty, and a final line missing its newline
+// gains one.
+//
+// All three matter for byte equivalence with full mode. Full mode never emits a
+// blank line at the end of a section and never emits an empty section at all, so
+// a body left holding either would be a permanent difference between the two
+// modes on a file neither of them would have written.
+func normalizeSectionBody(body []byte) []byte {
+	trimmed := bytes.TrimRight(body, "\n")
+	if len(trimmed) == 0 {
+		return nil
+	}
+	out := make([]byte, len(trimmed)+1)
+	copy(out, trimmed)
+	out[len(trimmed)] = '\n'
+	return out
+}
+
+func assertDescending(sections []section) error {
+	for i := 1; i < len(sections); i++ {
+		if sections[i-1].Day <= sections[i].Day {
+			return paraerr.Newf(paraerr.KindValidation,
+				"%s is not newest-day-first: %s precedes %s", activityFile, sections[i-1].Day, sections[i].Day)
+		}
+	}
+	return nil
+}
+
+// spliceSections replaces the sections for days with the freshly derived ones
+// and leaves every other section's bytes untouched. A day in days with nothing
+// derived for it loses its section entirely, which is how §3.5's "days with no
+// events are absent" stays true after a rebuild removes something.
+func spliceSections(prior, derived []section, days []string) []section {
+	target := make(map[string]bool, len(days))
+	for _, d := range days {
+		target[d] = true
+	}
+
+	// Both loops walk slices, never the map: the map is only ever asked "is
+	// this day being re-derived", so no map's iteration order reaches the
+	// output (§0.2). `derived` is already newest-first, and `prior` is checked
+	// to be by parseActivity, so the merge below preserves that ordering
+	// without needing to re-sort.
+	out := make([]section, 0, len(prior)+len(derived))
+	for _, s := range prior {
+		if !target[s.Day] {
+			out = append(out, s)
+		}
+	}
+	for _, s := range derived {
+		if target[s.Day] {
+			out = append(out, s)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Day > out[j].Day })
+	return out
+}
+
+// activitySections folds in.Events into day sections, newest day first and
+// newest line first within a day — one direction throughout, matching `log`'s
+// so the two never read in opposite orders (§16.3).
+//
+// The subject's `created` contributes a line of its own. `created` is a field
+// in the truth file rather than an event (§3.1), but the digest is the answer to
+// "what has happened here", and coming into existence is the first thing that
+// happened: §26's own `activity` output ends with a `created` line, and §16.4
+// makes ACTIVITY.md and `activity` agree by construction. Its consequence is
+// worth stating, because it is a real constraint on the write path: changing
+// `created` moves that line to a different day, so a mutation that changes it
+// must re-derive both days' sections, not just today's.
+func activitySections(in In) ([]section, error) {
+	byDay := map[string][]string{}
+	days := []string{}
+	addLine := func(day, line string) {
+		if _, seen := byDay[day]; !seen {
+			days = append(days, day)
+		}
+		byDay[day] = append(byDay[day], line)
+	}
+
+	rs := readings(in)
+	events := slices.Clone(in.Events)
+	sort.SliceStable(events, func(i, j int) bool { return events[j].At.Before(events[i].At) })
+	for _, e := range events {
+		line, err := eventLine(in, e, rs)
+		if err != nil {
+			return nil, err
+		}
+		addLine(e.At.Format(dayLayout), line)
+	}
+
+	// `created` is stored in progressive precision (§15.1), every form of
+	// which begins with the date — so its day is the first ten characters, and
+	// reading it that way needs neither a parse nor a location.
+	if created := createdDay(in); created != "" {
+		addLine(created, createdLine)
+	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(days)))
+	out := make([]section, 0, len(days))
+	for _, day := range days {
+		var b bytes.Buffer
+		for _, line := range byDay[day] {
+			b.WriteString("- ")
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+		out = append(out, section{Day: day, Body: b.Bytes()})
+	}
+	return out, nil
+}
+
+// dayLayout is the date form both the day headers and `activity`'s output use.
+const dayLayout = "2006-01-02"
+
+const createdLine = "Created."
+
+// CreatedDay is the day the subject's `created` falls on, or "" if there is no
+// created field to read.
+//
+// It is exported because the incremental path cannot be used correctly without
+// it. The `created` line lives in whichever day section `created` names, and
+// incremental mode re-derives only the days it is given — so a mutation must
+// include this day in Days whenever it is writing ACTIVITY.md for the first
+// time (`add`, §18.1) or changing `created` itself (§15). Omit it and the file
+// loses a line the full re-derivation would produce, which doctor would then
+// correctly report as drift.
+func CreatedDay(in In) string { return createdDay(in) }
+
+// createdDay is the day the subject's `created` falls on, or "" if there is no
+// created field to read (a stub, or a truth file doctor will report as
+// invalid).
+func createdDay(in In) string {
+	created := in.State.Created
+	if in.shape() == shapeRoot {
+		created = in.Tree.Created
+	}
+	if len(created) < len(dayLayout) {
+		return ""
+	}
+	return created[:len(dayLayout)]
+}
+
+// DaysOf returns the days the given events fall on, deduplicated — the argument
+// a mutation passes to ActivityRenderer.Days after appending them.
+func DaysOf(events []journal.Event) []string {
+	seen := map[string]bool{}
+	var days []string
+	for _, e := range events {
+		day := e.At.Format(dayLayout)
+		if !seen[day] {
+			seen[day] = true
+			days = append(days, day)
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(days)))
+	return days
+}
+
+// eventLine renders one event as its ACTIVITY.md line, without the leading
+// "- " or the trailing newline.
+//
+// A `note` is a field on every kind (§3.1), so any event can carry a reason;
+// it is appended to the sentence with an em dash rather than given a line of
+// its own, so one mutation stays one line.
+func eventLine(in In, e journal.Event, rs []reading) (string, error) {
+	var core string
+	switch e.Kind {
+	case journal.KindChange:
+		core = changeLine(e)
+	case journal.KindMeasurement:
+		core = measurementLine(e, rs)
+	case journal.KindNote:
+		return sentence("Note: " + flatten(e.Note)), nil
+	case journal.KindChild:
+		core = childLine(in, e)
+	default:
+		return "", paraerr.Newf(paraerr.KindValidation, "unknown journal event kind %q", e.Kind)
+	}
+	if note := flatten(e.Note); note != "" {
+		core += " — " + note
+	}
+	return sentence(core), nil
+}
+
+func changeLine(e journal.Event) string {
+	field := "**" + flatten(e.Field) + "**"
+	switch {
+	case e.From == "" && e.To != "":
+		return fmt.Sprintf("Set %s to %s", field, flatten(e.To))
+	case e.From != "" && e.To == "":
+		return fmt.Sprintf("Unset %s (was %s)", field, flatten(e.From))
+	default:
+		return fmt.Sprintf("Changed %s from %s to %s", field, flatten(e.From), flatten(e.To))
+	}
+}
+
+// measurementLine renders §3.5's measurement line: the reading as logged, the
+// decimal in parentheses where the reading is not already one, and the progress
+// it represents. A reading whose arithmetic did not work out prints alone.
+func measurementLine(e journal.Event, rs []reading) string {
+	core := "Measured " + flatten(e.Value)
+	r, ok := readingAt(rs, e)
+	if !ok || !r.HasDerived {
+		return core
+	}
+	// A ratio's decimal is worth printing because the reading itself is not
+	// one; a number already is its own decimal, and a boolean has nothing to
+	// say (§4.1).
+	if r.Value.Type == krvalue.TypeRatio {
+		core += " (" + percent(r.Decimal, 1) + ")"
+	}
+	return core + " — " + percent(r.Progress, 0) + " of target"
+}
+
+// childLine renders a containment event, which is the parent's own event
+// because the parent genuinely changed: it has a different set of children than
+// it did (§3.3).
+func childLine(in In, e journal.Event) string {
+	child := "**" + flatten(e.Child) + "**"
+	noun := childNoun(in, e.Child)
+
+	verb := map[journal.ChildOp]string{
+		journal.ChildOpAdded:      "Added",
+		journal.ChildOpRemoved:    "Removed",
+		journal.ChildOpMoved:      "Moved",
+		journal.ChildOpArchived:   "Archived",
+		journal.ChildOpUnarchived: "Unarchived",
+	}[e.Op]
+	if verb == "" {
+		verb = "Changed child"
+	}
+
+	words := []string{verb}
+	if noun != "" {
+		words = append(words, noun)
+	}
+	subject := strings.Join(append(words, child), " ")
+	if e.Op == journal.ChildOpMoved && e.From != "" && e.To != "" {
+		return fmt.Sprintf("%s from %s to %s", subject, flatten(e.From), flatten(e.To))
+	}
+	return subject
+}
+
+// childNoun names the child's kind, so a line reads "Added objective
+// **q1-growth**" rather than leaving the reader to infer it from the path.
+// It is empty where no kind applies — a bucket under the root, or a container
+// under an entity — since "Added **objectives**" is already unambiguous.
+func childNoun(in In, child string) string {
+	if child == "" || locator.IsReserved(child) {
+		return ""
+	}
+	info, err := kindmeta.KindOf(append(slices.Clone(in.Locator), child))
+	if err != nil || info.Kind == kindmeta.KindUnknown || info.Kind == kindmeta.KindContainer {
+		return ""
+	}
+	return info.Kind.String()
+}

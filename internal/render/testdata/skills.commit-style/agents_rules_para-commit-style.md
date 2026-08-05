@@ -1,0 +1,4 @@
+---
+generated_from: "para-commit-style"
+---
+Use the **Commit style** skill (`.agents/skills/para-commit-style/SKILL.md`) when writing a commit message.
