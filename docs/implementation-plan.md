@@ -211,6 +211,9 @@ nesting has a unit test.
 
 ## Phase 2 — Value types: time, tags, key-result arithmetic
 
+**Status: done** (branch `impl`). `internal/ptime`, `internal/tagexpr`, and `internal/krvalue` land as
+pure, filesystem-free packages with full unit coverage.
+
 Still pure.
 
 **Tasks**
