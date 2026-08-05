@@ -1687,7 +1687,7 @@ it is the reason `show` also names where a resolved threshold came from (§16.1)
 $ para measure projects.acme.objectives.q1-growth.key-results.signups 880/11000
 measured signups = 880/11000   progress 0.24   at-risk
 
-wrote  projects/…/key-results/signups/.para/logs/20260101T081502.jsonl
+wrote  projects/…/key-results/signups/.para/logs/20260101T161502Z.jsonl
        projects/…/key-results/signups/.para/state.toml
        projects/…/key-results/signups/README.md
        projects/…/key-results/signups/ACTIVITY.md
