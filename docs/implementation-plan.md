@@ -288,6 +288,10 @@ from outside any tree; the walk ignores untracked directories entirely (§1.5); 
 
 ## Phase 5 — The journal, rotation, and the one clock
 
+**Status: done** (branch `impl`). `internal/journal` gains append with rotation, ordered multi-file
+reads, event constructors for the four kinds, measurement uniqueness-in-time, and `attention`
+derivation on top of the codec landed in Phase 3.
+
 **Tasks**
 
 1. Append: `O_APPEND` single-line write into the newest file in `logs/`.
