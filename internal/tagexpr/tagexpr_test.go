@@ -44,6 +44,16 @@ func TestParse_Match(t *testing.T) {
 			no:   []string{"rust", "reference", "kafka,deprecated", ""},
 		},
 		{
+			// Same expression as above with the comma standing in for
+			// "or" (§17: a bare comma list is or’s short form) — proves
+			// the substitution holds next to "and", not just in a flat
+			// comma list.
+			name: "comma stands in for or even next to and",
+			expr: "rust and reference, kafka and not deprecated",
+			yes:  []string{"rust,reference", "kafka", "kafka,rust"},
+			no:   []string{"rust", "reference", "kafka,deprecated", ""},
+		},
+		{
 			name: "explicit or keyword",
 			expr: "rust or kafka",
 			yes:  []string{"rust", "kafka", "rust,kafka"},

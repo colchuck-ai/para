@@ -51,6 +51,11 @@ func TestParseAt(t *testing.T) {
 			in:   "2026-01-03T09:02:11-08:00",
 			want: time.Date(2026, 1, 3, 9, 2, 11, 0, time.FixedZone("-08:00", -8*3600)),
 		},
+		{
+			name: "full RFC 3339 accepts the Z (UTC) spelling of an offset",
+			in:   "2026-01-03T09:02:11Z",
+			want: time.Date(2026, 1, 3, 9, 2, 11, 0, time.UTC),
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

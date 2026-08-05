@@ -104,6 +104,22 @@ func TestValidateBounds_NumberRatio(t *testing.T) {
 	if err := ValidateBounds(TypeNumber, &fifty, fifty); err == nil {
 		t.Error("start == target: want error, got nil")
 	}
+
+	// §4.1: "target == start is rejected" applies to ratio exactly as it
+	// does to number — the rule compares decimals, not raw grammar.
+	startRatio, _ := Parse(TypeRatio, "480/9000")
+	targetRatio, _ := Parse(TypeRatio, "2000/12000")
+	sameRatio, _ := Parse(TypeRatio, "480/9000")
+
+	if err := ValidateBounds(TypeRatio, nil, targetRatio); err != nil {
+		t.Errorf("ratio, no explicit start: want nil (deferred to first measurement), got %v", err)
+	}
+	if err := ValidateBounds(TypeRatio, &startRatio, targetRatio); err != nil {
+		t.Errorf("ratio, start != target: want nil, got %v", err)
+	}
+	if err := ValidateBounds(TypeRatio, &startRatio, sameRatio); err == nil {
+		t.Error("ratio, start == target: want error, got nil")
+	}
 }
 
 func TestProgress(t *testing.T) {
@@ -188,25 +204,23 @@ func TestDerivedStatus(t *testing.T) {
 
 	cases := []struct {
 		name        string
-		dropped     bool
 		progress    float64
 		paceDefined bool
 		pace        float64
 		pastDue     bool
 		want        Status
 	}{
-		{"dropped overrides everything", true, -5, true, 0, true, StatusDropped},
-		{"achieved at exactly 1", false, 1, true, 0.5, false, StatusAchieved},
-		{"achieved beats past-due", false, 1, false, 0, true, StatusAchieved},
-		{"missed: past due, progress < 1", false, 0.9, false, 0, true, StatusMissed},
-		{"at-risk: pace below threshold", false, 0.4, true, 0.5, false, StatusAtRisk},
-		{"on-track: pace at or above threshold", false, 0.4, true, 0.8, false, StatusOnTrack},
-		{"on-track: no due, no pace, progress < 1", false, 0.4, false, 0, false, StatusOnTrack},
-		{"undefined pace never reads at-risk", false, 0.1, false, 0, false, StatusOnTrack},
+		{"achieved at exactly 1", 1, true, 0.5, false, StatusAchieved},
+		{"achieved beats past-due", 1, false, 0, true, StatusAchieved},
+		{"missed: past due, progress < 1", 0.9, false, 0, true, StatusMissed},
+		{"at-risk: pace below threshold", 0.4, true, 0.5, false, StatusAtRisk},
+		{"on-track: pace at or above threshold", 0.4, true, 0.8, false, StatusOnTrack},
+		{"on-track: no due, no pace, progress < 1", 0.4, false, 0, false, StatusOnTrack},
+		{"undefined pace never reads at-risk", 0.1, false, 0, false, StatusOnTrack},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := DerivedStatus(c.dropped, c.progress, c.paceDefined, c.pace, atRiskPace, c.pastDue)
+			got := DerivedStatus(c.progress, c.paceDefined, c.pace, atRiskPace, c.pastDue)
 			if got != c.want {
 				t.Errorf("DerivedStatus(...) = %v, want %v", got, c.want)
 			}
@@ -219,11 +233,11 @@ func TestDerivedStatus(t *testing.T) {
 // a prior "achieved" reading survives, because DerivedStatus is a pure
 // function of the current inputs, never of history.
 func TestDerivedStatus_NonLatching(t *testing.T) {
-	achieved := DerivedStatus(false, 1.2, false, 0, 0.8, false)
+	achieved := DerivedStatus(1.2, false, 0, 0.8, false)
 	if achieved != StatusAchieved {
 		t.Fatalf("first reading = %v, want achieved", achieved)
 	}
-	regressed := DerivedStatus(false, 0.9, false, 0, 0.8, false)
+	regressed := DerivedStatus(0.9, false, 0, 0.8, false)
 	if regressed != StatusOnTrack {
 		t.Fatalf("after regression = %v, want on-track (no latch)", regressed)
 	}

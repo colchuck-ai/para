@@ -8,6 +8,7 @@ package tagexpr
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/colchuck-ai/para/internal/paraerr"
@@ -20,12 +21,7 @@ var ReservedWords = []string{"and", "or", "not"}
 // IsReserved reports whether s is one of the words §17 reserves and so can
 // never be used as a tag.
 func IsReserved(s string) bool {
-	for _, r := range ReservedWords {
-		if s == r {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ReservedWords, s)
 }
 
 var tagPattern = regexp.MustCompile(`^[a-z0-9-]+$`)

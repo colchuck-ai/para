@@ -6,6 +6,7 @@ package locator
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/colchuck-ai/para/internal/paraerr"
@@ -24,12 +25,7 @@ var ReservedWords = []string{
 // IsReserved reports whether s is one of the words §1.4 reserves and so can
 // never be used as an id.
 func IsReserved(s string) bool {
-	for _, r := range ReservedWords {
-		if s == r {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ReservedWords, s)
 }
 
 var segmentPattern = regexp.MustCompile(`^[a-z0-9-]+$`)

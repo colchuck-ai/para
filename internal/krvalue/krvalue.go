@@ -181,10 +181,14 @@ const (
 // pace), and undefined pace never reads at-risk. It does not latch: called
 // again after a regression, it reads on-track (or at-risk) again, because
 // it is a pure function of the current progress and pace, not of history.
-func DerivedStatus(dropped bool, progress float64, paceDefined bool, pace, atRiskPace float64, pastDue bool) Status {
+//
+// `dropped` is deliberately not an input: §4.3 states plainly that it "is
+// the only settable key-result status" (§1.7's field matrix agrees:
+// "derived (`dropped` settable)"), so it is a stored override the caller
+// checks before ever computing a derived status, not a fifth row in this
+// table.
+func DerivedStatus(progress float64, paceDefined bool, pace, atRiskPace float64, pastDue bool) Status {
 	switch {
-	case dropped:
-		return StatusDropped
 	case progress >= 1:
 		return StatusAchieved
 	case pastDue:
