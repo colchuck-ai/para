@@ -185,6 +185,9 @@ that prints its version, and CI is green.
 
 ## Phase 1 — Locators, kind derivation, reserved words
 
+**Status: done** (branch `impl`). `internal/locator` and `internal/kindmeta` land as pure,
+filesystem-free packages with full unit coverage.
+
 Pure functions. No filesystem.
 
 **Tasks**
