@@ -126,7 +126,12 @@ func TestArtifactsPerShape(t *testing.T) {
 			},
 		},
 		{
-			name: "a skill owns SKILL.md and its rule, and nothing else",
+			// A skill is an entity with a journal (§5.1), and `review --skills`
+			// measures review.cadence against its attention (§3.6, §20), so it
+			// gets an ACTIVITY.md like anything else. Its identity file is
+			// SKILL.md rather than README.md, and its rule lives outside its own
+			// directory (§5.3).
+			name: "a skill",
 			in: render.In{
 				Locator: loc(t, "skills.signups-report"),
 				Kind:    kindmeta.KindSkill,
@@ -134,6 +139,7 @@ func TestArtifactsPerShape(t *testing.T) {
 			},
 			want: []string{
 				".agents/skills/para-signups-report/SKILL.md",
+				".agents/skills/para-signups-report/ACTIVITY.md",
 				".agents/rules/para-signups-report.md",
 			},
 		},
@@ -290,9 +296,11 @@ func everyShape(t *testing.T) []render.In {
 				Start:   "480/9000",
 				Target:  "2000/12000",
 			},
+			// Recorded in PST, as §4.4's worked example is, so the golden
+			// shows the offset-to-UTC conversion the CSV column now performs.
 			Events: []journal.Event{
-				journal.NewMeasurement(ts(t, "2026-01-03T09:02:11"), "880/11000", ""),
-				journal.NewMeasurement(ts(t, "2026-01-17T09:10:04"), "1320/12400", "denominator grew after the launch"),
+				journal.NewMeasurement(tsIn(t, "2026-01-03T09:02:11", pacific), "880/11000", ""),
+				journal.NewMeasurement(tsIn(t, "2026-01-17T09:10:04", pacific), "1320/12400", "denominator grew after the launch"),
 			},
 		},
 		{

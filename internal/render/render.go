@@ -194,11 +194,25 @@ func For(in In) []Renderer {
 	var rs []Renderer
 	switch in.shape() {
 	case shapeSkill:
-		// A skill's identity file is SKILL.md, not README.md, and §5.1's
-		// file listing gives it no ACTIVITY.md: its directory holds SKILL.md,
-		// the author's own scripts and references, and .para/. Its second
-		// artifact lives outside its directory — the derived rule (§5.3).
-		rs = append(rs, Skill, Rule)
+		// A skill's identity file is SKILL.md rather than README.md — §2.2 gives
+		// it its own row for that reason — but it is otherwise an entity like
+		// any other, so it gets an ACTIVITY.md too.
+		//
+		// §5.1's file listing omits one, and that omission is not evidence: the
+		// same listing is arguing why a skill cannot be generated from a TOML
+		// string, and its "everything except SKILL.md's frontmatter is yours"
+		// already excludes the .para/ sitting right beside it. What decides it
+		// is that §5.1 calls a skill "a real entity — it has state, config, and
+		// a journal", §3.6 defines its attention as its newest note, and
+		// `review --skills` measures review.cadence against exactly that. A
+		// skill's staleness is a feature, so the file that answers "when did I
+		// last touch this" should exist. Leaving it out would also buy rebuild
+		// and doctor a per-kind exception, which is the thing §8.4's uniform
+		// filenames exist to avoid.
+		//
+		// Its third artifact lives outside its directory — the derived rule
+		// (§5.3).
+		rs = append(rs, Skill, Activity, Rule)
 	case shapeRoot:
 		rs = append(rs, Readme, Agents, Activity)
 		if in.Config.EmitClaude {

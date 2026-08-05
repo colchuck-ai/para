@@ -54,7 +54,7 @@ brain/
 ├── .para/
 │   ├── tree.toml                    ← the root marker: schema + tree identity
 │   ├── config.toml
-│   └── logs/20260101T080801.jsonl
+│   └── logs/20260101T160801Z.jsonl
 ├── .agents/
 │   ├── rules/
 │   │   ├── para-signups-report.md          generated from the skill. that is all rules ever are.
@@ -344,13 +344,14 @@ to be read by something that will not compute. Truth files contain none of it.
 
 ### 3.1 An append-only event stream
 
-`.para/logs/<first-event-timestamp>.jsonl`, one JSON object per line, per entity and per container.
+`.para/logs/<first-event-timestamp-in-UTC>.jsonl`, one JSON object per line, per entity and per
+container.
 
 ```jsonl
-{"at":"2026-01-01T08:15:02-08:00","kind":"change","field":"status","from":"planned","to":"in-progress","note":"kickoff done"}
-{"at":"2026-01-03T09:02:11-08:00","kind":"measurement","value":"880/11000"}
-{"at":"2026-01-04T17:40:00-08:00","kind":"note","note":"waiting on the ingest team"}
-{"at":"2026-01-05T11:00:00-08:00","kind":"child","op":"added","child":"q1-growth"}
+{"at":"2026-01-01T16:15:02Z","kind":"change","field":"status","from":"planned","to":"in-progress","note":"kickoff done"}
+{"at":"2026-01-03T17:02:11Z","kind":"measurement","value":"880/11000"}
+{"at":"2026-01-05T01:40:00Z","kind":"note","note":"waiting on the ingest team"}
+{"at":"2026-01-05T19:00:00Z","kind":"child","op":"added","child":"q1-growth"}
 ```
 
 Four kinds. `note` is also a **field** available on every kind, so any mutation can carry a reason
@@ -405,15 +406,24 @@ line, in one file. A field change on a key-result writes one line, in one file.
 ### 3.4 Rotation
 
 One journal file grows until it exceeds `log.rotate-bytes` (default 4 MiB, §7), at which point the
-next event opens a new file named for **its own** timestamp. So a directory listing of `logs/` reads
-as a chronology, and the newest file is the last one lexically.
+next event opens a new file named for **its own** timestamp, **in UTC**, with a trailing `Z`:
+`20260101T160801Z.jsonl`. So a directory listing of `logs/` reads as a chronology, and the newest
+file is the last one lexically.
 
 Rotation never rewrites a closed file. Closed journal files are immutable.
+
+Both of those sentences are claims about **string** order, which is why the name is UTC and not the
+writer's wall clock. With no offset in the name there is no zone to compare against: an event at
+`23:00+13:00` (10:00Z) would sort *after* a later event at `12:00-07:00` (19:00Z), so the newest file
+would not be the last one lexically and the next append would reopen a closed file. The DST
+fall-back hour reproduces the same inversion annually without anyone leaving their desk. UTC is the
+only zone in which lexical order is total, so it is the only zone in which these two guarantees hold.
+A filename is an ordering key that happens to be legible, not a wall clock.
 
 ### 3.5 `ACTIVITY.md` is a local fold
 
 A human-readable digest of *this entity's own* journal, grouped by day, newest day first. Days with
-no events are absent.
+no events are absent. **Days are UTC days**, and every timestamp in a generated file is UTC.
 
 ```markdown
 # Activity
@@ -425,7 +435,7 @@ no events are absent.
 - Note: waiting on the ingest team.
 
 ## 2026-01-03
-- Measured **signups** at 880/11000 (8.0%) — 24% of target.
+- Measured 880/11000 (8.0%) — 24% of target.
 ```
 
 Two mechanics that matter:
@@ -442,6 +452,17 @@ Two mechanics that matter:
 - **Newest-first** because that is what a reader wants and what `CHANGELOG.md` taught everyone to
   expect. It costs a whole-file rewrite per mutation rather than an append; these files are small,
   and the expensive half — reading history — stays bounded.
+- **The day is a UTC day, not the author's**, and this is not a stylistic choice. Grouping by each
+  event's own recorded offset stops the sections partitioning the timeline: an event at
+  `2026-03-05T23:00-08:00` (07:00Z) would file under `03-05` while an *earlier* event at
+  `2026-03-06T09:00+09:00` (00:00Z) filed under `03-06`, so a newest-day-first file would present the
+  earlier event as the newer one — contradicting §3.1's "ordering comes from `at`, never from file
+  position". This file is also committed and read from several zones off one commit, so the
+  boundaries have to be ones every reader agrees on. UTC is the only such boundary.
+
+  The wall clock is not lost, only moved: journals keep each event's own offset, so a read command
+  converts to local time on request (§16). What a *file* says is fixed; what a *terminal* shows is the
+  reader's business.
 
 `ACTIVITY.md` is also the reason the journal does not have to be pretty. Machine truth is JSONL,
 human truth is this file, and neither is asked to be both.
@@ -542,10 +563,12 @@ A projection of the key-result's `measurement` events, oldest first, one row per
 
 ```csv
 at,value,decimal,progress,note
-2026-01-03T09:02:11-08:00,880/11000,0.0800,0.2353,
-2026-01-17T09:10:04-08:00,1320/12400,0.1065,0.4687,denominator grew after the launch
+2026-01-03T17:02:11Z,880/11000,0.0800,0.2353,
+2026-01-17T17:10:04Z,1320/12400,0.1065,0.4687,denominator grew after the launch
 ```
 
+- `at` is UTC, like every timestamp in a generated file (§3.5). A column of mixed offsets does not
+  sort or plot as one axis, and charting is this file's entire job.
 - `value` is the reading exactly as logged, in the type's grammar.
 - `decimal` and `progress` are derived and belong here for one reason: a spreadsheet, a notebook, or
   GitHub's CSV viewer will chart this file and will not compute anything. It is a projection, which
@@ -578,7 +601,7 @@ scope       = [
   "areas.growth",
 ]
 tags    = ["growth", "reporting"]
-created = "2026-01-01T08:15:00-08:00"
+created = "2026-01-01T16:15:00Z"
 ```
 
 - `description` is the when-to-use hook and the only part that ever enters an agent's context
@@ -831,7 +854,7 @@ schema       = 1
 para-version = "0.4.0"          # the version that last wrote here
 name         = "max's brain"
 description  = "Everything I am carrying."
-created      = "2026-01-01T08:00:00-08:00"
+created      = "2026-01-01T16:00:00Z"
 ```
 
 This is the root marker, and it is the root's state — the root has no `state.toml`, because the root
@@ -860,7 +883,7 @@ The root's journal is thin but real: `init`, config changes, and `child` events 
 ```toml
 name        = "Objectives"
 description = "What acme-migration is trying to move."
-created     = "2026-01-01T08:15:00-08:00"
+created     = "2026-01-01T16:15:00Z"
 ```
 
 Identity for the generated README frontmatter, and a place for its config sibling to hang. No status,
@@ -875,7 +898,7 @@ status   = "in-progress"
 priority = "high"
 due      = "2026-09-30"
 tags     = ["kafka", "consumer"]
-created  = "2026-01-01T08:15:00-08:00"
+created  = "2026-01-01T16:15:00Z"
 ```
 
 ```toml
@@ -885,7 +908,7 @@ type    = "ratio"
 start   = "480/9000"
 target  = "2000/12000"
 due     = "2026-09-30"
-created = "2026-01-01T08:15:00-08:00"
+created = "2026-01-01T16:15:00Z"
 ```
 
 **Absent by construction**: `kind`, `id`, `parent`, `locator` — all in the path; `updated`,
@@ -1252,6 +1275,13 @@ local.
 Bounds: never in the future. `measure --at` must not collide with an existing measurement on the same
 key-result (§3.1); notes and changes may collide freely.
 
+**What you type is local; what is stored is UTC.** The zero-filling above happens in your offset, and
+the resolved instant is then written as UTC — so `--at 2026-01-03` in `-08:00` stores
+`2026-01-03T08:00:00Z`. One representation on disk means one answer to "which day is this" for every
+reader of a committed file (§3.5), and no comparison anywhere has to reason about two offsets. Errors
+and read commands convert back for display, so the round trip is invisible unless you look in the
+file.
+
 ---
 
 ## 16. Reading
@@ -1308,6 +1338,25 @@ Lists **entities** beneath the given locator, at any depth, defaulting to the wh
 - `archive/` is not traversed unless you name it: `para list archive.projects`. Archived things are
   not hidden, they are simply somewhere else, which is the whole point of §1.6.
 - Terminal-status items are hidden unless `--all`.
+
+### 16.2.1 Timestamps in output, and `--local`
+
+Every timestamp para *stores* is UTC and every timestamp it *generates into a file* is UTC (§3.5,
+§15.1). Terminal output is the one place that is negotiable, because nothing compares it and nothing
+commits it:
+
+```
+para show projects.acme-migration --local
+para log projects.acme-migration --local
+```
+
+`--local` converts every timestamp in the output to the reader's own zone, with `$PARA_TZ` overriding
+the host zone. It is available on every read command — `show`, `list`, `log`, `activity`, `review` —
+and on nothing that writes, because a mutation's job is to record an instant, not to render one.
+
+It is a flag and not a config key on purpose. Config is checked in and the same for everyone (§6.1's
+argument against per-machine behaviour applies unchanged), whereas which zone you want to read in is a
+property of *you*, not of the tree. `$PARA_TZ` covers the case where you always want it.
 
 ### 16.3 `log`
 
@@ -1820,7 +1869,7 @@ $ para measure …key-results.signups 0.08
 error: value 0.08 is not a ratio (type ratio expects <numerator>/<denominator>)
 
 $ para measure …key-results.signups 900/11000 --at 2026-01-03
-error: a measurement already exists at 2026-01-03T00:00:00-08:00
+error: a measurement already exists at 2026-01-03T08:00:00Z (2026-01-03T00:00:00-08:00 local)
 
 $ para log projects.acme-migration --kind change --limit 3
 $ para activity projects.acme-migration --recursive --since 2026-01-01

@@ -7,12 +7,14 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/krvalue"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/ptime"
 )
 
 // ActivityRenderer renders ACTIVITY.md, the human-readable digest of one
@@ -266,12 +268,9 @@ func activitySections(in In) ([]section, error) {
 		if err != nil {
 			return nil, err
 		}
-		addLine(e.At.Format(dayLayout), line)
+		addLine(utcDay(e.At), line)
 	}
 
-	// `created` is stored in progressive precision (§15.1), every form of
-	// which begins with the date — so its day is the first ten characters, and
-	// reading it that way needs neither a parse nor a location.
 	if created := createdDay(in); created != "" {
 		addLine(created, createdLine)
 	}
@@ -290,13 +289,31 @@ func activitySections(in In) ([]section, error) {
 	return out, nil
 }
 
-// dayLayout is the date form both the day headers and `activity`'s output use.
+// dayLayout is the date form the day headers use.
 const dayLayout = "2006-01-02"
+
+// utcDay is the day an instant falls on, in UTC.
+//
+// Every day heading in a generated file is a UTC day, and the reason is
+// §3.1's: "ordering comes from `at`, never from file position". Group by each
+// event's own recorded offset instead and the sections stop partitioning the
+// timeline — an event at 2026-03-05T23:00-08:00 (07:00Z) files under 03-05
+// while an *earlier* event at 2026-03-06T09:00+09:00 (00:00Z) files under
+// 03-06, so a newest-day-first file presents the earlier event as the newer
+// one. UTC boundaries are the only ones every event agrees on, and this file
+// is read by people in several zones from the same commit, so agreement is the
+// requirement.
+//
+// The wall clock is not lost, only moved: journals keep each event's offset, so
+// a read command can convert for display on request.
+func utcDay(t time.Time) string {
+	return t.UTC().Format(dayLayout)
+}
 
 const createdLine = "Created."
 
-// CreatedDay is the day the subject's `created` falls on, or "" if there is no
-// created field to read.
+// CreatedDay is the UTC day the subject's `created` falls on, or "" if there is
+// no created field to read.
 //
 // It is exported because the incremental path cannot be used correctly without
 // it. The `created` line lives in whichever day section `created` names, and
@@ -307,18 +324,28 @@ const createdLine = "Created."
 // correctly report as drift.
 func CreatedDay(in In) string { return createdDay(in) }
 
-// createdDay is the day the subject's `created` falls on, or "" if there is no
-// created field to read (a stub, or a truth file doctor will report as
+// createdDay is the UTC day the subject's `created` falls on, or "" if there is
+// no created field to read (a stub, or a truth file doctor will report as
 // invalid).
+//
+// `created` is stored in progressive precision (§15.1), so it is parsed rather
+// than sliced: only the full form carries the offset that decides which UTC day
+// it lands on. A form with no offset is taken as UTC, which is the only reading
+// available once no offset was recorded — and the one `add` avoids by resolving
+// `--created` to a full timestamp at write time.
 func createdDay(in In) string {
 	created := in.State.Created
 	if in.shape() == shapeRoot {
 		created = in.Tree.Created
 	}
-	if len(created) < len(dayLayout) {
+	if created == "" {
 		return ""
 	}
-	return created[:len(dayLayout)]
+	t, err := ptime.ParseAt(created, time.UTC)
+	if err != nil {
+		return ""
+	}
+	return utcDay(t)
 }
 
 // DaysOf returns the days the given events fall on, deduplicated — the argument
@@ -327,7 +354,7 @@ func DaysOf(events []journal.Event) []string {
 	seen := map[string]bool{}
 	var days []string
 	for _, e := range events {
-		day := e.At.Format(dayLayout)
+		day := utcDay(e.At)
 		if !seen[day] {
 			seen[day] = true
 			days = append(days, day)

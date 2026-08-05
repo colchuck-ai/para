@@ -31,10 +31,12 @@ func (measurementsRenderer) Render(in In) ([]byte, error) {
 	rows := make([]csvfile.Row, 0, len(rs))
 	for _, r := range rs {
 		rows = append(rows, csvfile.Row{
-			// The reading's own offset, as stored — §4.4's worked example is a
-			// full RFC 3339 timestamp, and a measurement's instant is exact
-			// (§3.1).
-			At:       r.Event.At.Format(time.RFC3339),
+			// UTC, like every other timestamp in a generated file. §4.4 gives
+			// this column a specific job — "a spreadsheet, a notebook, or
+			// GitHub's CSV viewer will chart this file" — and a column of mixed
+			// offsets does not sort or plot as one axis. The instant is exact
+			// either way (§3.1).
+			At:       r.Event.At.UTC().Format(time.RFC3339),
 			Value:    r.Event.Value,
 			Decimal:  r.Decimal,
 			Progress: r.Progress,

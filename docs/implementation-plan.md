@@ -52,8 +52,9 @@ from library code.
 - A `Clock` interface threads through the root command into every subsystem. Production is a real
   clock; tests inject a fixed instant.
 - `testscript` sets `PARA_NOW` (RFC 3339) and `PARA_TZ`, honored **only** under a `para_testhooks`
-  build tag — production must not read them. Local wall-clock with a recorded offset (§15.1) means the
-  zone matters; fix it explicitly in tests and never rely on the host zone.
+  build tag — production must not read them. `--at`'s zero-filling happens in the *local* offset
+  (§15.1) even though what gets stored and rendered is UTC (§3.5), so the zone still decides which
+  instant a bare date means; fix it explicitly in tests and never rely on the host zone.
 
 **Byte-stable rendering, and rendering as a pure function.** This is v4's load-bearing testability
 decision, and it falls out of a spec requirement rather than taste: `doctor`'s `stale-projection` is
@@ -326,13 +327,17 @@ Three decisions worth recording, because later phases inherit them:
   §3.5, §4.4, and §16.1 print `0.47` for values the formula puts at `0.235`; they were computed as
   `current ÷ target` with `start` dropped. The formula is normative and `krvalue` already implements
   it, so the examples' arithmetic is the thing that is wrong.
-- **A skill owns `SKILL.md` and its derived rule, and nothing else** — no `README.md`, no
-  `ACTIVITY.md`. §5.1's file listing shows only `SKILL.md`, the author's `scripts/`/`references/`, and
-  `.para/`, and says "everything except `SKILL.md`'s frontmatter is yours"; §2.2's `ACTIVITY.md` row
-  pulls the other way, since a skill is a real entity with a journal. The listing wins, but this is
-  the phase's one genuinely reversible call — **if it flips, `doctor` and `rebuild` change with it.**
-  Its `SKILL.md` frontmatter is `name` and `description` alone, since that file is read by agent
-  harnesses with their own schema.
+- **A skill owns `SKILL.md`, an `ACTIVITY.md`, and its derived rule.** Its identity file is
+  `SKILL.md` rather than `README.md` — §2.2 gives it its own row for that — but it is otherwise an
+  entity like any other. §5.1's file listing omits `ACTIVITY.md`, and that omission is not evidence:
+  the listing is arguing why a skill cannot be generated from a TOML string, and its "everything
+  except `SKILL.md`'s frontmatter is yours" already excludes the `.para/` beside it. What decides it
+  is that §5.1 calls a skill "a real entity — it has state, config, and a journal", §3.6 defines its
+  `attention` as its newest note, and `review --skills` measures `review.cadence` against exactly
+  that: a skill's staleness is a feature, so the file answering "when did I last touch this" should
+  exist. Omitting it would also buy `rebuild` and `doctor` a per-kind exception, which is what §8.4's
+  uniform filenames exist to avoid. Its `SKILL.md` frontmatter stays `name` and `description` alone,
+  since that file is read by agent harnesses with their own schema.
 - **`ACTIVITY.md`'s measurement line carries no locator**: `- Measured 880/11000 (8.0%) — 24% of
   target.` §3.5's example shows `Measured **signups** at …`, but that example is a composite of three
   events that cannot share one journal (a `child` on a container, a `note`, a `measurement` on the
@@ -340,14 +345,15 @@ Three decisions worth recording, because later phases inherit them:
   inside the line would be duplicated there, and redundant in the file itself, which is by definition
   one entity's own fold.
 
-**Left open, deliberately** — a Phase 5 question this phase surfaced. §3.4 promises "a directory
-listing of `logs/` reads as a chronology, and the newest file is the last one lexically", and
-`journal.newestFile` plus `ReadOnOrAfter`'s scan both depend on it. But `ptime.JournalFilename`
-formats in the event's own location and puts **no offset in the name**, so an event at
-`2026-08-04T23:00:00+13:00` (10:00Z) sorts *after* a later event at `2026-08-04T12:00:00-07:00`
-(19:00Z). Carry a tree between timezones and `Append` can reopen a logically closed file, breaking
-§3.4's immutability guarantee. Naming files from `e.At.UTC()` fixes it and costs only that the
-filename no longer reads as local wall-clock — which is a §3.4 decision, not a Phase 6 one.
+**Timestamps are UTC throughout, and that was decided here.** §3.4 and §3.5 now say so, and three
+things forced it. Journal filenames are compared as *strings*, so a name in the writer's own zone
+makes "the newest file is the last one lexically" false the moment a tree crosses a zone or a DST
+fall-back hour — and `Append` then reopens a closed file. `ACTIVITY.md`'s day sections stop
+partitioning the timeline when grouped by each event's own offset, so a newest-day-first file can
+present an earlier event above a later one, contradicting §3.1. And the file is committed: readers in
+different zones view one rendered artifact, so the day boundaries must be ones they all agree on.
+`--local` on the read commands (§16.2.1, Phase 10) is where the wall clock comes back, since terminal
+output is neither compared nor committed.
 
 The spine. Every later phase writes through it.
 

@@ -35,8 +35,8 @@ func TestAppend_FirstEventCreatesFileNamedForItself(t *testing.T) {
 	mustAppend(t, dir, Event{At: at, Kind: KindNote, Note: "first"}, DefaultRotateBytes)
 
 	names := listJSONLNames(t, dir)
-	if len(names) != 1 || names[0] != "20260101T080801.jsonl" {
-		t.Fatalf("listJSONL = %v, want exactly [20260101T080801.jsonl]", names)
+	if len(names) != 1 || names[0] != "20260101T160801Z.jsonl" {
+		t.Fatalf("listJSONL = %v, want exactly [20260101T160801Z.jsonl]", names)
 	}
 }
 
@@ -74,7 +74,7 @@ func TestAppend_RotatesOnSize(t *testing.T) {
 
 	mustAppend(t, dir, Event{At: first, Kind: KindNote, Note: "first"}, 10)
 
-	firstPath := filepath.Join(dir, "20260101T080000.jsonl")
+	firstPath := filepath.Join(dir, "20260101T160000Z.jsonl")
 	before, err := os.ReadFile(firstPath)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
@@ -87,7 +87,7 @@ func TestAppend_RotatesOnSize(t *testing.T) {
 		t.Fatalf("listJSONL = %v, want two files after rotation", names)
 	}
 
-	secondPath := filepath.Join(dir, "20260102T090000.jsonl")
+	secondPath := filepath.Join(dir, "20260102T170000Z.jsonl")
 	if _, err := os.Stat(secondPath); err != nil {
 		t.Fatalf("expected rotation to create %s: %v", secondPath, err)
 	}
@@ -112,7 +112,7 @@ func TestAppend_RotationBoundary(t *testing.T) {
 	second := mustParseAt(t, "2026-01-02T09:00:00-08:00")
 
 	mustAppend(t, dir, Event{At: first, Kind: KindNote, Note: "first"}, DefaultRotateBytes)
-	firstPath := filepath.Join(dir, "20260101T080000.jsonl")
+	firstPath := filepath.Join(dir, "20260101T160000Z.jsonl")
 	size, err := fileSize(firstPath)
 	if err != nil {
 		t.Fatalf("fileSize: %v", err)
@@ -132,7 +132,7 @@ func TestAppend_RotationBoundary_OneByteOverRotates(t *testing.T) {
 	second := mustParseAt(t, "2026-01-02T09:00:00-08:00")
 
 	mustAppend(t, dir, Event{At: first, Kind: KindNote, Note: "first"}, DefaultRotateBytes)
-	firstPath := filepath.Join(dir, "20260101T080000.jsonl")
+	firstPath := filepath.Join(dir, "20260101T160000Z.jsonl")
 	size, err := fileSize(firstPath)
 	if err != nil {
 		t.Fatalf("fileSize: %v", err)
@@ -161,7 +161,7 @@ func TestAppend_RotationNamesFileForItsOwnFirstEvent(t *testing.T) {
 	if len(names) != 3 {
 		t.Fatalf("listJSONL = %v, want three files (each write exceeded the tiny threshold)", names)
 	}
-	want := []string{"20260101T080000.jsonl", "20260105T000000.jsonl", "20260105T000005.jsonl"}
+	want := []string{"20260101T160000Z.jsonl", "20260105T080000Z.jsonl", "20260105T080005Z.jsonl"}
 	for i, w := range want {
 		if names[i] != w {
 			t.Errorf("names[%d] = %q, want %q", i, names[i], w)
@@ -177,13 +177,13 @@ func TestReadAll_OrdersByAtNotFilePosition(t *testing.T) {
 
 	// Later file, but its one event predates everything in the earlier file.
 	late := mustParseAt(t, "2026-01-01T00:00:00-08:00")
-	writeRawFile(t, dir, "20260201T000000.jsonl", Event{At: late, Kind: KindNote, Note: "actually earliest"})
+	writeRawFile(t, dir, "20260201T080000Z.jsonl", Event{At: late, Kind: KindNote, Note: "actually earliest"})
 
 	// Earlier file, containing events that are individually out of order
 	// within the file too.
 	e1 := mustParseAt(t, "2026-01-10T00:00:00-08:00")
 	e2 := mustParseAt(t, "2026-01-05T00:00:00-08:00")
-	writeRawFile(t, dir, "20260101T000000.jsonl",
+	writeRawFile(t, dir, "20260101T080000Z.jsonl",
 		Event{At: e1, Kind: KindNote, Note: "second-file second-line but later at"},
 		Event{At: e2, Kind: KindNote, Note: "second-file first-line but earlier at"},
 	)

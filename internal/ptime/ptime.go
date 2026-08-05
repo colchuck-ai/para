@@ -67,14 +67,24 @@ func Equal(a, b time.Time) bool {
 	return a.Equal(b)
 }
 
-// journalFilenameLayout has no separators or offset, matching the design's
-// own worked examples (e.g. "20260101T080801.jsonl") — a directory listing
-// sorts lexically into a chronology (§3.4) because the layout is
-// fixed-width and monotonically increasing with the instant it names.
+// journalFilenameLayout has no separators, and the "Z" JournalFilename appends
+// is part of the format rather than decoration: the name is always UTC.
 const journalFilenameLayout = "20060102T150405"
 
-// JournalFilename formats t as a journal file's name (§3.4): a new file is
-// named for its own first event, in t's own location.
+// JournalFilename formats t as a journal file's name (§3.4), in UTC.
+//
+// §3.4 makes two guarantees that rest on this name: "the newest file is the
+// last one lexically", and "closed journal files are immutable". Both are
+// claims about string order, and a name in the writer's own zone cannot keep
+// them — with no offset recorded in the name, an event at 23:00+13:00 (10:00Z)
+// sorts *after* a later event at 12:00-07:00 (19:00Z). Append would then pick a
+// closed file as the newest and reopen it. The DST fall-back hour reproduces the
+// same inversion annually without anyone leaving their desk.
+//
+// UTC is the only zone in which lexical order is total, so it is the only zone
+// in which those two guarantees hold. A filename is an ordering key that happens
+// to be legible, not a timestamp anyone reads for its wall clock; the trailing Z
+// says so.
 func JournalFilename(t time.Time) string {
-	return t.Format(journalFilenameLayout) + ".jsonl"
+	return t.UTC().Format(journalFilenameLayout) + "Z.jsonl"
 }

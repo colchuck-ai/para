@@ -74,8 +74,8 @@ func TestRenderThenApplyIsTheWholeWritePath(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"projects/.para/logs/20260305T090000.jsonl",
-		"projects/acme-migration/.para/logs/20260305T090000.jsonl",
+		"projects/.para/logs/20260305T170000Z.jsonl",
+		"projects/acme-migration/.para/logs/20260305T170000Z.jsonl",
 		"projects/acme-migration/.para/state.toml",
 		"projects/acme-migration/ACTIVITY.md",
 		"projects/acme-migration/README.md",

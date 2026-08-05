@@ -16,9 +16,17 @@ import (
 
 var pacific = time.FixedZone("PST", -8*3600)
 
+// ts builds an instant in UTC. Generated files are rendered in UTC throughout
+// (see utcDay), so a test that writes its fixtures in UTC reads the same way the
+// output does. Tests that are specifically about a recorded offset use tsIn.
 func ts(t *testing.T, s string) time.Time {
 	t.Helper()
-	v, err := time.ParseInLocation("2006-01-02T15:04:05", s, pacific)
+	return tsIn(t, s, time.UTC)
+}
+
+func tsIn(t *testing.T, s string, loc *time.Location) time.Time {
+	t.Helper()
+	v, err := time.ParseInLocation("2006-01-02T15:04:05", s, loc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,19 +436,48 @@ func TestDaysOfDeduplicatesAndSortsNewestFirst(t *testing.T) {
 	}
 }
 
-func TestActivityGroupsByTheEventsOwnOffset(t *testing.T) {
-	// A day is the date in the event's own recorded offset (§15.1 stores one),
-	// not in the host's zone — which is what keeps grouping reproducible on a
-	// machine in a different timezone from the one that wrote the event.
-	tokyo := time.FixedZone("JST", 9*3600)
+func TestActivityGroupsByUTCDayNotByTheEventsOffset(t *testing.T) {
+	// An event recorded at 23:00-08:00 is 07:00Z the following day, and the
+	// following day is where it files. ACTIVITY.md is committed and read from
+	// several zones off one commit, so the day boundaries have to be ones every
+	// reader agrees on.
 	in := render.In{
 		Locator: loc(t, "areas.health"),
 		Kind:    kindmeta.KindArea,
-		State:   truth.State{Name: "Health", Created: "2026-03-01"},
+		State:   truth.State{Name: "Health", Created: "2026-01-01T00:00:00Z"},
+		Events:  []journal.Event{journal.NewNote(tsIn(t, "2026-03-05T23:00:00", pacific), "late")},
+	}
+
+	got, err := render.Activity.Render(in)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !contains(string(got), "## 2026-03-06\n- Note: late.\n") {
+		t.Errorf("Activity =\n%s\nwant the event under its UTC day 2026-03-06", got)
+	}
+}
+
+// TestActivityDaySectionsPartitionTheTimeline is why the day is UTC rather than
+// each event's own offset. §3.1 fixes ordering to `at` and never to position, so
+// a newest-day-first file must never place an earlier event above a later one.
+// Grouping by recorded offset breaks exactly that: 2026-03-05T23:00-08:00 is
+// 07:00Z, *after* 2026-03-06T09:00+09:00 at 00:00Z, yet their local days order
+// them the other way round.
+func TestActivityDaySectionsPartitionTheTimeline(t *testing.T) {
+	tokyo := time.FixedZone("JST", 9*3600)
+	earlier := tsIn(t, "2026-03-06T09:00:00", tokyo) // 2026-03-05T00:00Z
+	later := tsIn(t, "2026-03-05T23:00:00", pacific) // 2026-03-06T07:00Z
+	if !earlier.Before(later) {
+		t.Fatalf("test setup: %v is not before %v", earlier, later)
+	}
+
+	in := render.In{
+		Locator: loc(t, "areas.health"),
+		Kind:    kindmeta.KindArea,
+		State:   truth.State{Name: "Health", Created: "2026-01-01T00:00:00Z"},
 		Events: []journal.Event{
-			// The same instant, in two zones: 23:00 Pacific on the 4th is
-			// 16:00 Tokyo on the 5th.
-			journal.NewNote(time.Date(2026, 3, 5, 16, 0, 0, 0, tokyo), "tokyo"),
+			journal.NewNote(earlier, "tokyo morning"),
+			journal.NewNote(later, "los angeles evening"),
 		},
 	}
 
@@ -448,8 +485,14 @@ func TestActivityGroupsByTheEventsOwnOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if !contains(string(got), "## 2026-03-05\n- Note: tokyo.\n") {
-		t.Errorf("Activity =\n%s\nwant the event grouped under its own offset's day", got)
+	// Newest day first, so the later event's section must come first.
+	laterAt := indexOf(string(got), "los angeles evening")
+	earlierAt := indexOf(string(got), "tokyo morning")
+	if laterAt < 0 || earlierAt < 0 {
+		t.Fatalf("Activity =\n%s\nwant both notes present", got)
+	}
+	if laterAt > earlierAt {
+		t.Errorf("Activity =\n%s\nwant the later event above the earlier one", got)
 	}
 }
 

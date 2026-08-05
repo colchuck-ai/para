@@ -94,7 +94,7 @@ func TestApplyTouchesOnlyTheMutationsOwnFiles(t *testing.T) {
 
 	changed := diff(t, before, snapshot(t, root))
 	want := []string{
-		"areas/health/training/.para/logs/20260305T090000.jsonl",
+		"areas/health/training/.para/logs/20260305T170000Z.jsonl",
 		"areas/health/training/ACTIVITY.md",
 	}
 	sort.Strings(want)
@@ -199,7 +199,7 @@ func TestApplyCreatesTheDirectoriesItsFilesNeed(t *testing.T) {
 	for _, path := range []string{
 		truth.StatePath(entity),
 		filepath.Join(entity, "README.md"),
-		filepath.Join(truth.LogsDir(entity), "20260305T090000.jsonl"),
+		filepath.Join(truth.LogsDir(entity), "20260305T170000Z.jsonl"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("expected %s to exist: %v", path, err)

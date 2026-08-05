@@ -132,9 +132,25 @@ func TestEqual(t *testing.T) {
 func TestJournalFilename(t *testing.T) {
 	at := time.Date(2026, 1, 1, 8, 8, 1, 0, time.UTC)
 	got := JournalFilename(at)
-	want := "20260101T080801.jsonl"
+	want := "20260101T080801Z.jsonl"
 	if got != want {
 		t.Errorf("JournalFilename(%v) = %q, want %q", at, got, want)
+	}
+}
+
+func TestJournalFilenameIsUTCWhateverTheEventsOwnOffset(t *testing.T) {
+	// The same instant, written from three zones, must produce one name —
+	// otherwise the filename records where the writer stood rather than when
+	// the event happened, and lexical order stops meaning chronological order.
+	instant := time.Date(2026, 1, 1, 16, 15, 2, 0, time.UTC)
+	for _, zone := range []*time.Location{
+		time.UTC,
+		time.FixedZone("PST", -8*3600),
+		time.FixedZone("NZDT", 13*3600),
+	} {
+		if got, want := JournalFilename(instant.In(zone)), "20260101T161502Z.jsonl"; got != want {
+			t.Errorf("JournalFilename in %v = %q, want %q", zone, got, want)
+		}
 	}
 }
 
@@ -154,5 +170,41 @@ func TestJournalFilename_LexicalOrderMatchesChronology(t *testing.T) {
 		if names[i] != sorted[i] {
 			t.Fatalf("filenames not already in lexical/chronological order: %v", names)
 		}
+	}
+}
+
+// TestJournalFilenameOrderSurvivesAZoneChange is the case the old
+// UTC-only-inputs test could not see: a tree carried east to west, and the DST
+// fall-back hour, both produce a *later* event whose local wall clock is
+// numerically *earlier*. With the offset absent from the name, that inverts
+// lexical order — so journal.newestFile would return a closed file and Append
+// would reopen it, breaking §3.4's immutability guarantee.
+func TestJournalFilenameOrderSurvivesAZoneChange(t *testing.T) {
+	cases := []struct {
+		name           string
+		earlier, later time.Time
+	}{
+		{
+			"carried from Auckland to Los Angeles",
+			time.Date(2026, 8, 4, 23, 0, 0, 0, time.FixedZone("NZST", 12*3600)), // 11:00Z
+			time.Date(2026, 8, 4, 12, 0, 0, 0, time.FixedZone("PDT", -7*3600)),  // 19:00Z
+		},
+		{
+			"across the DST fall-back hour, without leaving the desk",
+			time.Date(2026, 11, 1, 1, 30, 0, 0, time.FixedZone("PDT", -7*3600)), // 08:30Z
+			time.Date(2026, 11, 1, 1, 15, 0, 0, time.FixedZone("PST", -8*3600)), // 09:15Z
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if !tc.earlier.Before(tc.later) {
+				t.Fatalf("test setup: %v is not before %v", tc.earlier, tc.later)
+			}
+			first, second := JournalFilename(tc.earlier), JournalFilename(tc.later)
+			if first >= second {
+				t.Errorf("lexical order contradicts chronology: %q (earlier) >= %q (later)", first, second)
+			}
+		})
 	}
 }

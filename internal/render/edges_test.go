@@ -107,21 +107,21 @@ func TestMeasurementRenderingDegradesOnContradictoryTruth(t *testing.T) {
 			state:      truth.State{Name: "N", Type: "number", Target: "480", Created: "2026-03-05"},
 			value:      "880/11000",
 			wantLine:   "- Measured 880/11000.\n",
-			wantColumn: "2026-03-05T09:00:00-08:00,880/11000,0.0000,0.0000,\n",
+			wantColumn: "2026-03-05T09:00:00Z,880/11000,0.0000,0.0000,\n",
 		},
 		{
 			name:       "no target at all",
 			state:      truth.State{Name: "N", Type: "number", Created: "2026-03-05"},
 			value:      "42",
 			wantLine:   "- Measured 42.\n",
-			wantColumn: "2026-03-05T09:00:00-08:00,42,42.0000,0.0000,\n",
+			wantColumn: "2026-03-05T09:00:00Z,42,42.0000,0.0000,\n",
 		},
 		{
 			name:       "a type para does not know",
 			state:      truth.State{Name: "N", Type: "duration", Target: "5m", Created: "2026-03-05"},
 			value:      "3m",
 			wantLine:   "- Measured 3m.\n",
-			wantColumn: "2026-03-05T09:00:00-08:00,3m,0.0000,0.0000,\n",
+			wantColumn: "2026-03-05T09:00:00Z,3m,0.0000,0.0000,\n",
 		},
 	}
 
