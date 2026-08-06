@@ -81,3 +81,39 @@ func PriorityRank(p string) (int, bool) {
 	i := slices.Index(priorities, p)
 	return i, i >= 0
 }
+
+// terminalStatuses is §1.7's Terminal column: the statuses that mean a thing is
+// over, and so hide it from `list` without `--all` (§16.2) and quiet its
+// descendants (§1.7's cascade).
+//
+// It lives here rather than in the commands that read it — which is where Phase 8
+// left it — because it is a third column of the same §1.7 table the two maps
+// above are the first two columns of, and because `list`, `show`, and `review`
+// have to agree on it. A key-result's `achieved` is in the table even though
+// krvalue derives it: terminality is a property of the value, not of who computed
+// it, and the caller passes whichever status it has in hand.
+//
+// `missed` is deliberately absent. §1.7 says so outright — "a blown deadline is
+// the one thing that should not be hideable" — and it is the only place the
+// terminal set is not simply "the last values in the vocabulary".
+var terminalStatuses = map[Kind][]string{
+	KindProject:   {"done", "dropped"},
+	KindObjective: {"done", "dropped"},
+	KindKeyResult: {"achieved", "dropped"},
+}
+
+// TerminalStatuses returns the statuses that are terminal for kind, in §1.7's
+// order, or nil where none are.
+func TerminalStatuses(kind Kind) []string {
+	return slices.Clone(terminalStatuses[kind])
+}
+
+// IsTerminal reports whether status means kind is over.
+//
+// An area and a resource always answer false, and that is §1.6 rather than an
+// omission: they have no status field at all, because location *is* their
+// archival state. Something under `archive/` is dormant by path (§1.6), which is
+// a separate question this does not answer.
+func IsTerminal(kind Kind, status string) bool {
+	return slices.Contains(terminalStatuses[kind], status)
+}

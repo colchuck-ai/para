@@ -52,7 +52,7 @@ func readings(in In) []reading {
 		r := reading{Event: e}
 		if v, err := krvalue.Parse(typ, e.Value); err == nil {
 			r.Value = v
-			r.Decimal = normalizeZero(v.Decimal)
+			r.Decimal = krvalue.NormalizeZero(v.Decimal)
 		}
 		parsed = append(parsed, r)
 	}
@@ -68,28 +68,26 @@ func readings(in In) []reading {
 		if err != nil {
 			continue
 		}
-		parsed[i].Progress = normalizeZero(p)
+		parsed[i].Progress = krvalue.NormalizeZero(p)
 		parsed[i].HasDerived = true
 	}
 	return parsed
 }
 
-// baselineDecimal resolves §4.1's start: the explicit value if there is one,
-// else the first logged measurement. A boolean key-result cannot set start —
-// false is its only baseline — so its baseline is 0 regardless of history.
+// baselineDecimal resolves §4.1's start through the one rule krvalue owns. The
+// oldest reading is found here rather than there because only this package
+// holds the parsed rows: `parsed` is already in chronological order, so the
+// first row carrying a value is the oldest one that could be a baseline.
 func baselineDecimal(in In, typ krvalue.Type, parsed []reading) (float64, bool) {
-	if typ == krvalue.TypeBoolean {
-		return 0, true
-	}
-	if d, ok := parseDecimal(typ, in.State.Start); ok {
-		return d, true
-	}
+	var oldest krvalue.Value
+	var hasOldest bool
 	for _, r := range parsed {
 		if r.Value.Raw != "" {
-			return r.Decimal, true
+			oldest, hasOldest = r.Value, true
+			break
 		}
 	}
-	return 0, false
+	return krvalue.Baseline(typ, in.State.Start, oldest, hasOldest)
 }
 
 func parseDecimal(typ krvalue.Type, raw string) (float64, bool) {
@@ -120,20 +118,7 @@ func readingAt(rs []reading, e journal.Event) (reading, bool) {
 // unclamped (§4.2), so a regression below baseline reads negative here and an
 // overshoot reads above 100%.
 func percent(f float64, places int) string {
-	return strconv.FormatFloat(normalizeZero(f*100), 'f', places, 64) + "%"
-}
-
-// normalizeZero collapses negative zero to positive zero. §4.2's progress
-// formula produces it for real inputs: a key-result counting *down* — legal,
-// since "direction falls out of the arithmetic" and only start == target is
-// rejected — has a negative denominator, so its first reading at the baseline
-// gives 0 / -150, which is -0.0. Formatting that prints "-0%" and "-0.0000",
-// which reads as a defect rather than as no progress yet.
-func normalizeZero(f float64) float64 {
-	if f == 0 {
-		return 0
-	}
-	return f
+	return strconv.FormatFloat(krvalue.NormalizeZero(f*100), 'f', places, 64) + "%"
 }
 
 // flatten collapses every run of whitespace in s — including the newlines a

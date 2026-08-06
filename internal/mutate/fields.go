@@ -248,23 +248,6 @@ func (e *Env) eventTime(at string) (time.Time, error) {
 	return t.UTC().Truncate(time.Second), nil
 }
 
-// deadline is the last instant a stored `due` still admits, in UTC.
-//
-// A bare date is a whole day, not the midnight that opens it: "due 2026-09-30"
-// means by the end of the 30th, so creating something today with a deadline of
-// today has to be legal. A due carrying a time of day is that instant exactly —
-// the precision the user typed is the precision they meant.
-func deadline(due string) (time.Time, error) {
-	t, err := ptime.ParseAt(due, time.UTC)
-	if err != nil {
-		return time.Time{}, err
-	}
-	if strings.Contains(due, "T") {
-		return t, nil
-	}
-	return t.AddDate(0, 0, 1).Add(-time.Second), nil
-}
-
 // normaliseList validates a tags or scope list.
 func normaliseList(field kindmeta.Field, values []string) ([]string, error) {
 	out := make([]string, 0, len(values))
@@ -323,7 +306,7 @@ func (e *Env) checkState(kind kindmeta.Kind, st truth.State) error {
 		if err != nil {
 			return paraerr.Newf(paraerr.KindValidation, "created: %s", unwrapMessage(err))
 		}
-		due, err := deadline(st.Due)
+		due, err := ptime.Deadline(st.Due)
 		if err != nil {
 			return paraerr.Newf(paraerr.KindValidation, "due: %s", unwrapMessage(err))
 		}

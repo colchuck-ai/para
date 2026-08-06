@@ -27,6 +27,16 @@ import (
 	"github.com/colchuck-ai/para/internal/ptoml"
 )
 
+// The keys code looks up by name. A key read from a literal in two packages is
+// a key one of them will eventually misspell, and §7's whole argument for a
+// closed key set is that a knob nothing consults is a knob that will be wrong.
+// The `<kind>.stale-after` family has no constant because its name is built
+// from the kind — StaleKey is where that lives.
+const (
+	KeyAtRiskPace    = "key-result.at-risk-pace"
+	KeyReviewCadence = "review.cadence"
+)
+
 // Type is a config key's declared value type. It decides how a command-line
 // string parses (Parse), what a stored value must be (Check), and how a
 // resolved value prints (Format).
@@ -109,7 +119,7 @@ func buildSpecs() []Spec {
 			Doc: "write the merge-attribute block in .gitattributes",
 		},
 		{
-			Key: "key-result.at-risk-pace", Type: TypeFloat,
+			Key: KeyAtRiskPace, Type: TypeFloat,
 			Doc: "the pace below which a key-result reads at-risk",
 		},
 		{
@@ -118,7 +128,7 @@ func buildSpecs() []Spec {
 			Doc: "the size a journal file may exceed before the next event opens a new one",
 		},
 		{
-			Key: "review.cadence", Type: TypeInt,
+			Key: KeyReviewCadence, Type: TypeInt,
 			Doc: "days a skill may go untouched before review --skills lists it",
 		},
 	}
@@ -170,7 +180,7 @@ func Lookup(key string) (Spec, bool) {
 // review group.
 func StaleKey(k kindmeta.Kind) (string, bool) {
 	if k == kindmeta.KindSkill {
-		return "review.cadence", true
+		return KeyReviewCadence, true
 	}
 	for _, kind := range staleAfterKinds {
 		if kind == k {

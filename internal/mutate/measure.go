@@ -3,6 +3,7 @@ package mutate
 import (
 	"time"
 
+	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/krvalue"
@@ -86,7 +87,8 @@ func (e *Env) derive(subj *subject, v krvalue.Value, events []journal.Event) (*M
 	out := &Measured{Value: v}
 	typ := krvalue.Type(subj.state.Type)
 
-	baseline, ok := baselineOf(subj, typ, events)
+	oldest, hasOldest := oldestReading(typ, events)
+	baseline, ok := krvalue.Baseline(typ, subj.state.Start, oldest, hasOldest)
 	if !ok {
 		return out, nil
 	}
@@ -94,29 +96,32 @@ func (e *Env) derive(subj *subject, v krvalue.Value, events []journal.Event) (*M
 	if err != nil {
 		return out, nil
 	}
-	progress, err := krvalue.Progress(baseline, target.Decimal, v.Decimal, true)
-	if err != nil {
-		return out, nil
-	}
-	out.Progress, out.HasProgress = progress, true
-
-	// A stored `dropped` is an override, not a reading (§4.3): it is the one
-	// settable key-result status, so it wins over anything the arithmetic says.
-	if subj.state.Status == string(krvalue.StatusDropped) {
-		out.Status = krvalue.StatusDropped
-		return out, nil
-	}
-
-	created, hasCreated := parseStamp(subj.state.Created)
-	due, hasDue := parseStamp(subj.state.Due)
-	elapsed, elapsedOK := krvalue.Elapsed(created, due, e.Now, hasCreated && hasDue)
-	pace, paceOK := krvalue.Pace(progress, elapsed, elapsedOK, typ)
 
 	atRisk, err := e.atRiskPace(subj.loc)
 	if err != nil {
 		return nil, err
 	}
-	out.Status = krvalue.DerivedStatus(progress, paceOK && atRisk.set, pace, atRisk.value, hasDue && e.Now.After(due))
+	created, _ := parseStamp(subj.state.Created)
+	due, hasDue := deadlineOf(subj.state.Due)
+
+	// The same call the read path makes (view), so `measure`'s reply and a
+	// later `show` cannot disagree about the key-result they both describe.
+	outlook := krvalue.Assess(krvalue.Assessment{
+		Type:          typ,
+		Baseline:      baseline,
+		Target:        target.Decimal,
+		Current:       v.Decimal,
+		HasCurrent:    true,
+		Created:       created,
+		Deadline:      due,
+		HasDeadline:   hasDue,
+		Now:           e.Now,
+		AtRiskPace:    atRisk.value,
+		HasAtRiskPace: atRisk.set,
+		Dropped:       subj.state.Status == string(krvalue.StatusDropped),
+	})
+	out.Progress, out.HasProgress = outlook.Progress, outlook.HasProgress
+	out.Status = outlook.Status
 	return out, nil
 }
 
@@ -132,7 +137,7 @@ type threshold struct {
 // everywhere means the check never fires, so a key-result in a tree that never
 // set one never reads at-risk.
 func (e *Env) atRiskPace(loc locator.Locator) (threshold, error) {
-	res, err := e.Resolver.Resolve(loc, "key-result.at-risk-pace")
+	res, err := e.Resolver.Resolve(loc, config.KeyAtRiskPace)
 	if err != nil {
 		return threshold{}, err
 	}
@@ -143,19 +148,11 @@ func (e *Env) atRiskPace(loc locator.Locator) (threshold, error) {
 	return threshold{value: v, set: ok}, nil
 }
 
-// baselineOf is §4.1's start: the explicit value if there is one, else the
-// first measurement ever logged. A boolean's baseline is always false.
-func baselineOf(subj *subject, typ krvalue.Type, events []journal.Event) (float64, bool) {
-	if typ == krvalue.TypeBoolean {
-		return 0, true
-	}
-	if subj.state.Start != "" {
-		v, err := krvalue.Parse(typ, subj.state.Start)
-		if err != nil {
-			return 0, false
-		}
-		return v.Decimal, true
-	}
+// oldestReading is the earliest measurement in events, by `at` and never by
+// position (§3.1) — a backdated --at can put it anywhere in the file. It is
+// what krvalue.Baseline falls back to when a key-result set no explicit start
+// (§4.1); this package finds it because only this package holds the events.
+func oldestReading(typ krvalue.Type, events []journal.Event) (krvalue.Value, bool) {
 	oldest := time.Time{}
 	var found krvalue.Value
 	for _, ev := range events {
@@ -170,7 +167,7 @@ func baselineOf(subj *subject, typ krvalue.Type, events []journal.Event) (float6
 			oldest, found = ev.At, v
 		}
 	}
-	return found.Decimal, !oldest.IsZero()
+	return found, !oldest.IsZero()
 }
 
 func parseStamp(s string) (time.Time, bool) {
@@ -178,6 +175,16 @@ func parseStamp(s string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	t, err := ptime.ParseAt(s, time.UTC)
+	return t, err == nil
+}
+
+// deadlineOf is the last instant a stored `due` admits, or ok false when there
+// is no deadline (§4.2's undefined-pace case).
+func deadlineOf(due string) (time.Time, bool) {
+	if due == "" {
+		return time.Time{}, false
+	}
+	t, err := ptime.Deadline(due)
 	return t, err == nil
 }
 
