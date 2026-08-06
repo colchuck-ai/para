@@ -674,6 +674,49 @@ directions (stub → entity when the parent is archived; entity → stub when a 
 
 ## Phase 10 — Reading
 
+### Decisions taken before the phase started
+
+§16, §17, and §23 leave four things open that every read command depends on. Settled up front so no
+command invents its own answer:
+
+1. **`--json` carries truth *and* everything derived.** An object is the stored fields plus every value
+   the human output computed to print — `effective-status`, `attention`, `dormant`, and a key-result's
+   `current`, `progress`, `pace`, and derived status. §2.5 already makes derive-at-read-time the rule
+   rather than the exception, so the alternative would only push §4.2's arithmetic onto every caller.
+   Keys are kebab-case, matching every other name para prints: §15 field names, §7 config keys, locator
+   segments.
+2. **`show`'s children summary is bounded by kind.** The whole subtree for the project → objective →
+   key-result chain, because §1.3 closes it at three levels and a project's objectives without their
+   numbers say nothing — which is exactly what §16.1's example shows. Immediate children plus a count of
+   what lies beneath for areas and resources, which nest without limit. §16.1 already draws this line
+   for siblings ("it does not print … its siblings (`list`)"); `list <locator>` is how you see the rest.
+3. **The count line and terminal hiding are two different numbers.** `showing N of M` keeps meaning
+   what §17 says — what the filters matched, before `--limit`. Items hidden by terminal status get a
+   line of their own naming the count and the flag (`9 hidden (done, dropped) — --all to include`), and
+   `--json` carries `hidden` beside `total` and `shown`. Folding them together would leave one number
+   with two causes and two different fixes. Nothing is said about `archive/`: archived things are not
+   hidden, they are somewhere else (§1.6), and `list archive.projects` is the address.
+4. **Output never adapts to the terminal.** No TTY detection, no colour, no width probing; columns
+   sized to the content of the rows printed. The same bytes piped as interactive, which is the only way
+   §0.2's determinism argument reaches output and the only way §26's examples can be golden files. The
+   cost, stated plainly: a deep locator on an 80-column terminal wraps, and para will not shorten it.
+
+Three further readings, resolved from evidence already in the tree rather than by choice:
+
+- **§26's and §23's `…` is the document eliding, not para.** §26 writes `para measure
+  …key-results.signups 880/11000` as an *input* line, and `…` cannot be typed; §23's `wrote
+  projects/…/key-results/signups/.para/logs/…` is the same shorthand, and Phase 8's `write.txtar`
+  already pins para printing those paths in full. So read commands print locators whole.
+- **`activity` re-derives from the journal; it does not `cat` `ACTIVITY.md`.** §16.4's "without
+  `--recursive` it is just `cat` on a generated file" describes the result, not the implementation. The
+  journal is truth and `ACTIVITY.md` is a projection (§2.1), so a read command sourcing the projection
+  would report drift that `doctor` exists to find — and `--since` and `--json` need structured events
+  regardless. "They agree by construction" is then a property the renderer guarantees, which is what
+  Phase 6's mode-equivalence property test already asserts.
+- **`list`'s default order is locator order**, which is the §8.5 walk's own stable, lexical order.
+  §17 makes `--sort` explicit and lists `locator` among its keys; the default is that key, not an
+  unstated one.
+
 **Tasks**
 
 1. `show` (§16.1): stored fields, computed lines, children summary, the skills line naming the scope
