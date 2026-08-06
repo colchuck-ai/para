@@ -61,16 +61,20 @@ func newActivityCmd() *cobra.Command {
 			if read.json {
 				return writeJSON(cmd.OutOrStdout(), rolled)
 			}
-			if !recursive && from == "" {
+			if !recursive {
 				// §16.4: "without --recursive it is just `cat` on a generated
 				// file, and that is fine: it means the two agree by
 				// construction". Re-derived rather than read, because the
 				// journal is truth and ACTIVITY.md is a projection (§2.1) — a
 				// read command sourcing the projection would report the drift
 				// doctor exists to find.
-				return printActivityFile(cmd.OutOrStdout(), env, subjects[0])
+				//
+				// `--since` narrows which days are shown and does not change
+				// the shape: there are two output shapes, the file's and the
+				// rollup's, and `--recursive` alone chooses between them.
+				return printActivityFile(cmd.OutOrStdout(), subjects[0], from)
 			}
-			printRollup(cmd.OutOrStdout(), rolled, recursive)
+			printRollup(cmd.OutOrStdout(), rolled)
 			return nil
 		},
 	}
@@ -126,7 +130,7 @@ func activitySubjects(env *view.Env, loc locator.Locator, recursive bool) ([]vie
 }
 
 func activityContainers(env *view.Env, loc locator.Locator) ([]view.Entity, error) {
-	nodes, err := treeSubtree(env, loc)
+	nodes, err := tree.Subtree(env.Root, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -204,14 +208,14 @@ func rollup(env *view.Env, subjects []view.Entity, since string) ([]digestLine, 
 
 // printActivityFile prints the digest exactly as ACTIVITY.md holds it, which is
 // §16.4's whole claim about the unfiltered case.
-func printActivityFile(out io.Writer, env *view.Env, subject view.Entity) error {
+func printActivityFile(out io.Writer, subject view.Entity, since string) error {
 	events, err := journal.ReadAll(truth.LogsDir(subject.Dir))
 	if err != nil {
 		return err
 	}
 	// Full mode: Days empty re-derives every section from the whole history,
 	// which is what rebuild writes and doctor compares against (§10, §21.1).
-	data, err := render.Activity.Render(render.In{
+	data, err := render.ActivityRenderer{Since: since}.Render(render.In{
 		Locator: subject.Locator,
 		Kind:    subject.Kind,
 		State:   subject.State,
@@ -225,17 +229,12 @@ func printActivityFile(out io.Writer, env *view.Env, subject view.Entity) error 
 }
 
 // printRollup is §26's three-column shape: the day, the locator the line came
-// from, and the line. The locator column is dropped when there is only one
-// subject, since repeating it on every row of a single entity's digest says
-// nothing.
-func printRollup(out io.Writer, lines []digestLine, recursive bool) {
+// from, and the line. It is `--recursive`'s only, since the locator column is
+// the whole reason the rollup is not just the file.
+func printRollup(out io.Writer, lines []digestLine) {
 	var t table
 	for _, line := range lines {
-		if recursive {
-			t.add(line.Day, line.Locator, line.Text)
-			continue
-		}
-		t.add(line.Day, line.Text)
+		t.add(line.Day, line.Locator, line.Text)
 	}
 	t.write(out)
 	if len(lines) == 0 {
@@ -253,11 +252,4 @@ func sortLines(lines []digestLine) {
 		}
 		return lines[i].At > lines[j].At
 	})
-}
-
-// treeSubtree is tree.Subtree, named here so activity.go states what it is
-// asking for: the containers beneath a locator, whose journals hold the
-// containment events §3.3 puts there.
-func treeSubtree(env *view.Env, loc locator.Locator) ([]tree.Node, error) {
-	return tree.Subtree(env.Root, loc)
 }

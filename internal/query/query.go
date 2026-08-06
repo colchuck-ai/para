@@ -77,8 +77,27 @@ type Result struct {
 	HiddenStatuses []string
 }
 
-// Truncated reports whether --limit dropped anything.
-func (r Result) Truncated() bool { return len(r.Entities) < r.Total }
+// hides reports whether an entity that matched the filters is nonetheless
+// withheld for having a terminal status (§16.2).
+//
+// `--all` turns the hiding off wholesale, and naming the status turns it off
+// for that status. The second is not in §16.2's sentence, but the alternative
+// is a flag combination that can never return a row: `--status done` selects
+// exactly the entities the hiding then removes, so it always prints "showing 0
+// of 0" and a hidden count. Asking for done things *is* the request `--all`
+// exists to signal, said more precisely, and a filter that composes with the
+// default to nothing is a defect rather than a strict reading.
+//
+// It compares against the effective status (§1.7), which is what `--status`
+// filters on — so a live objective under a `done` project stays hidden from
+// `--status done` unless you meant it, and `--status done` shows it because
+// `done` is what it effectively is.
+func hides(e view.Entity, f Filter) bool {
+	if !e.Terminal || f.All {
+		return false
+	}
+	return f.Status != e.EffectiveStatus
+}
 
 // List walks the tree beneath opts.Scope and returns the entities that survive
 // §17's filters, sorted and limited (§16.2).
@@ -114,7 +133,7 @@ func List(env *view.Env, opts Options) (Result, error) {
 		// Terminal hiding happens after matching, so `showing N of M` keeps
 		// meaning what §17 says — what the filters matched — and the hidden
 		// count is a second, separately explained number.
-		if ent.Terminal && !opts.Filter.All {
+		if hides(ent, opts.Filter) {
 			hiddenCount++
 			hidden[ent.EffectiveStatus] = true
 			return nil
@@ -126,7 +145,8 @@ func List(env *view.Env, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
-	if err := sortEntities(matched, opts.Sort, opts.Reverse); err != nil {
+	matched, err = sortEntities(matched, opts.Sort, opts.Reverse)
+	if err != nil {
 		return Result{}, err
 	}
 	out := Result{
@@ -219,13 +239,13 @@ func visible(node tree.Node, opts Options) bool {
 		// through archive/ to find nothing, and a scope inside archive/ makes
 		// every node under it legitimate.
 		return false
-	case opts.Filter.Direct && readerDepth(node.Locator, opts.Scope) != 1:
+	case opts.Filter.Direct && ReaderDepth(node.Locator, opts.Scope) != 1:
 		return false
 	}
 	return true
 }
 
-// readerDepth is how far beneath scope a locator is *as the output shows it*:
+// ReaderDepth is how far beneath scope a locator is *as the output shows it*:
 // containers do not count, because §16.2 makes them transparent.
 //
 // §17 is explicit that this is the measure `--direct` uses — "`list
@@ -233,9 +253,18 @@ func visible(node tree.Node, opts Options) bool {
 // because a flag that returned nothing here would be measuring a structure the
 // output never shows. The rule is: apply transparency, then take immediate
 // children."
-func readerDepth(loc, scope locator.Locator) int {
+//
+// It is exported because `show`'s children summary indents by the same measure
+// (§16.1), and a summary that counted depth differently from the flag that
+// selects the same rows would be two answers to one question.
+//
+// A locator that is not beneath scope has no depth beneath it, and answers 0.
+func ReaderDepth(loc, scope locator.Locator) int {
 	depth := 0
-	for _, seg := range loc[len(scope):] {
+	for i, seg := range loc {
+		if i < len(scope) {
+			continue
+		}
 		if !locator.IsReserved(seg) {
 			depth++
 		}

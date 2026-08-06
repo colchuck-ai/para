@@ -529,3 +529,31 @@ func TestSkillsReaching(t *testing.T) {
 		}
 	}
 }
+
+// TestDayCountsFollowTheCalendarTheyArePrintedOn is `--local`'s other half. An
+// attention of 2026-03-05T02:00Z is 2026-03-04 in Los Angeles, and a line
+// reading "attention 2026-03-04  today" would be two answers to one question.
+func TestDayCountsFollowTheCalendarTheyArePrintedOn(t *testing.T) {
+	pacific, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Skipf("zoneinfo unavailable: %v", err)
+	}
+	r := reader(t, plantTree(t)) // now is 2026-03-05T17:00:00Z, which is 09:00 Pacific
+	when := at(t, "2026-03-05T02:00:00Z")
+
+	if got := r.DaysSinceIn(when, time.UTC); got != 0 {
+		t.Errorf("UTC: got %d days ago, want 0 — both instants fall on 03-05", got)
+	}
+	if got := r.DaysSinceIn(when, pacific); got != 1 {
+		t.Errorf("Pacific: got %d days ago, want 1 — 02:00Z is the 4th there", got)
+	}
+
+	// The default is UTC, because a threshold is committed and every reader of
+	// one tree must get one answer (§3.5's argument).
+	if got := r.DaysSince(when); got != r.DaysSinceIn(when, time.UTC) {
+		t.Error("DaysSince must be the UTC count")
+	}
+	if got := r.DaysUntilIn(when, pacific); got != -1 {
+		t.Errorf("DaysUntilIn: got %d, want -1", got)
+	}
+}

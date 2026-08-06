@@ -163,7 +163,7 @@ func fieldBlock(env *view.Env, s shown, zone *time.Location) []string {
 		// `due` prints as stored, never converted: it is a date somebody chose
 		// rather than an instant something happened at (§15.1), so rendering it
 		// in another zone would move a deadline nobody moved.
-		add("due", ent.State.Due, until(env.DaysUntil(ent.Deadline)))
+		add("due", ent.State.Due, until(env.DaysUntilIn(ent.Deadline, zone)))
 	}
 	if len(ent.State.Tags) > 0 {
 		add("tags", strings.Join(ent.State.Tags, ", "))
@@ -177,7 +177,7 @@ func fieldBlock(env *view.Env, s shown, zone *time.Location) []string {
 	}
 	add("type", ent.State.Type)
 	add("created", day(ent.Created, zone))
-	add("attention", day(ent.Attention, zone), ago(env.DaysSince(ent.Attention)))
+	add("attention", day(ent.Attention, zone), ago(env.DaysSinceIn(ent.Attention, zone)))
 	if s.isStale {
 		// §16.1: "stale names where its threshold came from", because §7's
 		// chain resolution is only defensible if it is visible.
@@ -275,7 +275,7 @@ func printChildren(out io.Writer, subject locator.Locator, children []view.Entit
 
 	var t table
 	for _, c := range children {
-		depth := readerDepthUnder(subject, c.Locator)
+		depth := query.ReaderDepth(c.Locator, subject)
 		t.add(strings.Repeat("  ", depth)+c.ID(), c.Name(), statusCell(c))
 		if kr := c.KeyResult; kr != nil {
 			t.note(strings.TrimSpace(fmt.Sprintf("%s   progress %s   pace %s",
@@ -296,27 +296,6 @@ func printChildren(out io.Writer, subject locator.Locator, children []view.Entit
 // container's name where there is one and reads the same way where there is not.
 func childrenHeading(children []view.Entity) string {
 	return children[0].Kind.String() + "s"
-}
-
-// readerDepthUnder is how far below the shallowest listed child a locator sits,
-// counting containers as transparent (§16.2) — the indentation the summary uses.
-func readerDepthUnder(root, loc locator.Locator) int {
-	depth := 0
-	for _, seg := range loc {
-		if !locator.IsReserved(seg) {
-			depth++
-		}
-	}
-	base := 0
-	for _, seg := range root {
-		if !locator.IsReserved(seg) {
-			base++
-		}
-	}
-	if depth < base {
-		return 0
-	}
-	return depth - base
 }
 
 // skillsCell is §16.1's skills line: each entry names the skill and the scope

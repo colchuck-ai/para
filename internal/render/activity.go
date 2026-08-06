@@ -48,6 +48,19 @@ import (
 // history (§2.3, §4.4), so for a key-result there is no cheap read to protect.
 type ActivityRenderer struct {
 	Days []string
+
+	// Since drops every day section before this UTC day, and is `activity
+	// --since`'s (§16.4). It is a narrowing of what is *shown*, applied after
+	// every line is derived, so a key-result's measurement lines keep the
+	// baseline the whole history gives them (§4.1) rather than acquiring a new
+	// one from the oldest reading that survived the filter.
+	//
+	// **It is read-only, and nothing on a write path may set it.** A truncated
+	// ACTIVITY.md is a projection that disagrees with its journal, which is
+	// exactly what doctor exists to report (§10). Full mode only: it is refused
+	// alongside Days, since a filtered incremental splice would delete prior
+	// days from a file rather than hide them from a reader.
+	Since string
 }
 
 // activityFile is the filename, at every level that has one (§1.1).
@@ -71,7 +84,11 @@ func (r ActivityRenderer) Render(in In) ([]byte, error) {
 		return nil, err
 	}
 	if len(r.Days) == 0 {
-		return renderActivity(derived), nil
+		return renderActivity(sinceSections(derived, r.Since)), nil
+	}
+	if r.Since != "" {
+		return nil, paraerr.New(paraerr.KindInternal,
+			"render: ACTIVITY.md's Since is a read-time narrowing and cannot be combined with incremental mode")
 	}
 	if in.Kind == kindmeta.KindKeyResult {
 		return nil, paraerr.Newf(paraerr.KindInternal,
@@ -570,4 +587,20 @@ func childNoun(in In, child string) string {
 		return ""
 	}
 	return info.Kind.String()
+}
+
+// sinceSections drops the day sections before since, which is a string compare
+// because the headers are ISO dates and ISO dates sort as text (§3.5's layout is
+// chosen so that they do).
+func sinceSections(sections []section, since string) []section {
+	if since == "" {
+		return sections
+	}
+	out := make([]section, 0, len(sections))
+	for _, s := range sections {
+		if s.Day >= since {
+			out = append(out, s)
+		}
+	}
+	return out
 }

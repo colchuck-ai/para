@@ -21,7 +21,7 @@ import (
 // of one set of inputs.
 func (e *Env) keyResult(loc locator.Locator, state truth.State, dir string, ent Entity) (KeyResult, error) {
 	typ := krvalue.Type(state.Type)
-	out := KeyResult{Type: typ}
+	var out KeyResult
 
 	logs := truth.LogsDir(dir)
 	if newest, ok, err := journal.LatestOf(logs, journal.KindMeasurement); err != nil {
@@ -78,6 +78,7 @@ func (e *Env) keyResult(loc locator.Locator, state truth.State, dir string, ent 
 		Current:       out.Current.Decimal,
 		HasCurrent:    out.HasCurrent,
 		Created:       ent.Created,
+		HasCreated:    ent.HasCreated,
 		Deadline:      ent.Deadline,
 		HasDeadline:   ent.HasDeadline,
 		Now:           e.Now,

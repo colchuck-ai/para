@@ -115,13 +115,13 @@ func KindsWith(k SortKey) []kindmeta.Kind {
 // `--reverse` flips the comparison *within* a group and leaves the grouping
 // alone. Reversing the whole list instead would put the fallback group first,
 // which is the one thing §17 says about where it goes.
-func sortEntities(ents []view.Entity, key SortKey, reverse bool) error {
+func sortEntities(ents []view.Entity, key SortKey, reverse bool) ([]view.Entity, error) {
 	if key == "" {
 		key = SortLocator
 	}
 	if key.Universal() {
 		sortGroup(ents, key, reverse)
-		return nil
+		return ents, nil
 	}
 
 	var withKey, without []view.Entity
@@ -133,7 +133,7 @@ func sortEntities(ents []view.Entity, key SortKey, reverse bool) error {
 		without = append(without, e)
 	}
 	if len(withKey) == 0 && len(ents) > 0 {
-		return noKindHasIt(key)
+		return nil, noKindHasIt(key)
 	}
 
 	// Within `withKey`, group by kind so each kind sorts independently: two
@@ -156,8 +156,16 @@ func sortEntities(ents []view.Entity, key SortKey, reverse bool) error {
 	}
 	// The fallback group, last and in locator order (§17).
 	sortGroup(without, SortLocator, false)
-	copy(ents, append(out, without...))
-	return nil
+	out = append(out, without...)
+
+	// A kind missing from kindOrder would silently lose its whole group, and a
+	// dropped row is the one failure mode a sort must not have.
+	if len(out) != len(ents) {
+		return nil, paraerr.Newf(paraerr.KindInternal,
+			"sorting by %s lost %d of %d rows — a kind is missing from the grouping order",
+			key, len(ents)-len(out), len(ents))
+	}
+	return out, nil
 }
 
 // noKindHasIt is §17's hard error: the key, and the kinds it does apply to.

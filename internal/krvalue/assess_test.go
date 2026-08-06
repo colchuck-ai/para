@@ -27,6 +27,7 @@ func base(t *testing.T) krvalue.Assessment {
 		Current:       50,
 		HasCurrent:    true,
 		Created:       ts(t, "2026-01-01T00:00:00Z"),
+		HasCreated:    true,
 		Deadline:      ts(t, "2026-12-31T23:59:59Z"),
 		HasDeadline:   true,
 		Now:           ts(t, "2026-07-02T12:00:00Z"),
@@ -95,6 +96,19 @@ func TestAssessStatusTable(t *testing.T) {
 			edit: func(a *krvalue.Assessment) {
 				a.Current = 10
 				a.HasDeadline = false
+			},
+			want: krvalue.StatusOnTrack,
+		},
+		{
+			// The window needs both ends. A `created` that will not parse is
+			// doctor's invalid finding (§10), and deriving a pace from the zero
+			// time would run the window from the year 1 — an elapsed fraction
+			// of almost exactly 1, and a confident at-risk verdict built on a
+			// date nobody wrote.
+			name: "no created, so no pace either",
+			edit: func(a *krvalue.Assessment) {
+				a.Current = 10
+				a.Created, a.HasCreated = time.Time{}, false
 			},
 			want: krvalue.StatusOnTrack,
 		},
@@ -235,5 +249,22 @@ func TestBaseline(t *testing.T) {
 				t.Errorf("Baseline: got %v/%v, want %v/%v", got, ok, tc.want, tc.wantHasVal)
 			}
 		})
+	}
+}
+
+// TestAssessWithoutACreatedHasNoPace pins the window's other end directly: an
+// unreadable `created` must leave pace undefined, not compute one from the zero
+// time — which would put the window's start in the year 1 and make elapsed
+// almost exactly 1 for every key-result with a deadline.
+func TestAssessWithoutACreatedHasNoPace(t *testing.T) {
+	a := base(t)
+	a.Created, a.HasCreated = time.Time{}, false
+
+	got := krvalue.Assess(a)
+	if got.HasPace {
+		t.Errorf("pace: got %v defined, want undefined", got.Pace)
+	}
+	if !got.HasProgress {
+		t.Error("progress does not depend on the window and must still be derived")
 	}
 }

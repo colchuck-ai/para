@@ -744,6 +744,46 @@ decodes a history into a slice or sorts one.
   visible. The value prints in the spelling a `config set` would take, not to a fixed precision.
 - **A `list` scope naming nothing is an error, not an empty list.** An empty list reads as "you have
   none of those", which is a different and wrong answer to a mistyped locator.
+- **`--sort status` on key-results ranks §4.3's derived statuses worst first** — `missed`, `at-risk`,
+  `on-track`, `achieved`, `dropped`. Neither §4.3 nor §17 gives an order, so this is a decision rather
+  than an implementation. It is taken because the settable vocabularies are already ranked by §1.7's
+  own progression and a key-result's derived set is the one kind that has none: leaving it unranked
+  would mean `--sort status` fell back to locator order for exactly the kind whose status is most
+  worth sorting by. Worst first, because the reason to sort by status is to find what needs attention.
+
+### Found by review, and fixed
+
+Four defects and a dishonest claim, all in this phase's own code:
+
+- **The elapsed window lost an end.** Folding `mutate`'s derivation into `krvalue.Assess` dropped the
+  `hasCreated` guard the old code passed to `Elapsed`, so a `created` that will not parse — doctor's
+  `invalid` (§10) — arrived as the zero time and ran the window from the year 1. Every such
+  key-result got an elapsed fraction of almost exactly 1 and a confident pace. `Assessment` now
+  carries `HasCreated`, and §4.2's undefined-pace set has its member back.
+- **`--local` was inert on `list` and `activity`**, against §16.2.1's "available on every read
+  command". Fixing it exposed the larger half: an age is a count of days on *somebody's* calendar,
+  so `show --local` printed `attention 2026-03-04  today` — the date moved and the count did not.
+  `DaysSinceIn`/`DaysUntilIn` take the display zone; `DaysSince` stays UTC, because a threshold is
+  committed and §3.5's argument applies to it unchanged.
+- **`log --json` ignored §23's count contract.** It has a `--limit`, so it carries `total` and
+  `shown`; a bare array had nowhere to put them.
+- **`list --status done` could never return a row.** The filter selected exactly what the terminal
+  hiding then removed. §16.2's sentence is unconditional, but a flag combination that provably
+  returns nothing is a defect rather than a strict reading — naming a terminal status *is* the
+  request `--all` signals, said more precisely. So an entity whose effective status is what
+  `--status` asked for is never hidden, and nothing wider is exempted.
+- **`activity --since` was a third output shape**, contradicting the claim above that there are two.
+  `--recursive` alone now chooses the shape and `--since` narrows within it, via a read-only `Since`
+  on `ActivityRenderer` that drops day sections *after* every line is derived — so a key-result keeps
+  the baseline its whole history gives it (§4.1) instead of acquiring one from the oldest reading
+  that survived the filter. It is refused in incremental mode: a truncated `ACTIVITY.md` is precisely
+  the drift `doctor` exists to report.
+
+One §26 divergence the review surfaced, left as it stands: `--created` does not backdate the parent's
+`child` event, so §26's `2026-01-05  …objectives  added objective q1-growth` cannot be reproduced by
+creating the objective with `--created 2026-01-05`. That is correct. A `child` event is the parent's
+record of an act it performed (§3.3), and the act happened when it happened; `created` is the child's
+claim about itself. §26's block is a history in which the two coincided.
 
 ### Carry-forward obligations from Phase 10
 

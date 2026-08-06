@@ -25,10 +25,19 @@ type Assessment struct {
 	Current    float64
 	HasCurrent bool
 
-	// Created and Deadline bound §4.2's elapsed window. Deadline is the last
-	// instant the stored `due` admits (ptime.Deadline), not the midnight that
-	// opens it, so nothing is late while its own day is still running.
+	// Created and Deadline bound §4.2's elapsed window, and both must be
+	// present for it to exist. Deadline is the last instant the stored `due`
+	// admits (ptime.Deadline), not the midnight that opens it, so nothing is
+	// late while its own day is still running.
+	//
+	// HasCreated is not redundant with a non-zero Created, and leaving it out
+	// is a real defect rather than a tidiness question: a `created` that will
+	// not parse is doctor's `invalid` finding (§10) and arrives here as the
+	// zero time, which would make the window run from the year 1 and give
+	// every such key-result an elapsed fraction of almost exactly 1 — a
+	// confident pace derived from a date nobody wrote.
 	Created     time.Time
+	HasCreated  bool
 	Deadline    time.Time
 	HasDeadline bool
 	// Now is the instant being asked about — one per command (§3.6).
@@ -94,7 +103,7 @@ func Assess(a Assessment) Outlook {
 	}
 	out.Progress, out.HasProgress = NormalizeZero(progress), true
 
-	elapsed, elapsedOK := Elapsed(a.Created, a.Deadline, a.Now, a.HasDeadline)
+	elapsed, elapsedOK := Elapsed(a.Created, a.Deadline, a.Now, a.HasCreated && a.HasDeadline)
 	out.Pace, out.HasPace = Pace(out.Progress, elapsed, elapsedOK, a.Type)
 
 	out.Status = DerivedStatus(out.Progress, out.HasPace && a.HasAtRiskPace, out.Pace, a.AtRiskPace, out.PastDue)

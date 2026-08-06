@@ -101,8 +101,8 @@ func (e *Env) derive(subj *subject, v krvalue.Value, events []journal.Event) (*M
 	if err != nil {
 		return nil, err
 	}
-	created, _ := parseStamp(subj.state.Created)
-	due, hasDue := deadlineOf(subj.state.Due)
+	created, hasCreated := ptime.StoredAt(subj.state.Created)
+	due, hasDue := ptime.DeadlineOf(subj.state.Due)
 
 	// The same call the read path makes (view), so `measure`'s reply and a
 	// later `show` cannot disagree about the key-result they both describe.
@@ -113,6 +113,7 @@ func (e *Env) derive(subj *subject, v krvalue.Value, events []journal.Event) (*M
 		Current:       v.Decimal,
 		HasCurrent:    true,
 		Created:       created,
+		HasCreated:    hasCreated,
 		Deadline:      due,
 		HasDeadline:   hasDue,
 		Now:           e.Now,
@@ -168,24 +169,6 @@ func oldestReading(typ krvalue.Type, events []journal.Event) (krvalue.Value, boo
 		}
 	}
 	return found, !oldest.IsZero()
-}
-
-func parseStamp(s string) (time.Time, bool) {
-	if s == "" {
-		return time.Time{}, false
-	}
-	t, err := ptime.ParseAt(s, time.UTC)
-	return t, err == nil
-}
-
-// deadlineOf is the last instant a stored `due` admits, or ok false when there
-// is no deadline (§4.2's undefined-pace case).
-func deadlineOf(due string) (time.Time, bool) {
-	if due == "" {
-		return time.Time{}, false
-	}
-	t, err := ptime.Deadline(due)
-	return t, err == nil
 }
 
 // grammarOf names what a type's values look like, for the mismatch message

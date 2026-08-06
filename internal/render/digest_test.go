@@ -144,3 +144,52 @@ func TestDigestIsNewestFirst(t *testing.T) {
 		}
 	}
 }
+
+// TestActivitySinceNarrowsWhatIsShownNotWhatIsDerived is `activity --since`
+// (§16.4): it drops day sections, and it must not change the lines that survive.
+func TestActivitySinceNarrowsWhatIsShownNotWhatIsDerived(t *testing.T) {
+	in := digestIn(t,
+		journal.NewNote(ts(t, "2026-03-03T09:00:00"), "oldest"),
+		journal.NewNote(ts(t, "2026-03-05T09:00:00"), "newest"),
+	)
+
+	full, err := render.Activity.Render(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(string(full), "2026-03-03") {
+		t.Fatal("the fixture should span two days")
+	}
+
+	narrowed, err := render.ActivityRenderer{Since: "2026-03-05"}.Render(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(string(narrowed), "2026-03-03") {
+		t.Errorf("--since kept a day before it:\n%s", narrowed)
+	}
+	if !contains(string(narrowed), "newest") {
+		t.Errorf("--since dropped the day it asked for:\n%s", narrowed)
+	}
+	// Every surviving line is byte-identical to the full render's, so nothing
+	// was recomputed against a shorter history.
+	for _, line := range strings.Split(string(narrowed), "\n") {
+		if line == "" || !strings.HasPrefix(line, "- ") {
+			continue
+		}
+		if !contains(string(full), line) {
+			t.Errorf("--since changed a line: %q", line)
+		}
+	}
+}
+
+// TestActivitySinceIsRefusedOnTheWritePath: a truncated ACTIVITY.md is a
+// projection that disagrees with its journal, which is what doctor exists to
+// report (§10) — so the read-time narrowing cannot reach incremental mode.
+func TestActivitySinceIsRefusedOnTheWritePath(t *testing.T) {
+	in := digestIn(t, journal.NewNote(ts(t, "2026-03-05T09:00:00"), "a note"))
+	_, err := render.ActivityRenderer{Days: []string{"2026-03-05"}, Since: "2026-03-05"}.Render(in)
+	if err == nil {
+		t.Fatal("Since with Days must be refused")
+	}
+}

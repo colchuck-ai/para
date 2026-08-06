@@ -385,8 +385,8 @@ func TestSortAndLimit(t *testing.T) {
 	assertLocators(t, locators(rev), want...)
 
 	limited := list(t, root, query.Options{Sort: query.SortName, Limit: 3})
-	if limited.Total != 8 || len(limited.Entities) != 3 || !limited.Truncated() {
-		t.Errorf("limit: total %d shown %d truncated %v", limited.Total, len(limited.Entities), limited.Truncated())
+	if limited.Total != 8 || len(limited.Entities) != 3 {
+		t.Errorf("limit: total %d shown %d, want 8 and 3", limited.Total, len(limited.Entities))
 	}
 	assertLocators(t, locators(limited), locators(byName)[:3]...)
 }
@@ -461,5 +461,37 @@ func mustExpr(t *testing.T, s string) tagexpr.Expr {
 func slicesReverse(s []string) {
 	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
 		s[i], s[j] = s[j], s[i]
+	}
+}
+
+// TestAnExplicitTerminalStatusIsNotHidden: `--status done` selects exactly the
+// entities the default hiding removes, so composing the two would make the flag
+// return nothing, ever. Asking for done things is the request `--all` signals,
+// said more precisely.
+func TestAnExplicitTerminalStatusIsNotHidden(t *testing.T) {
+	root := fixture(t)
+	w := writer(t, root)
+	set(t, w, "projects.website", "status", "done")
+
+	got := list(t, root, query.Options{Filter: query.Filter{Status: "done"}})
+	assertLocators(t, locators(got), "projects.website")
+	if got.Hidden != 0 {
+		t.Errorf("hidden: got %d, want 0 — nothing was withheld", got.Hidden)
+	}
+
+	// The exemption is exactly as wide as what was asked for: it is the status
+	// filter that grants it, so an unfiltered list still hides the same
+	// entity. (Nothing else can appear in Hidden here — the filter runs first,
+	// so a `--status done` list has only done things to withhold in the first
+	// place, which is the whole reason composing the two produced nothing.)
+	set(t, w, "projects.acme-migration", "status", "dropped")
+	unfiltered := list(t, root, query.Options{})
+	for _, name := range locators(unfiltered) {
+		if name == "projects.website" {
+			t.Error("without the filter, a done project is still hidden")
+		}
+	}
+	if len(unfiltered.HiddenStatuses) != 2 {
+		t.Errorf("hidden statuses: got %v, want both done and dropped", unfiltered.HiddenStatuses)
 	}
 }

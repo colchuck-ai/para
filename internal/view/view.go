@@ -77,10 +77,13 @@ type Entity struct {
 	// Archived is location, not a field: under `archive/` is archived (§1.6).
 	Archived bool
 
-	// Created is the stored creation instant, or the zero time for truth that
-	// has none — which is doctor's `invalid` finding to report (§10), not a
-	// reason for a read to fail.
-	Created time.Time
+	// Created is the stored creation instant. HasCreated is false for truth
+	// that has none or whose `created` will not parse — doctor's `invalid`
+	// finding to report (§10), not a reason for a read to fail. The flag is
+	// carried rather than left to a zero-time test because the zero time is a
+	// real instant, and §4.2's window needs to know the difference.
+	Created    time.Time
+	HasCreated bool
 	// Attention is §3.6's clock: the newest note or measurement, else `created`.
 	Attention time.Time
 
@@ -139,8 +142,6 @@ func (e Entity) Overdue() bool { return e.PastDue && !e.Terminal }
 // forbidden from truth (§2.5), which is why they are computed together and in
 // one place.
 type KeyResult struct {
-	Type krvalue.Type
-
 	// Current is the newest reading, and HasCurrent is false before the first
 	// one — a key-result with a target and no measurement yet.
 	Current    krvalue.Value
@@ -227,9 +228,9 @@ func (e *Env) Derive(loc locator.Locator, kind kindmeta.Kind, dir string, state 
 		Dir:       dir,
 		Container: kind == kindmeta.KindContainer,
 		Archived:  loc.IsArchived(),
-		Created:   parseStamp(state.Created),
 	}
-	out.Deadline, out.HasDeadline = deadlineOf(state.Due)
+	out.Created, out.HasCreated = ptime.StoredAt(state.Created)
+	out.Deadline, out.HasDeadline = ptime.DeadlineOf(state.Due)
 	out.PastDue = out.HasDeadline && e.Now.After(out.Deadline)
 
 	attention, err := journal.AttentionAt(truth.LogsDir(dir), out.Created)
@@ -353,56 +354,50 @@ func (e *Env) Threshold(loc locator.Locator, key string) (Threshold, error) {
 	return out, nil
 }
 
-// DaysSince is whole days from t to now, which is what §16.1's "31 days ago" and
-// §7's `stale-after` both count in.
+// DaysSince is whole days from t to now, counted on the UTC calendar — what
+// §7's `stale-after` measures in.
 //
-// It counts UTC days rather than elapsed 24-hour spans, because `stale-after 14`
-// is a number of days on a calendar and every generated file already agrees on
-// which day an instant falls on (§3.5). Truncating elapsed hours instead would
-// make a threshold cross at a different moment depending on the time of day the
-// last note happened to land.
-func (e *Env) DaysSince(t time.Time) int {
+// Days on a calendar rather than elapsed 24-hour spans, because `stale-after
+// 14` is a number of days and every generated file already agrees on which day
+// an instant falls on (§3.5). Truncating elapsed hours instead would make a
+// threshold cross at a different moment depending on the time of day the last
+// note happened to land.
+//
+// UTC rather than the reader's zone, because a threshold is committed: two
+// people running `review` on one tree from two continents must get one answer,
+// which is the same argument §3.5 makes for the files. Displayed ages are the
+// negotiable case and take DaysSinceIn.
+func (e *Env) DaysSince(t time.Time) int { return e.DaysSinceIn(t, time.UTC) }
+
+// DaysUntil is whole UTC days from now to t, the same count in the other
+// direction.
+func (e *Env) DaysUntil(t time.Time) int { return e.DaysUntilIn(t, time.UTC) }
+
+// DaysSinceIn is §16.1's "31 days ago", counted on loc's calendar.
+//
+// The zone belongs here and not only on the timestamp beside it: `--local` moves
+// an attention of 2026-03-05T02:00Z back to 2026-03-04, and a line reading
+// "attention 2026-03-04 today" is two answers to one question. Whichever
+// calendar the date is printed on is the one the age has to be counted on.
+func (e *Env) DaysSinceIn(t time.Time, loc *time.Location) int {
 	if t.IsZero() {
 		return 0
 	}
-	return utcDays(e.Now) - utcDays(t)
+	return calendarDays(e.Now, loc) - calendarDays(t, loc)
 }
 
-// DaysUntil is whole days from now to t — §16.1's "in 181 days", the same count
-// in the other direction.
-func (e *Env) DaysUntil(t time.Time) int {
+// DaysUntilIn is §16.1's "in 181 days", counted on loc's calendar.
+func (e *Env) DaysUntilIn(t time.Time, loc *time.Location) int {
 	if t.IsZero() {
 		return 0
 	}
-	return utcDays(t) - utcDays(e.Now)
+	return calendarDays(t, loc) - calendarDays(e.Now, loc)
 }
 
-// utcDays is the number of whole UTC days since the epoch. Truncating the
-// instant would be wrong for anything before 1970 and is no simpler.
-func utcDays(t time.Time) int {
-	y, m, d := t.UTC().Date()
+// calendarDays is the number of whole days since the epoch on loc's calendar.
+// Truncating the instant would be wrong for anything before 1970 and is no
+// simpler.
+func calendarDays(t time.Time, loc *time.Location) int {
+	y, m, d := t.In(loc).Date()
 	return int(time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Unix() / 86400)
-}
-
-// parseStamp reads a stored timestamp, or the zero time for one that is absent
-// or unreadable — doctor's `invalid` finding (§10), not a reason a read fails.
-func parseStamp(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	t, err := ptime.ParseAt(s, time.UTC)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
-}
-
-// deadlineOf is the last instant a stored `due` admits (ptime.Deadline), or ok
-// false when there is no readable deadline.
-func deadlineOf(due string) (time.Time, bool) {
-	if due == "" {
-		return time.Time{}, false
-	}
-	t, err := ptime.Deadline(due)
-	return t, err == nil
 }

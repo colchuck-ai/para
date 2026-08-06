@@ -60,9 +60,13 @@ func newListCmd() *cobra.Command {
 // printList is §26's shape: one row per entity, then the count line, then the
 // terminal-hiding line when anything was withheld.
 func printList(out io.Writer, env *view.Env, res query.Result, read readFlags) {
+	// `list` prints no timestamp, only an age — but an age is a count of days on
+	// somebody's calendar, so `--local` reaches it here even though there is no
+	// instant on the row to convert (§16.2.1).
+	zone := read.zone(env)
 	var t table
 	for _, e := range res.Entities {
-		t.add(e.Locator.String(), e.Kind.String(), statusCell(e), ago(env.DaysSince(e.Attention)))
+		t.add(e.Locator.String(), e.Kind.String(), statusCell(e), ago(env.DaysSinceIn(e.Attention, zone)))
 	}
 	t.write(out)
 

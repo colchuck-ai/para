@@ -37,3 +37,35 @@ func Deadline(due string) (time.Time, error) {
 	// arithmetic honest about month and year ends.
 	return t.AddDate(0, 0, 1).Add(-time.Second), nil
 }
+
+// DeadlineOf is Deadline for a stored `due` that may be absent, reporting ok
+// false where there is no readable deadline at all — §4.2's undefined-pace case
+// and §17's "not overdue because there is nothing to be late for".
+//
+// A `due` that will not parse answers the same way as one that is not there.
+// Both are doctor's `invalid` finding to report (§10) and neither is a reason a
+// read should fail, so neither may become a deadline nobody wrote.
+func DeadlineOf(due string) (time.Time, bool) {
+	if due == "" {
+		return time.Time{}, false
+	}
+	t, err := Deadline(due)
+	return t, err == nil
+}
+
+// StoredAt reads a timestamp para wrote, which is always UTC RFC 3339 (§15.1)
+// but is parsed through the progressive-precision grammar so that a hand-edited
+// `created = "2026-01-01"` is still read rather than discarded.
+//
+// ok is false for an absent or unreadable value — again doctor's `invalid`
+// finding and not a failure — and the caller must carry that bool rather than
+// test the returned time against zero: the zero time is a real instant, and
+// treating it as one has already produced one defect (see krvalue.Assessment's
+// HasCreated).
+func StoredAt(s string) (time.Time, bool) {
+	if s == "" {
+		return time.Time{}, false
+	}
+	t, err := ParseAt(s, time.UTC)
+	return t, err == nil
+}

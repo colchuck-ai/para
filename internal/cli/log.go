@@ -49,21 +49,26 @@ func newLogCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if events == nil {
+				events = []journal.Event{}
+			}
 
 			// Newest first (§16.3), unless --reverse asks for chronological.
 			// ReadAll returns them by `at`, oldest first (§3.1).
 			if !reverse {
 				slices.Reverse(events)
 			}
+			total := len(events)
 			if limit > 0 && len(events) > limit {
 				events = events[:limit]
 			}
 
 			if read.json {
-				// §16.3: "--json to get the events back unchanged". The events
-				// are the journal's own shape, so they are marshalled as they
-				// were decoded rather than reshaped into a payload of their own.
-				return writeJSON(cmd.OutOrStdout(), events)
+				return writeJSON(cmd.OutOrStdout(), logOutput{
+					Total:  total,
+					Shown:  len(events),
+					Events: events,
+				})
 			}
 			printLog(cmd.OutOrStdout(), env, events, read)
 			return nil
@@ -147,4 +152,18 @@ func childDetail(e journal.Event) string {
 // a multi-line note does not break the column layout.
 func logNote(e journal.Event) string {
 	return strings.Join(strings.Fields(e.Note), " ")
+}
+
+// logOutput is `log --json`. §16.3 asks for "the events back unchanged", and
+// they are: each one marshals from the same struct the journal decoded, in the
+// journal's own field order (§3.1). What wraps them is §23's count contract —
+// "when `--limit` truncates, the JSON carries `total` and `shown`" — which a
+// bare array has nowhere to put, and `log` has a `--limit`.
+//
+// Events is never null: an entity with no journal has no events, which is an
+// empty list rather than an absent one.
+type logOutput struct {
+	Total  int             `json:"total"`
+	Shown  int             `json:"shown"`
+	Events []journal.Event `json:"events"`
 }

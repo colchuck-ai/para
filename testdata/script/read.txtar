@@ -32,6 +32,9 @@ env PARA_TZ=America/Los_Angeles
 [para:phase10] exec para add areas.health.training --name Training --description 'The weekly plan.' --tags fitness
 [para:phase10] exec para add resources.rust --name Rust --description 'Notes.' --tags rust,reference
 [para:phase10] exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope projects
+# Something with a blown deadline, for --overdue. `missed` is not terminal
+# (§1.7), so this stays visible without --all — which is the point of it.
+[para:phase10] exec para add projects.late --name Late --description 'A deadline that went by.' --created 2026-01-01 --due 2026-02-01
 
 # --- §16.1's `show` ---------------------------------------------------------
 
@@ -84,7 +87,7 @@ env PARA_TZ=America/Los_Angeles
 
 # §17's count line, and `--limit` truncating after the match rather than before.
 [para:phase10] exec para list --limit 2
-[para:phase10] stdout 'showing 2 of 8'
+[para:phase10] stdout 'showing 2 of 9'
 
 # A sort key no matched kind has is an error naming the key and the kinds it
 # applies to; one some matched kind has is not (§17, ADR 0002).
@@ -131,6 +134,55 @@ env PARA_TZ=America/Los_Angeles
 [para:phase10] exec para activity projects.acme-migration --recursive --since 2026-01-01
 [para:phase10] cmp stdout $WORK/want-activity-recursive.txt
 
+# --- §17's remaining filters ------------------------------------------------
+
+# `--match` reads the thing's own text, case-insensitively.
+[para:phase10] exec para list --match funnel
+[para:phase10] stdout 'projects.acme-migration.objectives.q1-growth'
+[para:phase10] stdout 'showing 1 of 1'
+
+# …and journal note bodies, which live only there — §17's "one read path that
+# must open journals".
+[para:phase10] exec para list --match 'ingest team'
+[para:phase10] stdout 'projects.acme-migration'
+[para:phase10] stdout 'showing 1 of 1'
+
+# §17's boolean tag grammar: word operators, `not` → `and` → `or`, comma as or.
+[para:phase10] exec para list --tags 'kafka and not consumer'
+[para:phase10] ! stdout 'projects.acme-migration\s'
+[para:phase10] stdout 'q1-growth'
+[para:phase10] exec para list --tags rust,fitness
+[para:phase10] stdout 'areas.health.training'
+[para:phase10] stdout 'resources.rust'
+[para:phase10] ! exec para list --tags 'and'
+[para:phase10] stderr 'error:'
+
+# `--priority`, only on the kinds that have one.
+[para:phase10] exec para list --priority high
+[para:phase10] cmp stdout $WORK/want-list-priority.txt
+
+# `--overdue` is open and past `due`. A blown deadline is unhideable (§1.7).
+[para:phase10] exec para list --overdue
+[para:phase10] cmp stdout $WORK/want-list-overdue.txt
+
+# `--reverse` flips the sort and nothing else.
+[para:phase10] exec para list projects --tags kafka --sort attention --reverse
+[para:phase10] cmp stdout $WORK/want-list-kafka-reverse.txt
+
+# --- §16.2.1's `--local`, and the day count that has to follow it -----------
+
+# 02:00Z is the previous day in Los Angeles, so the date moves — and so does the
+# age, because a line reading "2026-03-04  today" is two answers to one question.
+# The subject has to predate the note, or §3.6's guard falls back to `created`
+# and there is no boundary left to cross.
+[para:phase10] exec para note projects.late 'crossing the date line' --at 2026-03-05T02:00:00Z
+[para:phase10] exec para show projects.late
+[para:phase10] stdout 'attention    2026-03-05        today'
+[para:phase10] exec para show projects.late --local
+[para:phase10] stdout 'attention    2026-03-04        1 day ago'
+[para:phase10] exec para list --local
+[para:phase10] stdout 'projects.late\s+project\s+planned\s+1 day ago'
+
 # --- §23's `--json` ---------------------------------------------------------
 
 # An object is the stored fields plus every value the human output computed to
@@ -144,9 +196,23 @@ env PARA_TZ=America/Los_Angeles
 # When --limit truncates, the JSON carries total and shown (§23) — and `hidden`
 # beside them, because they are different numbers.
 [para:phase10] exec para list --limit 2 --json
-[para:phase10] stdout '"total": 8'
+[para:phase10] stdout '"total": 9'
 [para:phase10] stdout '"shown": 2'
 [para:phase10] stdout '"hidden": 0'
+
+# §23 says the same of every read command that can truncate, and `log` has a
+# `--limit`, so its JSON carries the counts too rather than a bare array.
+# The `projects` container's own journal, which holds a `child` event per
+# project added (§3.3) — three by now, so --limit 1 genuinely truncates.
+[para:phase10] exec para log projects --limit 1 --json
+[para:phase10] stdout '"total": 3'
+[para:phase10] stdout '"shown": 1'
+
+# `activity --json` is the rollup as data: one line per digest line, each
+# labelled with the locator it came from.
+[para:phase10] exec para activity projects.acme-migration --recursive --json
+[para:phase10] stdout '"locator": "projects.acme-migration.objectives"'
+[para:phase10] stdout '"text": "added objective q1-growth"'
 
 # --- what `list` shows once things end or move away -------------------------
 #
@@ -164,11 +230,25 @@ env PARA_TZ=America/Los_Angeles
 [para:phase10] ! stdout 'hidden'
 [para:phase10] exec para set projects.website --status planned
 
+# An explicit terminal status is not hidden from itself: `--status done` selects
+# exactly what the hiding removes, so composing the two would make the flag
+# return nothing, ever.
+[para:phase10] exec para set projects.website --status done
+[para:phase10] exec para list --status done
+[para:phase10] stdout 'projects.website'
+[para:phase10] ! stdout 'hidden'
+[para:phase10] exec para set projects.website --status planned
+
 # §1.7's cascade reaches `list`: a terminal ancestor quiets its descendants.
 [para:phase10] exec para set projects.acme-migration --status done
 [para:phase10] exec para list
 [para:phase10] ! stdout 'acme-migration'
 [para:phase10] stdout '3 hidden \(done\) — --all to include'
+
+# §16.1: `show` is unaffected by the hiding — you named the thing — and it says
+# *why* something stopped appearing, "because its own fields do not explain why".
+[para:phase10] exec para show projects.acme-migration.objectives.q1-growth
+[para:phase10] stdout 'dormant      under projects.acme-migration \(done\)'
 [para:phase10] exec para set projects.acme-migration --status in-progress
 
 # `archive/` is not traversed unless you name it: archived things are not
@@ -178,6 +258,10 @@ env PARA_TZ=America/Los_Angeles
 [para:phase10] ! stdout 'website'
 [para:phase10] exec para list archive.projects
 [para:phase10] stdout 'archive.projects.website'
+
+# The other dormancy §16.1 requires named: location, not a field (§1.6).
+[para:phase10] exec para show archive.projects.website
+[para:phase10] stdout 'dormant      archived'
 [para:phase10] exec para unarchive archive.projects.website
 
 -- brain/.para/tree.toml --
@@ -230,11 +314,22 @@ created = "2026-01-01T00:00:00Z"
 -- want-list-direct.txt --
 projects.acme-migration.objectives.q1-growth  objective  in-progress  59 days ago
 showing 1 of 1
+-- want-list-kafka-reverse.txt --
+projects.acme-migration                                           project     in-progress  31 days ago
+projects.acme-migration.objectives.q1-growth                      objective   in-progress  59 days ago
+projects.acme-migration.objectives.q1-growth.key-results.signups  key-result  on-track     61 days ago
+showing 3 of 3
 -- want-list-kafka.txt --
 projects.acme-migration.objectives.q1-growth.key-results.signups  key-result  on-track     61 days ago
 projects.acme-migration.objectives.q1-growth                      objective   in-progress  59 days ago
 projects.acme-migration                                           project     in-progress  31 days ago
 showing 3 of 3
+-- want-list-overdue.txt --
+projects.late  project  planned  63 days ago
+showing 1 of 1
+-- want-list-priority.txt --
+projects.acme-migration  project  in-progress  31 days ago
+showing 1 of 1
 -- want-log-note.txt --
 2026-02-02T08:00:00Z  note    checked in with the ingest team
 -- want-show-kr.txt --
