@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
@@ -251,11 +252,73 @@ func spliceSections(prior, derived []section, days []string) []section {
 // `created` moves that line to a different day, so a mutation that changes it
 // must re-derive both days' sections, not just today's.
 func activitySections(in In) ([]section, error) {
-	byDay := map[string][]string{}
-	days := []string{}
-	addLine := func(day, line string) {
+	days, err := digest(in, markdown)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]section, 0, len(days))
+	for _, day := range days {
+		var b bytes.Buffer
+		for _, line := range day.Lines {
+			b.WriteString("- ")
+			b.WriteString(line.Text)
+			b.WriteString("\n")
+		}
+		out = append(out, section{Day: day.Date, Body: b.Bytes()})
+	}
+	return out, nil
+}
+
+// Day is one day of the digest: the UTC day, and its lines newest first.
+type Day struct {
+	Date  string
+	Lines []Line
+}
+
+// Line is one event as the digest states it.
+type Line struct {
+	// At is the event's instant, or the zero time for the `created` line, which
+	// comes from a field rather than an event (§3.1).
+	At time.Time
+	// Kind is the event kind, or "" for the `created` line — what `log --kind`
+	// filters on and what `--json` reports.
+	Kind journal.Kind
+	// Text is the line itself, in the style Digest was asked for.
+	Text string
+}
+
+// Digest is the fold ACTIVITY.md contains, as data rather than as a file
+// (§3.5, §16.4).
+//
+// It exists because `activity --recursive` merges several entities' digests
+// into one chronology with a locator per line, which is not a shape any single
+// file has — but the lines have to be the same lines, or §16.4's "they agree by
+// construction" would be a claim rather than a fact. So the templates live in
+// one place and the two callers differ only in spelling: the file is markdown,
+// the terminal is not.
+//
+// The lines are plain text: no emphasis markers, no terminating period, and a
+// lower-case opening, which is what §26's `activity --recursive` output shows.
+func Digest(in In) ([]Day, error) { return digest(in, plain) }
+
+// digest folds in.Events into days, newest day first and newest line first
+// within a day — one direction throughout, matching `log`'s so the two never
+// read in opposite orders (§16.3).
+//
+// The subject's `created` contributes a line of its own. `created` is a field
+// in the truth file rather than an event (§3.1), but the digest is the answer to
+// "what has happened here", and coming into existence is the first thing that
+// happened: §26's own `activity` output ends with a `created` line, and §16.4
+// makes ACTIVITY.md and `activity` agree by construction. Its consequence is
+// worth stating, because it is a real constraint on the write path: changing
+// `created` moves that line to a different day, so a mutation that changes it
+// must re-derive both days' sections, not just today's.
+func digest(in In, style lineStyle) ([]Day, error) {
+	byDay := map[string][]Line{}
+	dates := []string{}
+	addLine := func(day string, line Line) {
 		if _, seen := byDay[day]; !seen {
-			days = append(days, day)
+			dates = append(dates, day)
 		}
 		byDay[day] = append(byDay[day], line)
 	}
@@ -264,27 +327,21 @@ func activitySections(in In) ([]section, error) {
 	events := slices.Clone(in.Events)
 	sort.SliceStable(events, func(i, j int) bool { return events[j].At.Before(events[i].At) })
 	for _, e := range events {
-		line, err := eventLine(in, e, rs)
+		text, err := eventLine(in, e, rs, style)
 		if err != nil {
 			return nil, err
 		}
-		addLine(utcDay(e.At), line)
+		addLine(utcDay(e.At), Line{At: e.At, Kind: e.Kind, Text: text})
 	}
 
 	if created := createdDay(in); created != "" {
-		addLine(created, createdLine)
+		addLine(created, Line{Text: style.finish(createdLine)})
 	}
 
-	sort.Sort(sort.Reverse(sort.StringSlice(days)))
-	out := make([]section, 0, len(days))
-	for _, day := range days {
-		var b bytes.Buffer
-		for _, line := range byDay[day] {
-			b.WriteString("- ")
-			b.WriteString(line)
-			b.WriteString("\n")
-		}
-		out = append(out, section{Day: day, Body: b.Bytes()})
+	sort.Sort(sort.Reverse(sort.StringSlice(dates)))
+	out := make([]Day, 0, len(dates))
+	for _, date := range dates {
+		out = append(out, Day{Date: date, Lines: byDay[date]})
 	}
 	return out, nil
 }
@@ -310,7 +367,58 @@ func utcDay(t time.Time) string {
 	return t.UTC().Format(dayLayout)
 }
 
-const createdLine = "Created."
+// createdLine is the digest's one line that comes from a field rather than an
+// event. It is written unterminated, like every other core, and the style
+// finishes it.
+const createdLine = "Created"
+
+// lineStyle is the difference between the two places a digest line is printed:
+// ACTIVITY.md, which is markdown and is committed, and the terminal, which is
+// neither (§16.2.1's argument for `--local` applies to spelling too).
+//
+// It is a style and not two sets of templates, because §16.4 requires the file
+// and the command to agree, and two copies of six templates would agree only
+// until one of them was edited.
+type lineStyle struct {
+	// emphasise wraps a field or child name in markdown bold.
+	emphasise bool
+	// sentence gives the line a capital opening and a terminating period.
+	sentence bool
+}
+
+var (
+	markdown = lineStyle{emphasise: true, sentence: true}
+	plain    = lineStyle{}
+)
+
+// emph marks a field or child name, or leaves it alone.
+func (s lineStyle) emph(text string) string {
+	if s.emphasise {
+		return "**" + text + "**"
+	}
+	return text
+}
+
+// finish spells a completed line. The cores are written as sentences with a
+// capital opening, so plain style lowers it rather than every template
+// carrying two spellings of its first word.
+func (s lineStyle) finish(core string) string {
+	if s.sentence {
+		return sentence(core)
+	}
+	return lowerFirst(core)
+}
+
+// lowerFirst lowers the first rune of s, leaving the rest — including a proper
+// noun later in the line — alone.
+func lowerFirst(s string) string {
+	if s == "" {
+		return ""
+	}
+	r := []rune(s)
+	r[0] = unicode.ToLower(r[0])
+	return string(r)
+}
 
 // CreatedDay is the UTC day the subject's `created` falls on, or "" if there is
 // no created field to read.
@@ -370,28 +478,28 @@ func DaysOf(events []journal.Event) []string {
 // A `note` is a field on every kind (§3.1), so any event can carry a reason;
 // it is appended to the sentence with an em dash rather than given a line of
 // its own, so one mutation stays one line.
-func eventLine(in In, e journal.Event, rs []reading) (string, error) {
+func eventLine(in In, e journal.Event, rs []reading, style lineStyle) (string, error) {
 	var core string
 	switch e.Kind {
 	case journal.KindChange:
-		core = changeLine(e)
+		core = changeLine(e, style)
 	case journal.KindMeasurement:
 		core = measurementLine(e, rs)
 	case journal.KindNote:
-		return sentence("Note: " + flatten(e.Note)), nil
+		return style.finish("Note: " + flatten(e.Note)), nil
 	case journal.KindChild:
-		core = childLine(in, e)
+		core = childLine(in, e, style)
 	default:
 		return "", paraerr.Newf(paraerr.KindValidation, "unknown journal event kind %q", e.Kind)
 	}
 	if note := flatten(e.Note); note != "" {
 		core += " — " + note
 	}
-	return sentence(core), nil
+	return style.finish(core), nil
 }
 
-func changeLine(e journal.Event) string {
-	field := "**" + flatten(e.Field) + "**"
+func changeLine(e journal.Event, style lineStyle) string {
+	field := style.emph(flatten(e.Field))
 	switch {
 	case e.From == "" && e.To != "":
 		return fmt.Sprintf("Set %s to %s", field, flatten(e.To))
@@ -423,8 +531,8 @@ func measurementLine(e journal.Event, rs []reading) string {
 // childLine renders a containment event, which is the parent's own event
 // because the parent genuinely changed: it has a different set of children than
 // it did (§3.3).
-func childLine(in In, e journal.Event) string {
-	child := "**" + flatten(e.Child) + "**"
+func childLine(in In, e journal.Event, style lineStyle) string {
+	child := style.emph(flatten(e.Child))
 	noun := childNoun(in, e.Child)
 
 	verb := map[journal.ChildOp]string{

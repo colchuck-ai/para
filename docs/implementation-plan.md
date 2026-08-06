@@ -674,6 +674,89 @@ directions (stub → entity when the parent is archived; entity → stub when a 
 
 ## Phase 10 — Reading
 
+**Status: done** (branch `impl`). `internal/view` (the read-side derivation layer), `internal/query`
+(§17's filters, sort, and limit over the §8.5 walk), and `show`/`list`/`log`/`activity` land, each with
+`--json` and `--local`. Three shared seams were extracted on the way — see below.
+
+### Three seams extracted, and the defect that made the case for them
+
+The read path derives the same things the write path does, and the two disagreeing about one entity is
+a defect no test of either alone would catch. One was already there:
+
+- **`ptime.Deadline`** is the last instant a stored `due` admits. It existed inside `mutate`, and the
+  copy that did *not* use it was `measure`'s derived status, which parsed `due` at midnight — so a
+  key-result due today read `missed` from the moment the day began, contradicting the whole-day
+  reading the same package enforces on `created ≤ due` (Phase 8's own recorded decision).
+- **`krvalue.Assess`** is §4.2 and §4.3 in one call, and **`krvalue.Baseline`** is §4.1's start. The
+  baseline rule had three copies (`mutate`, `render`, and the one `view` was about to add), which is
+  how the deadline defect could live in one copy and not the others. The write path prints a status
+  back from a reading it has not yet appended (§18.6) and the read path prints one for the same
+  reading a moment later; they are now one function of one set of inputs.
+- **`journal.LatestOf`/`OldestOf`** are the two ends of a history — §3.6's clock, §4.2's `current`,
+  §4.1's default baseline — and nothing in §16's output is a function of what lies between them.
+
+**A bug in the cheap read, worth recording because §3.4 makes the shortcut look safe.** The first
+attempt read backwards and stopped at the newest *file* holding a match, reasoning that a file is
+named for its own first event and rotation only ever opens a new one. That does order the files — *by
+write time*. `at` is a different clock: it is bounded above (§15.1 refuses the future) and not below,
+so `para note x --at 2026-01-05` written after a rotation puts a January event in the newest file while
+the real newest note sits in the file before it. Stopping there is the reader violating §3.1's
+"ordering comes from `at`, never from file position". Both functions now scan every file, and neither
+decodes a history into a slice or sorts one.
+
+### Decisions taken during the phase
+
+- **`activity` without `--recursive` prints exactly what `ACTIVITY.md` holds, byte for byte**, and
+  with `--recursive` prints §26's three-column chronology. §16.4 says the unfiltered case "is just
+  `cat` on a generated file, and that is fine: it means the two agree by construction", so the two
+  shapes are the file's and the rollup's, not one compromise between them. It is re-derived rather
+  than read, per the reading settled before the phase, and the script test asserts the two are
+  identical.
+- **`render.Digest` is the digest as data, and the line templates take a style.** `activity
+  --recursive` needs one entity's lines labelled with its locator and merged with another's, which is
+  not a shape any file has — but they have to be the *same* lines, or §16.4's "agree by construction"
+  would be a claim rather than a fact. So the six templates live once and the callers differ only in
+  spelling: the file is markdown and sentence-cased, the terminal is neither. A test undresses one
+  into the other.
+- **A container is not a `list` row and *is* an `activity --recursive` subject.** Not an
+  inconsistency: §3.3's `child` events land in the container's own journal, so §26's own first line —
+  "added objective q1-growth" — is a container's event and would be missing otherwise. What §16.2
+  refuses is a *row you can neither set nor act on*, which is about the entity table and not about
+  history.
+- **`show`'s children summary is headed by the plural of the child's kind** — §16.1's `objectives`
+  line. §1.3 gives every kind exactly one kind of child, so the heading is the container's name where
+  there is one and reads the same way where there is not.
+- **Absence sorts last in both directions.** §17 fixes that an undefined `pace` "sorts last", and
+  `--sort pace --reverse` asks for the worst pace first, not for a column of dashes. So presence is
+  settled before direction, and `--reverse` flips only the order of the values that exist. Likewise
+  `--reverse` flips *within* a per-kind group and leaves the grouping alone, since where the fallback
+  group goes is the one thing §17 says about it.
+- **`--json` carries UTC and `--local` does not reach it.** §16.2.1 makes terminal output negotiable
+  "because nothing compares it and nothing commits it"; JSON is the one output shape that is neither,
+  because it is read by a program, which wants the instant. The day counts beside each timestamp are
+  the part that was ever about a wall clock, and they are carried as numbers.
+- **`due` is never converted by `--local`.** It is a date somebody chose rather than an instant
+  something happened at (§15.1, and Phase 8's store-as-typed decision), so rendering it in another
+  zone would move a deadline nobody moved.
+- **`show` names the threshold key in full** — `stale (project.stale-after 14, from …)` where §16.1
+  writes `stale-after 14`. §20 makes the point that a skill reads `review.cadence` and an entity reads
+  `<kind>.stale-after`, and a line that says which knob fired is the line that makes §7's chain
+  visible. The value prints in the spelling a `config set` would take, not to a fixed precision.
+- **A `list` scope naming nothing is an error, not an empty list.** An empty list reads as "you have
+  none of those", which is a different and wrong answer to a mistyped locator.
+
+### Carry-forward obligations from Phase 10
+
+- **Phase 11 inherits `view.Env.Stale`**, which resolves through `config.StaleKey` and returns the
+  threshold *with* the level that supplied it — so no review group re-derives either.
+- **Phase 12's `doctor` owes the findings these reads step around.** `view` treats unreadable truth —
+  a `created` that will not parse, a `start` outside its type's grammar, a status outside its kind's
+  vocabulary — as absent rather than as a failure, on the grounds that it is `invalid` for `doctor` to
+  report (§10) and not a reason a read fails. Nothing reports it yet.
+- **Phase 14's scale check has a target here**: a `list` opens each entity's journal once for §3.6's
+  clock and a key-result's twice more for §4's two ends, and nothing else opens one except `--match`,
+  which §17 names as the exception.
+
 ### Decisions taken before the phase started
 
 §16, §17, and §23 leave four things open that every read command depends on. Settled up front so no

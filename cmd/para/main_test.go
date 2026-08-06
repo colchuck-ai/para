@@ -23,11 +23,12 @@ func TestMain(m *testing.M) {
 // testscript condition, flipped on as each phase lands, per the
 // implementation plan's ground rules (§0.1).
 var implementedPhases = map[int]bool{
-	0: true,
-	4: true,
-	7: true,
-	8: true,
-	9: true,
+	0:  true,
+	4:  true,
+	7:  true,
+	8:  true,
+	9:  true,
+	10: true,
 }
 
 const phaseConditionPrefix = "para:phase"
