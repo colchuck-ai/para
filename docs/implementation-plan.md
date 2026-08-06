@@ -591,7 +591,15 @@ test, and the no-op rule is proven to write zero bytes.
 
 ## Phase 9 — Relocation: move, remove, archive, unarchive
 
-The phase with the most cross-cutting rules.
+**Status: done** (branch `impl`). The phase with the most cross-cutting rules, and it changed the
+design in one place: §1.6's "unarchiving cascades upward" refused the cascade rather than performing
+it. See the decision note below.
+
+`writeset` gains the second parent Phase 8 owed it (`Parents []Subject`) and a `Relocate` call for the
+byte-moving phase — renames, stub directories, recursive deletes. `tree` gains `Subtree`, `Children`,
+`Entries`, `Skills`, `IsStub`, and `DirExists`: the questions a relocation asks and nothing else does.
+`mutate` gains a plan/apply split for all four verbs, so `--dry-run` reports the same value an apply
+would rather than re-deriving its own answer.
 
 **Tasks**
 
@@ -601,8 +609,8 @@ The phase with the most cross-cutting rules.
    rewritten and the derived rules re-rendered. Table-test the subtree case explicitly.
 3. `archive`: the whole subtree in one move; stubs created for live ancestors left behind (§1.6,
    §18.5).
-4. `unarchive`: cascades upward and refuses a child whose parent is archived, naming the parent;
-   refuses an id colliding with a live sibling, naming it.
+4. `unarchive`: cascades upward, reinstating the archived ancestor chain and adopting any ancestor
+   already live; refuses an id colliding with a live sibling, naming it.
 5. `remove`: interactive confirmation naming the blast radius, `--force`, `--dry-run`; and
    `--keep-files` deleting every `.para/`, `ACTIVITY.md`, and `MEASUREMENTS.csv` **and stripping the
    frontmatter block from every `README.md` while keeping the body** (§18.4).
@@ -611,6 +619,56 @@ The phase with the most cross-cutting rules.
 **Done when** every §26 archive/unarchive refusal matches, the stub lifecycle is tested in both
 directions (stub → entity when the parent is archived; entity → stub when a child is unarchived), and
 `--keep-files` is proven to leave human README bodies intact.
+
+### Six decisions worth recording
+
+- **§1.6's unarchive rule was self-contradictory, and the heading won.** Its heading said
+  "Unarchiving cascades upward" and its body then *refused* the cascade — "you cannot unarchive a child
+  whose parent is archived; para refuses and names the parent" — which makes the heading a lie and
+  leaves nothing cascading. §1.6 and §18.5 now say what the heading did: `unarchive` reinstates every
+  archived ancestor it needs as a live entity, adopts any ancestor already live, and leaves a stub
+  wherever an archived sibling stays put. That makes the two verbs exact mirrors — each drags what
+  belongs to the thing you named, each leaves a stub on the other side — and it is what makes this
+  phase's "entity → stub when a child is unarchived" reachable at all. §26's refusal example is
+  replaced by the successful cascade.
+- **An id collision refuses for the entity you named and adopts for an ancestor.** §1.6's hard error
+  stands for the thing being unarchived. An ancestor is ancestry, and a live `areas/health` already
+  existing is precisely the condition under which nothing needs reinstating — refusing there would
+  refuse the ordinary case where the live parent never left.
+- **A relocation re-renders every descendant's `README.md`, and only that.** §2.3 forbids a field
+  mutation from walking a subtree; §19 says these four verbs are the ones that "touch more than one
+  entity's worth of bytes", and §18.3 requires a move to rewrite README frontmatter. On a same-kind
+  move the locator is the only thing in that frontmatter that *can* have changed, so §18.3's clause is
+  only meaningful if the locator is there — and a descendant left carrying a locator resolving to
+  nothing is the same defect one level down. No other projection names a locator, so the walk costs one
+  file per descendant and no journal reads.
+- **Scope rewriting logs a `change` event on each skill it touches.** §18.3 enumerates the moved
+  entity and its two parents, but §5.4 makes para own the rename of every enumerated locator, and a
+  skill's stored `scope` genuinely changed. Without the event the skill's scope would differ from what
+  its own history says was last set, with nothing anywhere to say why.
+- **`Relocate` is a call of its own, not a fifth field of `writeset.Mutation`.** Everything `Apply`
+  writes is *read* from the post-relocation tree: a README body, ACTIVITY.md's prior days, and the
+  chain of `config.toml` files deciding a rotation threshold all live at the new path. That ordering is
+  also the safe one — the rename is the truth change (a locator is a path), and the journal line is the
+  record of it, so a crash between them leaves a stale projection rather than a record of a move that
+  never happened.
+- **A cross-device rename is refused rather than emulated.** §18.3 says "one `rename(2)` where
+  possible"; a copy-and-delete fallback would have to reproduce modes, times, and hard links to be a
+  move rather than an approximation of one. A tree spanning two filesystems is moved by hand, then
+  `para rebuild`.
+
+### Carry-forward obligations from Phase 9
+
+- **`doctor` (Phase 12) owes `scope-unresolved`.** `remove` deliberately does not rewrite a `scope`
+  entry naming what it deleted: §5.4 makes para own the rename, and there is no locator to rewrite to.
+  The entry naming nothing is the finding, and until Phase 12 lands nothing reports it.
+- **`remove` of a skill leaves `CLAUDE.md`'s import list stale**, exactly as `add skills.x` does. This
+  is the same §6.1 divergence Phase 8 recorded and Phase 13 owes; the two ends are now symmetric, which
+  is the most that can be said for it before Phase 13.
+- **Phase 10's `list` and `show` inherit stubs as a shape they must not mistake for an entity.**
+  `tree.IsStub` answers the narrow question (a directory with no truth behind it); `tree.Walk`'s `Stub`
+  flag answers the walk's harder one (a placeholder versus content that merely sits at a legal
+  position). A read command wants the second.
 
 ---
 

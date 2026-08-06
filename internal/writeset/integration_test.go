@@ -62,10 +62,10 @@ func TestRenderThenApplyIsTheWholeWritePath(t *testing.T) {
 			State:       state,
 			Projections: projections,
 		}},
-		Parent: &writeset.Subject{
+		Parents: []writeset.Subject{{
 			Dir:    filepath.Join(root, "projects"),
 			Events: []journal.Event{journal.NewChild(at(t, "2026-03-05T09:00:00"), journal.ChildOpAdded, "acme-migration", "", "", "")},
-		},
+		}},
 	}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}

@@ -1,5 +1,5 @@
 // Package mutate implements the verbs that write (design §18): add, set,
-// unset, note, and measure, with move, remove, archive, and unarchive to come.
+// unset, note, measure, move, remove, archive, and unarchive.
 //
 // Every one of them is the same shape, and this file is that shape: validate
 // against the §15 field matrix, decide what actually changed, build the
@@ -21,7 +21,11 @@
 //   - **Nothing walks a subtree and nothing walks to root** (§2.3). A mutation
 //     reaches exactly its subject's files, plus the parent's journal and
 //     ACTIVITY.md when containment changed. `add` reaches one further, to the
-//     eager child container §18.1 requires, and that is the whole exception.
+//     eager child container §18.1 requires. The four relocating verbs are the
+//     other exception, and §19 names them as such — "the operations that touch
+//     more than one entity's worth of bytes" — but even they stay narrow: a
+//     descendant of a moved entity gets its README.md re-rendered and nothing
+//     else, because that is the only projection carrying a locator.
 //
 //   - **ACTIVITY.md takes the cheap incremental write only where it is
 //     provably equivalent to the full one** — see plan.fullActivity.
@@ -213,8 +217,8 @@ type plan struct {
 	onlyProjections []render.Renderer
 }
 
-// apply renders and writes one mutation: subjects first, the parent last.
-func apply(env *Env, subjects []*plan, parent *plan) ([]string, error) {
+// apply renders and writes one mutation: subjects first, the parents last.
+func apply(env *Env, subjects []*plan, parents []*plan) ([]string, error) {
 	var m writeset.Mutation
 	for _, p := range subjects {
 		built, err := p.build()
@@ -223,12 +227,18 @@ func apply(env *Env, subjects []*plan, parent *plan) ([]string, error) {
 		}
 		m.Subjects = append(m.Subjects, built)
 	}
-	if parent != nil {
-		built, err := parent.build()
+	for _, p := range parents {
+		built, err := p.build()
 		if err != nil {
 			return nil, err
 		}
-		m.Parent = &built
+		m.Parents = append(m.Parents, built)
+	}
+	if len(m.Subjects) == 0 && len(m.Parents) == 0 {
+		// A relocation can genuinely write nothing beyond the rename: a skill
+		// has no parent journal (§1.4), so `move skills.a skills.b` whose
+		// rendered files all match byte for byte leaves nothing for Apply to do.
+		return nil, nil
 	}
 
 	ops, err := writeset.Apply(m)
@@ -236,21 +246,30 @@ func apply(env *Env, subjects []*plan, parent *plan) ([]string, error) {
 }
 
 // wrote converts the write record into the root-relative paths §23 prints,
-// dropping the directory creations: a directory is not a file anyone wrote,
-// and git does not carry an empty one anyway.
+// keeping only the operations that put bytes in a file. A directory creation is
+// not a file anyone wrote, and git does not carry an empty one anyway; a rename
+// and a delete are not writes either, and the relocating verbs report them in
+// their own summary lines instead (§26), where a destination and a blast radius
+// can be named.
 func (e *Env) wrote(ops writeset.Ops) []string {
 	var out []string
 	for _, op := range ops {
-		if op.Kind == writeset.OpMkdir {
+		if op.Kind != writeset.OpAppend && op.Kind != writeset.OpWrite {
 			continue
 		}
-		rel, err := filepath.Rel(e.Root, op.Path)
-		if err != nil {
-			rel = op.Path
-		}
-		out = append(out, filepath.ToSlash(rel))
+		out = append(out, e.rel(op.Path))
 	}
 	return out
+}
+
+// rel is an absolute path as §23 prints it: relative to the tree root, with
+// forward slashes on every platform.
+func (e *Env) rel(path string) string {
+	r, err := filepath.Rel(e.Root, path)
+	if err != nil {
+		return path
+	}
+	return filepath.ToSlash(r)
 }
 
 // build turns a plan into the file set writeset applies.
@@ -467,12 +486,44 @@ func listRules(root string) ([]string, error) {
 // which is shared with content para does not own and has no journal — so there
 // is no parent whose set of children changed (§1.4, §3.3).
 func (e *Env) parentPlan(loc locator.Locator, events []journal.Event) (*plan, error) {
-	if len(loc) < 2 || loc.Bucket() == "skills" {
+	if len(loc) < 2 {
 		return nil, nil
 	}
-	parent, err := e.open(loc[:len(loc)-1])
+	return e.parentPlanAt(loc[:len(loc)-1], events)
+}
+
+// parentPlanAt is parentPlan addressed by the parent rather than by the child,
+// which is the shape a relocation needs: its two ends are two parents, and one of
+// them may not be able to hold an event at all.
+//
+// Three cases return no plan, and each is a place where there is no journal
+// rather than a place para chose not to write one:
+//
+//   - a skill's parent, which is .agents/skills/ — a directory shared with
+//     content para does not own, holding no .para/ (§1.4, §3.3);
+//   - an archive stub, which is a bare directory by definition (§1.6);
+//   - a parent that is not there at all, which `remove` can produce: deleting
+//     the last thing beneath a stub takes the stub with it.
+func (e *Env) parentPlanAt(parent locator.Locator, events []journal.Event) (*plan, error) {
+	if len(parent) == 0 || parent.Bucket() == "skills" {
+		return nil, nil
+	}
+	exists, err := tree.Exists(e.Root, parent)
+	if err != nil || !exists {
+		return nil, err
+	}
+	subj, err := e.open(parent)
 	if err != nil {
 		return nil, err
 	}
-	return &plan{subj: parent, events: events, onlyProjections: []render.Renderer{render.Activity}}, nil
+	return &plan{subj: subj, events: events, onlyProjections: []render.Renderer{render.Activity}}, nil
+}
+
+// parents wraps the single optional parent the non-relocating verbs have, since
+// only a relocation ever has two (§18.3).
+func parents(p *plan) []*plan {
+	if p == nil {
+		return nil
+	}
+	return []*plan{p}
 }

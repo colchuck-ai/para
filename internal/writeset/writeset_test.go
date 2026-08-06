@@ -43,11 +43,11 @@ func TestApplyWritesTruthBeforeProjections(t *testing.T) {
 				{Path: filepath.Join(entity, "ACTIVITY.md"), Bytes: []byte("activity\n")},
 			},
 		}},
-		Parent: &writeset.Subject{
+		Parents: []writeset.Subject{{
 			Dir:         parent,
 			Events:      []journal.Event{journal.NewChild(at(t, "2026-03-05T09:00:00"), journal.ChildOpAdded, "health", "", "", "")},
 			Projections: []writeset.File{{Path: filepath.Join(parent, "ACTIVITY.md"), Bytes: []byte("parent activity\n")}},
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
@@ -433,11 +433,11 @@ func TestApplyRotatesEachSubjectOnItsOwnThreshold(t *testing.T) {
 				Events:      []journal.Event{journal.NewNote(when, "eager")},
 				RotateBytes: 1, // every event past the first opens a new file
 			}},
-			Parent: &writeset.Subject{
+			Parents: []writeset.Subject{{
 				Dir:    patient,
 				Events: []journal.Event{journal.NewChild(when, journal.ChildOpAdded, "acme", "", "", "")},
 				// No threshold: journal.DefaultRotateBytes, 4 MiB.
-			},
+			}},
 		}); err != nil {
 			t.Fatalf("Apply: %v", err)
 		}

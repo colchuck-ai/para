@@ -81,7 +81,7 @@ func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
 		return Result{}, err
 	}
 
-	wrote, err := apply(e, plans, parent)
+	wrote, err := apply(e, plans, parents(parent))
 	return Result{Locator: loc, Kind: info.Kind, Wrote: wrote}, err
 }
 

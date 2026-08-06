@@ -230,14 +230,24 @@ Archiving **moves bytes**. `projects/acme` becomes `archive/projects/acme`, and 
   and listed, and a skill's `scope` may name them.
 - **Archiving drags the whole subtree.** Archiving an area takes its sub-areas and its content with
   it, in one move. There is no partial state.
-- **Unarchiving cascades upward.** You cannot unarchive a child whose parent is archived; para
-  refuses and names the parent. Unarchive the parent and the child comes with it.
-- **Id collision on unarchive is a hard error.** If a live sibling has taken the id, para refuses and
-  names it; you rename the sibling or unarchive nothing.
+- **Unarchiving cascades upward**, which is the exact mirror of the sentence above. Unarchiving
+  something reinstates every archived ancestor it needs as a live entity and brings its own subtree
+  with it, in one operation. An ancestor that is already live is adopted rather than duplicated.
+  Archived siblings stay archived, and the reinstated ancestor's archive directory is left behind as a
+  stub to record *their* ancestry — the same stub archive leaves for a live ancestor that stays put.
+  So the two verbs are symmetric: each drags what belongs to the thing you named, and each leaves a
+  stub for whatever stays on the other side.
+- **Id collision on unarchive is a hard error — for the thing you named.** If a live sibling has taken
+  its id, para refuses and names it; you rename the sibling or unarchive nothing. An **ancestor** whose
+  id is taken gets the other answer: the live one is adopted as the parent. An ancestor is ancestry
+  rather than the thing being unarchived, and `areas/health` existing is precisely the condition under
+  which nothing needs reinstating — refusing there would refuse the ordinary case where a live parent
+  never left.
 - **Stubs preserve ancestry.** Archive a sub-area whose parent stays live and para creates
   `archive/areas/<parent>/` as a bare directory — no `README.md`, no `.para/` — purely to record
-  where the thing came from. Stubs are the one place a locator segment has no entity behind it.
-  `doctor` must recognise them and never report them as malformed.
+  where the thing came from. Unarchive the last thing beneath such a stub and it is removed, because a
+  stub that records nothing records nothing. Stubs are the one place a locator segment has no entity
+  behind it. `doctor` must recognise them and never report them as malformed.
 - **Areas and resources have no status field.** Location *is* archival state: in `areas/` it is
   active, in `archive/areas/` it is archived. This deletes v2's `active | archived` enum outright —
   a second copy of the answer, which principle 1 forbids.
@@ -1534,9 +1544,13 @@ Exactly the semantics of §1.6, and the verbs exist to make them unmistakable:
 
 - `archive` takes the **whole subtree** in one move, creating stubs for any live ancestors that stay
   behind.
-- `unarchive` **cascades upward**: unarchiving a child whose parent is archived is refused, naming the
-  parent.
-- An id colliding with a live sibling on unarchive is refused, naming the sibling.
+- `unarchive` **cascades upward**: it reinstates every archived ancestor the thing needs, adopts any
+  ancestor that is already live, and leaves a stub behind wherever an archived sibling stays put.
+  Each reinstated ancestor is an entity that moved, so each gets its own `field = "locator"` change
+  and each container whose child set changed logs at both ends — which falls out of §3.3 rather than
+  needing a rule of its own.
+- An id colliding with a live sibling on unarchive is refused, naming the sibling — for the entity
+  named, not for a reinstated ancestor (§1.6).
 - Both rewrite `scope` entries, both log `child` events at the old and new parents plus a
   `field = "locator"` change on the entity, and both take `--dry-run`.
 - Neither touches a single field. Status says how something ended; the archive says where it lives
@@ -1893,7 +1907,9 @@ archived  areas.health → archive.areas.health   (3 descendants moved with it)
           stub archive/areas/health/ became the entity
 
 $ para unarchive archive.areas.health.training
-error: parent archive.areas.health is archived; unarchive it first
+unarchived  archive.areas.health.training → areas.health.training
+            reinstated areas.health
+            archive/areas/health/ became a stub
 
 $ para unarchive archive.projects.old-migration
 error: projects.old-migration exists; rename it or leave this archived

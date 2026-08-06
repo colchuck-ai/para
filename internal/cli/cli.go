@@ -53,5 +53,9 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newUnsetCmd())
 	root.AddCommand(newNoteCmd())
 	root.AddCommand(newMeasureCmd())
+	root.AddCommand(newMoveCmd())
+	root.AddCommand(newArchiveCmd())
+	root.AddCommand(newUnarchiveCmd())
+	root.AddCommand(newRemoveCmd())
 	return root
 }

@@ -7,8 +7,12 @@
 // plus rebuild (§2.4, §19). So the ordering is chosen to make that the only
 // state a crash can produce:
 //
-//	journal append → state.toml → config.toml → projections → the parent's
-//	journal and ACTIVITY.md, last, and only when containment changed (§3.3)
+//	journal append → state.toml → config.toml → projections → the parents'
+//	journals and ACTIVITY.md, last, and only when containment changed (§3.3)
+//
+// A relocating verb runs one phase ahead of that, through Relocate: the renames
+// and deletions that move the bytes (§18.3–§18.5). See Relocation for why that
+// is a separate call rather than a fifth field of Mutation.
 //
 // A mutation may have more than one subject — `add` creates a project and its
 // `objectives/` container in one operation (§18.1) — and the phases above are
@@ -104,12 +108,131 @@ type Mutation struct {
 	// directories at once.
 	Subjects []Subject
 
-	// Parent is written last, and only when containment changed (§2.3, §3.3):
-	// a note or a field change on a child touches nothing at the parent. It is
-	// a Subject because it is one — the fields it leaves empty are the point.
-	// A parent's README frontmatter never changes, because its stored fields
-	// say nothing about its children; the child list is `ls` (§8.2).
-	Parent *Subject
+	// Parents are written last, and only when containment changed (§2.3, §3.3):
+	// a note or a field change on a child touches nothing at the parent. Each
+	// is a Subject because it is one — the fields it leaves empty are the
+	// point. A parent's README frontmatter never changes, because its stored
+	// fields say nothing about its children; the child list is `ls` (§8.2).
+	//
+	// There is normally one. A relocation has two — §18.3 logs `child moved` at
+	// the old parent and the new one — and a rename inside one parent has one
+	// again, because the two ends are the same journal and one event is what
+	// happened.
+	Parents []Subject
+}
+
+// Relocation is the byte-moving phase of `move`, `archive`, `unarchive`, and
+// `remove`: the directories a stub chain needs, the renames themselves, and the
+// paths a removal deletes (§18.3–§18.5).
+//
+// It is deliberately not a phase of Mutation, and the reason is that everything
+// Apply writes is *read* from the post-relocation tree — an entity's README body,
+// its ACTIVITY.md's prior days, and the chain of config.toml files that decides
+// its rotation threshold all live at the new path once the rename has happened.
+// So a relocating verb calls Relocate first and builds its write set against the
+// tree that results.
+//
+// That ordering is also the safe one. The rename *is* the mutation: a locator is
+// a path (§1.4), so moving the bytes is the truth change, and the journal line is
+// the record of it. A crash after the rename loses the record of a move that
+// happened, which leaves correct truth and a stale projection — the one degraded
+// state the design defines a repair for (§2.4). A crash after the journal append
+// but before the rename would leave a record of a move that did not happen, and
+// `rebuild` would faithfully re-derive an ACTIVITY.md claiming it.
+type Relocation struct {
+	// Dirs are directories to create before any rename, as OS paths. These are
+	// §1.6's archive stubs: bare ancestry placeholders with no .para/ and no
+	// README.md, which exist so an archived entity records where it came from.
+	Dirs []string
+
+	// Moves are the renames, in order. Ordering matters when a chain is being
+	// reinstated: an ancestor's own files move before the child beneath it, so
+	// no intermediate state has an archived entity sitting at a live path.
+	Moves []Move
+
+	// Prunes are paths deleted recursively, after the moves. `remove` deletes
+	// the subtree or para's footprint within it (§18.4); `unarchive` deletes a
+	// stub left recording nothing (§1.6).
+	Prunes []string
+}
+
+// Move is one rename: an existing path, and a path that must not exist. Refusing
+// an occupied destination rather than letting rename(2) decide is what keeps the
+// stub merge honest — os.Rename would silently succeed onto an empty directory
+// and fail onto a non-empty one, so the caller, which knows whether it meant to
+// adopt a stub, is the one that has to have decided.
+type Move struct {
+	From string
+	To   string
+}
+
+// Empty reports whether r would touch nothing.
+func (r Relocation) Empty() bool {
+	return len(r.Dirs) == 0 && len(r.Moves) == 0 && len(r.Prunes) == 0
+}
+
+// Relocate performs r and reports what it did, stopping at the first failure and
+// returning the operations already completed — exactly the ones a crash at that
+// point would have left behind.
+func Relocate(r Relocation) (Ops, error) {
+	var ops Ops
+
+	for _, dir := range r.Dirs {
+		if isDir(dir) {
+			// Already there: an ancestor's archive directory that another
+			// archive created earlier, or a bucket `init` made. Creating it
+			// again is not an operation anyone performed.
+			continue
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", dir))
+		}
+		ops = append(ops, Op{Kind: OpMkdir, Path: dir})
+	}
+
+	for _, m := range r.Moves {
+		if m.From == "" || m.To == "" {
+			return ops, paraerr.New(paraerr.KindInternal, "writeset: move with an empty path")
+		}
+		if _, err := os.Lstat(m.To); err == nil {
+			return ops, paraerr.Newf(paraerr.KindConflict, "writeset: %s already exists", m.To)
+		} else if !os.IsNotExist(err) {
+			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: checking %s", m.To))
+		}
+		if err := os.MkdirAll(filepath.Dir(m.To), 0o755); err != nil {
+			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", filepath.Dir(m.To)))
+		}
+		if err := os.Rename(m.From, m.To); err != nil {
+			// A cross-device rename is the one failure worth naming, because
+			// the repair is not para's: a tree with a submount inside it cannot
+			// be relocated with rename(2), and copying instead would have to
+			// reproduce modes, times, and hard links to be a move rather than an
+			// approximation of one.
+			return ops, paraerr.Wrap(paraerr.KindInternal, err,
+				fmt.Sprintf("writeset: renaming %s to %s (a tree spanning two filesystems must be moved by hand, then `para rebuild`)", m.From, m.To))
+		}
+		ops = append(ops, Op{Kind: OpMove, From: m.From, Path: m.To})
+	}
+
+	for _, path := range r.Prunes {
+		if _, err := os.Lstat(path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: checking %s", path))
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: removing %s", path))
+		}
+		ops = append(ops, Op{Kind: OpPrune, Path: path})
+	}
+
+	return ops, nil
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // OpKind distinguishes the ways Apply touches the filesystem.
@@ -122,6 +245,10 @@ const (
 	OpWrite
 	// OpMkdir is the creation of a directory that stays empty.
 	OpMkdir
+	// OpMove is a rename (§18.3).
+	OpMove
+	// OpPrune is a recursive delete (§18.4).
+	OpPrune
 )
 
 func (k OpKind) String() string {
@@ -130,15 +257,21 @@ func (k OpKind) String() string {
 		return "append"
 	case OpMkdir:
 		return "mkdir"
+	case OpMove:
+		return "move"
+	case OpPrune:
+		return "prune"
 	default:
 		return "write"
 	}
 }
 
-// Op is one filesystem operation Apply performed.
+// Op is one filesystem operation Apply or Relocate performed.
 type Op struct {
 	Kind OpKind
 	Path string
+	// From is the path an OpMove came from, and empty for every other kind.
+	From string
 }
 
 // Ops is the ordered record of a mutation's filesystem operations — the
@@ -163,7 +296,7 @@ func (o Ops) Paths() []string {
 // call rather than a mkdir pass followed by a write pass: the write set is the
 // definition of which directories exist.
 func Apply(m Mutation) (Ops, error) {
-	if len(m.Subjects) == 0 && m.Parent == nil {
+	if len(m.Subjects) == 0 && len(m.Parents) == 0 {
 		return nil, paraerr.New(paraerr.KindInternal, "writeset: mutation has no subject")
 	}
 	for _, s := range m.Subjects {
@@ -195,14 +328,14 @@ func Apply(m Mutation) (Ops, error) {
 		}
 	}
 
-	// 3. The parent, last, and only when containment changed.
-	if m.Parent != nil {
-		written, err := writeTruth(*m.Parent)
+	// 3. The parents, last, and only when containment changed.
+	for _, p := range m.Parents {
+		written, err := writeTruth(p)
 		ops = append(ops, written...)
 		if err != nil {
 			return ops, err
 		}
-		written, err = writeFiles(m.Parent.Projections)
+		written, err = writeFiles(p.Projections)
 		ops = append(ops, written...)
 		if err != nil {
 			return ops, err

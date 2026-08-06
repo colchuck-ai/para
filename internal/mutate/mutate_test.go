@@ -46,7 +46,14 @@ func plantTree(t *testing.T) string {
 		"areas/ACTIVITY.md":          "# Activity\n\n## 2026-01-01\n- Created.\n",
 		"resources/.para/state.toml": "name = \"Resources\"\ncreated = \"2026-01-01T00:00:00Z\"\n",
 		"archive/.para/state.toml":   "name = \"Archive\"\ncreated = \"2026-01-01T00:00:00Z\"\n",
-		".agents/skills/.keep":       "",
+		// The archive's own bucket containers. §6 emits AGENTS.md at
+		// archive/{projects,areas,resources}, so they are containers a real tree
+		// has, and a relocation logging a child event at one has to find a
+		// journal there rather than take them for stubs (§1.6).
+		"archive/projects/.para/state.toml":  "name = \"Archived projects\"\ncreated = \"2026-01-01T00:00:00Z\"\n",
+		"archive/areas/.para/state.toml":     "name = \"Archived areas\"\ncreated = \"2026-01-01T00:00:00Z\"\n",
+		"archive/resources/.para/state.toml": "name = \"Archived resources\"\ncreated = \"2026-01-01T00:00:00Z\"\n",
+		".agents/skills/.keep":               "",
 	}
 	writeFiles(t, root, files)
 	return root

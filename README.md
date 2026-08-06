@@ -33,7 +33,7 @@ Under active development, phase by phase, against
 ## Development
 
 ```sh
-make test    # go test ./... -race -count=1
+make test    # go test ./... -race -count=1 -tags para_testhooks
 make lint    # go vet, gofumpt, golangci-lint
 make build   # bin/para
 make install # go install ./cmd/para

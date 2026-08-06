@@ -1,0 +1,436 @@
+# §26's `para move` and `para archive` / `unarchive` blocks, plus `para remove`,
+# which §26 never shows — §18.4 and §19 are its whole specification.
+#
+# The tree is planted by this script rather than by `para init`, whose full file
+# set is a later phase's job (§0.1). Most entities are planted with truth alone:
+# a projection para has not written yet is a projection para writes on the first
+# mutation that touches it, which is the same thing a fresh clone of a
+# hand-planted tree gets.
+#
+# One departure from §26, resolved the way Phase 7 and Phase 8 resolved it: §26's
+# examples show only the summary lines, while §23 says mutations print what they
+# wrote, one line per file. The prose wins; the examples are showing the part they
+# are about.
+
+env PARA_NOW=2026-03-05T17:00:00Z
+env PARA_TZ=America/Los_Angeles
+[para:phase9] cd brain
+
+# --- §26's `para move` block ------------------------------------------------
+
+# One rename, plus the projection work a hand-`mv` cannot do (§18.3).
+[para:phase9] exec para move areas.health.training areas.fitness.training
+[para:phase9] cmp stdout $WORK/want-move.txt
+[para:phase9] ! exists areas/health/training
+[para:phase9] exists areas/fitness/training/tempo/.para/state.toml
+
+# Every relocated locator is rewritten, the entity's and its descendants' alike:
+# README frontmatter is the only projection that names one.
+[para:phase9] grep '^locator: "areas.fitness.training"$' areas/fitness/training/README.md
+[para:phase9] grep '^locator: "areas.fitness.training.tempo"$' areas/fitness/training/tempo/README.md
+
+# The entity's own history keeps the move visible — the one place a derived value
+# enters a journal (§18.3).
+[para:phase9] grep '"kind":"change","field":"locator","from":"areas.health.training","to":"areas.fitness.training"' areas/fitness/training/.para/logs/20260305T170000Z.jsonl
+
+# Both parents log, because each has a different set of children (§3.3).
+[para:phase9] grep '"op":"moved","child":"training"' areas/health/.para/logs/20260305T170000Z.jsonl
+[para:phase9] grep '"op":"moved","child":"training"' areas/fitness/.para/logs/20260305T170000Z.jsonl
+
+# A descendant's own fields did not change, so it gets no event (§3.2).
+[para:phase9] ! exists areas/fitness/training/tempo/.para/logs/20260305T170000Z.jsonl
+
+# The scope entry moved with it, and so did the sentence in the derived rule (§5.4).
+[para:phase9] grep 'areas.fitness.training' .agents/skills/para-training-plan/.para/state.toml
+[para:phase9] grep 'When working under `areas/fitness/training/`' .agents/rules/para-training-plan.md
+[para:phase9] grep '"kind":"change","field":"scope"' .agents/skills/para-training-plan/.para/logs/20260305T170000Z.jsonl
+
+# §26's refusal, verbatim.
+[para:phase9] ! exec para move projects.acme-migration areas.acme-migration
+[para:phase9] stderr '^error: kind would change \(project → area\); create the target and move your content$'
+
+# The archive boundary is two verbs of its own, in both directions (§18.3).
+[para:phase9] ! exec para move projects.acme-migration archive.projects.acme-migration
+[para:phase9] stderr 'that is `para archive`, not `para move`'
+[para:phase9] ! exec para move archive.projects.old-migration projects.brought-back
+[para:phase9] stderr 'that is `para unarchive`, not `para move`'
+
+# A container is part of its parent's shape (§18.1), not a thing you relocate.
+[para:phase9] ! exec para move projects.acme-migration.objectives areas.objectives-of-acme
+[para:phase9] stderr 'is a container'
+
+# --dry-run rehearses and writes nothing (§19).
+[para:phase9] exec para move areas.fitness.training areas.health.training --dry-run
+[para:phase9] cmp stdout $WORK/want-move-dry-run.txt
+[para:phase9] exists areas/fitness/training/.para/state.toml
+
+# Put it back, which is also the move whose old and new parent are one journal.
+[para:phase9] exec para move areas.fitness.training areas.health.training
+[para:phase9] grep 'When working under `areas/health/training/`' .agents/rules/para-training-plan.md
+
+# --- §26's `para archive` / `unarchive` block --------------------------------
+
+# A leaf first, so §26's own worked sequence reads exactly as written.
+[para:phase9] exec para remove areas.health.training.tempo --force
+[para:phase9] ! exists areas/health/training/tempo
+
+[para:phase9] exec para archive areas.health.training
+[para:phase9] cmp stdout $WORK/want-archive-training.txt
+
+# A stub is a bare directory: no README.md, no .para/, purely ancestry (§1.6).
+[para:phase9] exists archive/areas/health
+[para:phase9] ! exists archive/areas/health/.para
+[para:phase9] ! exists archive/areas/health/README.md
+[para:phase9] exists archive/areas/health/training/.para/state.toml
+[para:phase9] exists areas/health/.para/state.toml
+[para:phase9] grep '^locator: "archive.areas.health.training"$' archive/areas/health/training/README.md
+
+# The live parent logs; the new parent is a stub and has no journal to log in.
+[para:phase9] grep '"op":"archived","child":"training"' areas/health/.para/logs/20260305T170000Z.jsonl
+
+[para:phase9] ! exec para unarchive archive.areas.health
+[para:phase9] stderr '^error: nothing to unarchive — archive.areas.health is a stub, not an entity$'
+
+# Archiving the parent turns that stub into the entity, and drags the rest.
+[para:phase9] exec para archive areas.health
+[para:phase9] cmp stdout $WORK/want-archive-health.txt
+[para:phase9] ! exists areas/health
+[para:phase9] exists archive/areas/health/.para/state.toml
+[para:phase9] exists archive/areas/health/training/.para/state.toml
+[para:phase9] exists archive/areas/health/nutrition/macros/.para/state.toml
+[para:phase9] grep '^locator: "archive.areas.health.nutrition.macros"$' archive/areas/health/nutrition/macros/README.md
+
+# Unarchiving cascades upward: the ancestor comes back as a live entity, and the
+# archive keeps a stub for the sibling that stayed (§1.6).
+[para:phase9] exec para unarchive archive.areas.health.training
+[para:phase9] cmp stdout $WORK/want-unarchive.txt
+[para:phase9] exists areas/health/.para/state.toml
+[para:phase9] exists areas/health/training/.para/state.toml
+[para:phase9] exists archive/areas/health
+[para:phase9] ! exists archive/areas/health/.para
+[para:phase9] exists archive/areas/health/nutrition/.para/state.toml
+[para:phase9] exists archive/areas/health/sleep/.para/state.toml
+
+# Both entities that moved say so, and each container whose child set changed
+# logs at both ends (§3.3, §18.5).
+[para:phase9] grep '"field":"locator","from":"archive.areas.health","to":"areas.health"' areas/health/.para/logs/20260305T170000Z.jsonl
+[para:phase9] grep '"field":"locator","from":"archive.areas.health.training","to":"areas.health.training"' areas/health/training/.para/logs/20260305T170000Z.jsonl
+[para:phase9] grep '"op":"unarchived","child":"health"' areas/.para/logs/20260305T170000Z.jsonl
+[para:phase9] grep '"op":"unarchived","child":"health"' archive/areas/.para/logs/20260305T170000Z.jsonl
+
+# A still-archived sibling's scope entry did not move, because the sibling did
+# not: the reinstated ancestor carried no subtree (§1.6, §5.4).
+[para:phase9] grep '"archive.areas.health.nutrition"' .agents/skills/para-sleep-hygiene/.para/state.toml
+
+[para:phase9] ! exec para unarchive archive.projects.old-migration
+[para:phase9] stderr '^error: projects.old-migration exists; rename it or leave this archived$'
+
+# Unarchiving the last thing beneath a stub takes the stub with it: a stub that
+# records nothing records nothing (§1.6).
+[para:phase9] exec para archive areas.fitness.spin
+[para:phase9] exists archive/areas/fitness/spin/.para/state.toml
+[para:phase9] exec para unarchive archive.areas.fitness.spin
+[para:phase9] stdout '^            removed stub archive/areas/fitness/$'
+[para:phase9] ! exists archive/areas/fitness
+
+# Skills have no status, no off switch, and no archiving verb (§1.7).
+[para:phase9] ! exec para archive skills.training-plan
+[para:phase9] stderr 'a skill cannot be archived'
+[para:phase9] ! exec para archive archive.areas.health
+[para:phase9] stderr 'is already archived'
+
+# --- `para remove` (§18.4, §19) ---------------------------------------------
+
+# It confirms first, naming the blast radius, and anything but yes declines.
+[para:phase9] stdin $WORK/decline.txt
+[para:phase9] ! exec para remove projects.acme-migration
+[para:phase9] stdout '^remove  projects.acme-migration  project   \(1 descendant\)\n'
+[para:phase9] stdout '^        deletes projects/acme-migration/ and everything beneath it\n'
+[para:phase9] stdout 'continue\? \[y/N\] '
+[para:phase9] stderr '^error: aborted — nothing was removed$'
+[para:phase9] exists projects/acme-migration/.para/state.toml
+
+# End of input is not consent either.
+[para:phase9] ! exec para remove projects.acme-migration
+[para:phase9] stderr 'aborted'
+[para:phase9] exists projects/acme-migration/.para/state.toml
+
+# --dry-run names every path and writes nothing.
+[para:phase9] exec para remove projects.acme-migration --dry-run
+[para:phase9] cmp stdout $WORK/want-remove-dry-run.txt
+[para:phase9] exists projects/acme-migration/.para/state.toml
+
+[para:phase9] stdin $WORK/accept.txt
+[para:phase9] exec para remove projects.acme-migration
+[para:phase9] ! exists projects/acme-migration
+[para:phase9] grep '"op":"removed","child":"acme-migration"' projects/.para/logs/20260305T170000Z.jsonl
+
+# --keep-files deletes para's footprint and keeps every body (§18.4).
+[para:phase9] exec para remove areas.reading --keep-files --force
+[para:phase9] cmp areas/reading/README.md $WORK/want-kept-readme.txt
+[para:phase9] exists areas/reading/notes/my-notes.md
+[para:phase9] ! exists areas/reading/.para
+[para:phase9] ! exists areas/reading/ACTIVITY.md
+
+# Removing a skill takes its derived rule with it (§18.2, §5.3).
+[para:phase9] exec para remove skills.training-plan --force
+[para:phase9] ! exists .agents/skills/para-training-plan
+[para:phase9] ! exists .agents/rules/para-training-plan.md
+
+# A scope entry naming something removed is left alone: there is no locator to
+# rewrite to, and an entry naming nothing is doctor's to report (§5.4, §10).
+[para:phase9] exec para remove areas.fitness --force
+[para:phase9] grep '"areas.fitness"' .agents/skills/para-cardio/.para/state.toml
+
+[para:phase9] ! exec para remove projects.acme-migration.objectives --force
+[para:phase9] stderr 'is a container'
+
+-- brain/.para/tree.toml --
+schema = 1
+name = "brain"
+
+-- brain/README.md --
+---
+kind: "tree"
+name: "brain"
+---
+
+# brain
+
+-- brain/ACTIVITY.md --
+# Activity
+
+-- brain/projects/.para/state.toml --
+name = "Projects"
+created = "2026-01-01T16:00:00Z"
+
+-- brain/projects/acme-migration/.para/state.toml --
+name = "Acme migration"
+description = "Rebuild the consumer."
+status = "in-progress"
+created = "2026-01-01T16:00:00Z"
+
+-- brain/projects/acme-migration/objectives/.para/state.toml --
+name = "Objectives"
+description = "What Acme migration is trying to move."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/projects/old-migration/.para/state.toml --
+name = "Old migration"
+description = "The live one that took the id back."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/projects/old-migration/objectives/.para/state.toml --
+name = "Objectives"
+description = "What Old migration is trying to move."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/.para/state.toml --
+name = "Areas"
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/health/.para/state.toml --
+name = "Health"
+description = "Staying in one piece."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/health/training/.para/state.toml --
+name = "Training"
+description = "The weekly plan."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/health/training/tempo/.para/state.toml --
+name = "Tempo"
+description = "The tempo block."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/health/nutrition/.para/state.toml --
+name = "Nutrition"
+description = "What goes in."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/health/nutrition/macros/.para/state.toml --
+name = "Macros"
+description = "The split."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/health/sleep/.para/state.toml --
+name = "Sleep"
+description = "The part that actually matters."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/fitness/.para/state.toml --
+name = "Fitness"
+description = "The measurable part."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/fitness/spin/.para/state.toml --
+name = "Spin"
+description = "The bike."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/reading/.para/state.toml --
+name = "Reading"
+description = "The pile."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/reading/README.md --
+---
+kind: "area"
+locator: "areas.reading"
+name: "Reading"
+description: "The pile."
+created: "2026-01-01T16:00:00Z"
+---
+
+# Reading
+
+Everything below this line is mine, and para never touches it.
+
+- one book
+- another book
+
+-- brain/areas/reading/ACTIVITY.md --
+# Activity
+
+## 2026-01-01
+- Created.
+
+-- brain/areas/reading/notes/my-notes.md --
+content para does not own
+
+-- brain/resources/.para/state.toml --
+name = "Resources"
+created = "2026-01-01T16:00:00Z"
+
+-- brain/archive/.para/state.toml --
+name = "Archive"
+created = "2026-01-01T16:00:00Z"
+
+-- brain/archive/projects/.para/state.toml --
+name = "Archived projects"
+created = "2026-01-01T16:00:00Z"
+
+-- brain/archive/areas/.para/state.toml --
+name = "Archived areas"
+created = "2026-01-01T16:00:00Z"
+
+-- brain/archive/resources/.para/state.toml --
+name = "Archived resources"
+created = "2026-01-01T16:00:00Z"
+
+-- brain/archive/projects/old-migration/.para/state.toml --
+name = "Old migration"
+description = "The archived one."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/.agents/skills/para-training-plan/.para/state.toml --
+name = "Training plan"
+description = "when writing the week's training"
+scope = ["areas.health.training"]
+
+-- brain/.agents/skills/para-sleep-hygiene/.para/state.toml --
+name = "Sleep hygiene"
+description = "when the sleep numbers look bad"
+scope = ["areas.health.sleep", "areas.health.nutrition"]
+
+-- brain/.agents/skills/para-cardio/.para/state.toml --
+name = "Cardio"
+description = "when planning cardio"
+scope = ["areas.fitness"]
+
+-- decline.txt --
+n
+
+-- accept.txt --
+y
+
+-- want-move.txt --
+moved  areas.health.training → areas.fitness.training   (1 descendant moved with it)
+       rewrote 1 scope entry in skills.training-plan
+
+wrote  areas/fitness/training/.para/logs/20260305T170000Z.jsonl
+       .agents/skills/para-training-plan/.para/logs/20260305T170000Z.jsonl
+       .agents/skills/para-training-plan/.para/state.toml
+       areas/fitness/training/README.md
+       areas/fitness/training/ACTIVITY.md
+       areas/fitness/training/tempo/README.md
+       .agents/skills/para-training-plan/SKILL.md
+       .agents/skills/para-training-plan/ACTIVITY.md
+       .agents/rules/para-training-plan.md
+       areas/health/.para/logs/20260305T170000Z.jsonl
+       areas/health/ACTIVITY.md
+       areas/fitness/.para/logs/20260305T170000Z.jsonl
+       areas/fitness/ACTIVITY.md
+-- want-move-dry-run.txt --
+moved  areas.fitness.training → areas.health.training   (1 descendant moved with it)
+       rewrote 1 scope entry in skills.training-plan
+dry-run: nothing was written
+-- want-archive-training.txt --
+archived  areas.health.training → archive.areas.health.training
+          created stub archive/areas/health/ (parent areas.health is live)
+          rewrote 1 scope entry in skills.training-plan
+
+wrote  archive/areas/health/training/.para/logs/20260305T170000Z.jsonl
+       .agents/skills/para-training-plan/.para/logs/20260305T170000Z.jsonl
+       .agents/skills/para-training-plan/.para/state.toml
+       archive/areas/health/training/README.md
+       archive/areas/health/training/ACTIVITY.md
+       .agents/skills/para-training-plan/ACTIVITY.md
+       .agents/rules/para-training-plan.md
+       areas/health/.para/logs/20260305T170000Z.jsonl
+       areas/health/ACTIVITY.md
+-- want-archive-health.txt --
+archived  areas.health → archive.areas.health   (3 descendants moved with it)
+          stub archive/areas/health/ became the entity
+          rewrote 2 scope entries in skills.sleep-hygiene
+
+wrote  archive/areas/health/.para/logs/20260305T170000Z.jsonl
+       .agents/skills/para-sleep-hygiene/.para/logs/20260305T170000Z.jsonl
+       .agents/skills/para-sleep-hygiene/.para/state.toml
+       archive/areas/health/README.md
+       archive/areas/health/ACTIVITY.md
+       archive/areas/health/nutrition/README.md
+       archive/areas/health/nutrition/macros/README.md
+       archive/areas/health/sleep/README.md
+       .agents/skills/para-sleep-hygiene/SKILL.md
+       .agents/skills/para-sleep-hygiene/ACTIVITY.md
+       .agents/rules/para-sleep-hygiene.md
+       areas/.para/logs/20260305T170000Z.jsonl
+       areas/ACTIVITY.md
+       archive/areas/.para/logs/20260305T170000Z.jsonl
+       archive/areas/ACTIVITY.md
+-- want-unarchive.txt --
+unarchived  archive.areas.health.training → areas.health.training
+            reinstated areas.health
+            archive/areas/health/ became a stub
+            rewrote 1 scope entry in skills.training-plan
+
+wrote  areas/health/training/.para/logs/20260305T170000Z.jsonl
+       areas/health/.para/logs/20260305T170000Z.jsonl
+       .agents/skills/para-training-plan/.para/logs/20260305T170000Z.jsonl
+       .agents/skills/para-training-plan/.para/state.toml
+       areas/health/training/README.md
+       areas/health/training/ACTIVITY.md
+       areas/health/README.md
+       areas/health/ACTIVITY.md
+       .agents/skills/para-training-plan/ACTIVITY.md
+       .agents/rules/para-training-plan.md
+       archive/areas/.para/logs/20260305T170000Z.jsonl
+       archive/areas/ACTIVITY.md
+       areas/.para/logs/20260305T170000Z.jsonl
+       areas/ACTIVITY.md
+-- want-remove-dry-run.txt --
+remove  projects.acme-migration  project   (1 descendant)
+        deletes projects/acme-migration/ and everything beneath it
+        would delete  projects/acme-migration
+dry-run: nothing was written
+-- want-kept-readme.txt --
+
+# Reading
+
+Everything below this line is mine, and para never touches it.
+
+- one book
+- another book
+
