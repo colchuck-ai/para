@@ -163,10 +163,14 @@ func TestConfigSetWritesTheRootByDefaultAndSaysSo(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	if stdout != "wrote  .para/config.toml\n" {
-		t.Errorf("stdout = %q, want %q", stdout, "wrote  .para/config.toml\n")
-	}
+	// The config file, the journal line §8.1 requires, and the ACTIVITY.md that
+	// line lands in are one mutation (Phase 8).
+	assertWrote(t, stdout,
+		".para/logs/20260805T120000Z.jsonl",
+		".para/config.toml",
+		"ACTIVITY.md")
 	assertFile(t, root, ".para/config.toml", "project.stale-after = 30\n")
+	assertContains(t, root, "ACTIVITY.md", "Set **project.stale-after** to 30")
 }
 
 // §22: --at is how the chain gets built deliberately rather than by accident.
@@ -181,9 +185,12 @@ func TestConfigSetAtWritesTheNamedLevel(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	if stdout != "wrote  projects/.para/config.toml\n" {
-		t.Errorf("stdout = %q", stdout)
-	}
+	// The event lands in the level's own journal, not the root's: an event is
+	// written to the journal of the thing it happened to (§3.2, §8.1).
+	assertWrote(t, stdout,
+		"projects/.para/logs/20260805T120000Z.jsonl",
+		"projects/.para/config.toml",
+		"projects/ACTIVITY.md")
 	assertFile(t, root, "projects/.para/config.toml", "project.stale-after = 30\n")
 	assertFile(t, root, ".para/config.toml", "")
 }
@@ -199,9 +206,10 @@ func TestConfigSetOnASkillWritesInsideTheSkill(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	if stdout != "wrote  .agents/skills/para-signups-report/.para/config.toml\n" {
-		t.Errorf("stdout = %q", stdout)
-	}
+	assertWrote(t, stdout,
+		".agents/skills/para-signups-report/.para/logs/20260805T120000Z.jsonl",
+		".agents/skills/para-signups-report/.para/config.toml",
+		".agents/skills/para-signups-report/ACTIVITY.md")
 	assertFile(t, root, ".agents/skills/para-signups-report/.para/config.toml", "review.cadence = 90\n")
 }
 
@@ -287,10 +295,12 @@ func TestConfigUnsetRemovesTheValueAtOneLevel(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	if stdout != "wrote  projects/.para/config.toml\n" {
-		t.Errorf("stdout = %q", stdout)
-	}
+	assertWrote(t, stdout,
+		"projects/.para/logs/20260805T120000Z.jsonl",
+		"projects/.para/config.toml",
+		"projects/ACTIVITY.md")
 	assertFile(t, root, "projects/.para/config.toml", "emit.claude = true\n")
+	assertContains(t, root, "projects/ACTIVITY.md", "Unset **project.stale-after** (was 30)")
 	// §7: unset removes a value and resolution continues up the chain.
 	assertFile(t, root, ".para/config.toml", "project.stale-after = 14\n")
 }
@@ -486,4 +496,34 @@ func statOf(t *testing.T, path string) [2]int64 {
 		t.Fatalf("stat %s: %v", path, err)
 	}
 	return [2]int64{info.Size(), info.ModTime().UnixNano()}
+}
+
+// assertWrote checks the §23 file list a mutation prints: a labelled first
+// line, the rest aligned under it, in write order.
+func assertWrote(t *testing.T, stdout string, paths ...string) {
+	t.Helper()
+	var b strings.Builder
+	for i, path := range paths {
+		if i == 0 {
+			b.WriteString("wrote  ")
+		} else {
+			b.WriteString("       ")
+		}
+		b.WriteString(path)
+		b.WriteString("\n")
+	}
+	if stdout != b.String() {
+		t.Errorf("stdout =\n%q\nwant\n%q", stdout, b.String())
+	}
+}
+
+func assertContains(t *testing.T, root, rel, want string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatalf("reading %s: %v", rel, err)
+	}
+	if !strings.Contains(string(data), want) {
+		t.Errorf("%s =\n%s\nwant it to contain %q", rel, data, want)
+	}
 }

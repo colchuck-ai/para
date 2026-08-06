@@ -3,6 +3,7 @@ package tree
 import (
 	"path/filepath"
 
+	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
 )
@@ -15,6 +16,29 @@ func ResolvePath(root string, loc locator.Locator) (string, error) {
 		return "", err
 	}
 	return filepath.Join(root, filepath.FromSlash(rel)), nil
+}
+
+// KindAt classifies what a locator names, which is more than kindmeta.KindOf
+// answers on its own: a container's name is always a reserved word and a
+// reserved word can never be an id (§1.2), so the last segment decides, and
+// KindOf — which only ever sees id positions — never returns KindContainer.
+//
+// The empty locator is the tree root, which is not an entity but the tree
+// (§8.1), and so has no kind: it reports KindUnknown and no error. Every caller
+// that can be handed a root already has to branch on it, because the root's
+// identity lives in tree.toml rather than state.toml.
+func KindAt(loc locator.Locator) (kindmeta.Kind, error) {
+	if len(loc) == 0 {
+		return kindmeta.KindUnknown, nil
+	}
+	if locator.IsReserved(loc[len(loc)-1]) {
+		return kindmeta.KindContainer, nil
+	}
+	info, err := kindmeta.KindOf(loc)
+	if err != nil {
+		return kindmeta.KindUnknown, err
+	}
+	return info.Kind, nil
 }
 
 // Exists reports whether loc currently addresses a live container or

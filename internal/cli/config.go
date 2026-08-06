@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -12,10 +11,10 @@ import (
 
 	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/mutate"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/ptoml"
 	"github.com/colchuck-ai/para/internal/tree"
-	"github.com/colchuck-ai/para/internal/writeset"
 )
 
 // unset is how an absent value prints in every config output shape: the
@@ -47,6 +46,7 @@ type scope struct {
 	root     string
 	locator  locator.Locator
 	resolver *config.Resolver
+	env      *mutate.Env
 }
 
 // openScope discovers the tree root and resolves the locator naming a level
@@ -57,16 +57,13 @@ type scope struct {
 // project that is not there would otherwise write a config.toml into a
 // directory nothing reads, which is exactly the silent misconfiguration the
 // closed key set exists to prevent.
-func openScope(at string) (scope, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return scope{}, paraerr.Wrap(paraerr.KindInternal, err, "determining working directory")
-	}
-	root, err := tree.Find(cwd)
+func openScope(cmd *cobra.Command, at string) (scope, error) {
+	env, cwd, err := openEnv(cmd)
 	if err != nil {
 		return scope{}, err
 	}
-	s := scope{root: root, resolver: config.NewResolver(root)}
+	root := env.Root
+	s := scope{root: root, resolver: env.Resolver, env: env}
 	if at == "" {
 		return s, nil
 	}
@@ -117,11 +114,11 @@ func newConfigSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			s, err := openScope(at)
+			s, err := openScope(cmd, at)
 			if err != nil {
 				return err
 			}
-			return writeLevel(cmd.OutOrStdout(), s, func(f *config.File) (bool, error) {
+			return writeLevel(cmd.OutOrStdout(), s, key, func(f *config.File) (bool, error) {
 				return f.Set(key, value)
 			})
 		},
@@ -144,11 +141,11 @@ func newConfigUnsetCmd() *cobra.Command {
 			if _, ok := config.Lookup(key); !ok {
 				return unknownKey(key)
 			}
-			s, err := openScope(at)
+			s, err := openScope(cmd, at)
 			if err != nil {
 				return err
 			}
-			return writeLevel(cmd.OutOrStdout(), s, func(f *config.File) (bool, error) {
+			return writeLevel(cmd.OutOrStdout(), s, key, func(f *config.File) (bool, error) {
 				return f.Unset(key), nil
 			})
 		},
@@ -157,14 +154,19 @@ func newConfigUnsetCmd() *cobra.Command {
 	return cmd
 }
 
-// writeLevel applies mutate to the scope's own config.toml and reports what
-// it wrote.
+// writeLevel applies edit to the scope's own config.toml and reports what it
+// wrote.
 //
-// A mutation that changes nothing writes nothing and says so (§23): a config
-// file rewritten with identical bytes would still churn its mtime, and every
-// re-run of a provisioning script would look like a change.
-func writeLevel(out io.Writer, s scope, mutate func(*config.File) (bool, error)) error {
-	rel, abs, err := s.file()
+// A change that changes nothing writes nothing and says so (§23): a config file
+// rewritten with identical bytes would still churn its mtime, and every re-run
+// of a provisioning script would look like a change.
+//
+// A change that does land is recorded in the level's own journal (§8.1), which
+// is why this goes through mutate rather than writing the file directly: the
+// config.toml, the event, and that level's ACTIVITY.md are one mutation, and a
+// crash between them would leave the file changed with nothing to say so.
+func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (bool, error)) error {
+	_, abs, err := s.file()
 	if err != nil {
 		return err
 	}
@@ -172,7 +174,8 @@ func writeLevel(out io.Writer, s scope, mutate func(*config.File) (bool, error))
 	if err != nil {
 		return err
 	}
-	changed, err := mutate(&f)
+	before, _ := f.Get(key)
+	changed, err := edit(&f)
 	if err != nil {
 		return err
 	}
@@ -184,10 +187,13 @@ func writeLevel(out io.Writer, s scope, mutate func(*config.File) (bool, error))
 	if err != nil {
 		return err
 	}
-	if err := writeset.WriteFile(abs, data); err != nil {
+	after, _ := f.Get(key)
+
+	res, err := s.env.ConfigChange(s.locator, key, config.Format(before), config.Format(after), data)
+	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "wrote  %s\n", rel)
+	printWrote(out, res.Wrote)
 	return nil
 }
 
@@ -212,7 +218,7 @@ func newConfigShowCmd() *cobra.Command {
 			if _, ok := config.Lookup(key); !ok {
 				return unknownKey(key)
 			}
-			s, err := openScope(at)
+			s, err := openScope(cmd, at)
 			if err != nil {
 				return err
 			}
@@ -249,7 +255,7 @@ func newConfigListCmd() *cobra.Command {
 			if len(args) == 1 {
 				at = args[0]
 			}
-			s, err := openScope(at)
+			s, err := openScope(cmd, at)
 			if err != nil {
 				return err
 			}

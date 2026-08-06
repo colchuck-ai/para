@@ -7,10 +7,39 @@ import (
 	"time"
 )
 
-func mustAppend(t *testing.T, dir string, e Event, rotateBytes int64) {
+func mustAppend(t *testing.T, dir string, e Event, rotateBytes int64) string {
 	t.Helper()
-	if err := Append(dir, e, rotateBytes); err != nil {
+	path, err := Append(dir, e, rotateBytes)
+	if err != nil {
 		t.Fatalf("Append: %v", err)
+	}
+	return path
+}
+
+// TestAppend_ReportsTheFileTheLineLandedIn pins the return value §23's output
+// depends on: a mutation prints every file it wrote by name, and which journal
+// file an event lands in is decided inside Append by the newest file's size.
+func TestAppend_ReportsTheFileTheLineLandedIn(t *testing.T) {
+	dir := t.TempDir()
+	first := time.Date(2026, time.March, 5, 17, 0, 0, 0, time.UTC)
+	second := first.Add(time.Hour)
+
+	firstPath := mustAppend(t, dir, Event{At: first, Kind: KindNote, Note: "first"}, DefaultRotateBytes)
+	if want := filepath.Join(dir, "20260305T170000Z.jsonl"); firstPath != want {
+		t.Errorf("first Append = %q, want %q", firstPath, want)
+	}
+
+	// A second event below the threshold lands in the same file...
+	samePath := mustAppend(t, dir, Event{At: second, Kind: KindNote, Note: "second"}, DefaultRotateBytes)
+	if samePath != firstPath {
+		t.Errorf("second Append = %q, want the same file %q", samePath, firstPath)
+	}
+
+	// ... and one past it names the new file, which is the case a caller
+	// cannot compute for itself.
+	rotated := mustAppend(t, dir, Event{At: second, Kind: KindNote, Note: "third"}, 1)
+	if want := filepath.Join(dir, "20260305T180000Z.jsonl"); rotated != want {
+		t.Errorf("rotated Append = %q, want %q", rotated, want)
 	}
 }
 

@@ -3,6 +3,7 @@ package tree_test
 import (
 	"testing"
 
+	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/tree"
 )
@@ -147,5 +148,47 @@ func TestParentExistsForSkill(t *testing.T) {
 	}
 	if !got {
 		t.Error("ParentExists(skills.signups-report) = false once .agents/skills/ exists, want true")
+	}
+}
+
+// TestKindAt covers the classification the walk and every mutation share: a
+// reserved last segment is a container, an id position derives its kind from
+// §1.3, and the root has no kind of its own (§8.1).
+func TestKindAt(t *testing.T) {
+	tests := []struct {
+		loc     string
+		want    kindmeta.Kind
+		wantErr bool
+	}{
+		{"", kindmeta.KindUnknown, false},
+		{"projects", kindmeta.KindContainer, false},
+		{"archive", kindmeta.KindContainer, false},
+		{"archive.projects", kindmeta.KindContainer, false},
+		{"projects.acme", kindmeta.KindProject, false},
+		{"projects.acme.objectives", kindmeta.KindContainer, false},
+		{"projects.acme.objectives.q1", kindmeta.KindObjective, false},
+		{"projects.acme.objectives.q1.key-results", kindmeta.KindContainer, false},
+		{"projects.acme.objectives.q1.key-results.signups", kindmeta.KindKeyResult, false},
+		{"areas.health.training", kindmeta.KindArea, false},
+		{"skills.signups-report", kindmeta.KindSkill, false},
+		// A project cannot nest, so no position derives a kind (§1.3).
+		{"projects.acme.nested", kindmeta.KindUnknown, true},
+	}
+	for _, tt := range tests {
+		var loc locator.Locator
+		if tt.loc != "" {
+			var err error
+			loc, err = locator.Parse(tt.loc)
+			if err != nil {
+				t.Fatalf("Parse(%q): %v", tt.loc, err)
+			}
+		}
+		got, err := tree.KindAt(loc)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("KindAt(%q) error = %v, wantErr %v", tt.loc, err, tt.wantErr)
+		}
+		if got != tt.want {
+			t.Errorf("KindAt(%q) = %v, want %v", tt.loc, got, tt.want)
+		}
 	}
 }

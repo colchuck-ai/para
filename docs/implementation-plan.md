@@ -471,6 +471,106 @@ a test.
 
 ## Phase 8 — Creation and field mutation
 
+**Status: done** (branch `impl`). `internal/mutate` lands with `add`, `set`, `unset`, `note`, and
+`measure` on one shared write path, plus the `config` change event Phase 7 deferred here.
+`writeset.Mutation` is now a list of subjects, `journal.Append` reports the file its line landed in,
+`kindmeta` gains §1.7's status vocabulary and the priority set, and `tree.KindAt` becomes the one
+classifier the walk and every mutation share.
+
+Six decisions worth recording, because later phases inherit them:
+
+- **A projection is written only when its bytes differ from what is on disk.** Write-through stays
+  complete — every projection the subject owns is re-derived on every mutation — but a file whose
+  bytes did not change is a file nothing wrote. That is what makes §23's "mutations print what they
+  wrote" honest, and it settles §2.3's prose, which names `state.toml` and `README.md` among what a
+  `measure` rewrites: a key-result stores no `current`, `progress`, or derived status (§2.5), so
+  there is nothing in either file for a measurement to change. Rewriting them with identical bytes
+  would churn two mtimes and print two lines that were not true.
+- **A mutation with more than one subject writes every subject's truth before any subject's
+  projections.** `add` is the one such mutation — a project and its eager `objectives/` (§18.1) —
+  and interleaving per subject would let a crash leave the container missing altogether. That is not
+  the one degraded state the design defines a repair for: `rebuild` regenerates projections from
+  truth and cannot invent truth that was never written.
+- **`ACTIVITY.md` falls back to full mode in three cases**, and this is where §3.5's cheap write is
+  actually made safe: a key-result (whose measurement lines depend on `start`, `target`, and the
+  oldest reading), a mutation that moves `created` (whose line lives in whichever day section
+  `created` names), and a file that does not exist yet (which has no prior days to splice onto, so
+  incremental mode would silently drop every day before today). The equivalence of the two modes on
+  the *write path* is now a test that replays six mutations across six days and re-derives in full
+  after each one.
+- **`created` is stored as a UTC RFC 3339 instant; `due` is stored exactly as typed.** §15.1's
+  store-as-UTC rule is about *instants* — something happened, and every reader must agree when — and
+  it names only `note`, `measure`, and `created`. A deadline is a date somebody chose, and §8.3's two
+  truth files write `due = "2026-09-30"` while §16.1 prints it back the same way. Resolving it in the
+  typist's offset would make the stored value depend on where they were sitting (`2026-09-30T07:00:00Z`
+  in summer, `T08:00:00Z` in winter) for a deadline that meant neither; a date on disk already means
+  the same day to every reader, which is what §3.5 was asking for. `due` takes §15.1's grammar for
+  validation and neither of §15's bounds directly. `created ≤ due` is checked from both sides, and a
+  bare `due` date counts as the whole day — so a deadline of today is legal for something created
+  today, which a midnight reading would have refused.
+- **Every timestamp para writes is truncated to the second.** §3.1's journal lines, §3.4's filenames,
+  §4.4's CSV column, and §8.3's truth files all stop there. Carrying the wall clock's microseconds
+  would make two readings a millisecond apart *distinct* to §3.1's exact-instant uniqueness check and
+  *identical* in the `MEASUREMENTS.csv` rows they produce — one duplicate row no `rebuild` could
+  remove, because both events are genuinely there.
+- **§1.7's default status is stored at creation, not defaulted at read time.** A project has a status
+  from the moment it exists, `state.toml` is where what a thing *is* lives (§2.2), and a generated
+  README frontmatter that omitted it would misinform every reader of the file. §2.5's ban covers what
+  is *derived*; a default is chosen, not derived.
+- **A config change lands in the journal of the level whose `config.toml` changed**, as a `change`
+  event whose `field` is the config key. §8.1 describes the root's case and §3.2 is the general rule
+  it is an instance of. A config key always contains a dot and a §15 field name never does, so the
+  two namespaces cannot collide, and `ACTIVITY.md`'s existing change line renders it without a
+  template of its own — which is why §27's deferred prose turned out not to be needed. Only
+  `ACTIVITY.md` is re-rendered: a config change alters no state, and the emit knobs' whole-tree
+  consequences stay `rebuild`'s (Phase 13).
+
+**One spec gap closed here, and it goes beyond the letter of the phase.** `priority` is now a closed,
+ordered set — `high`, `medium`, `low`. The design never enumerates it (§8.3's example writes `high`),
+so this is a decision rather than an implementation. It is taken here because this is the phase that
+first *writes* the field, and §17 makes `priority` a `--sort` key: a free-text priority has no order
+that means anything, and lexical order would rank high, low, medium. Widening a closed set later is
+backwards-compatible; narrowing a free one is not. **If it proves wrong, Phase 10 is where it will
+show**, and the repair is deleting the enumeration, not adding to it.
+
+**Three §26 slips, all resolved in favour of the prose, as Phase 7 resolved the same disagreement:**
+
+- §26's `set` block prints only the change line; §23 says mutations print what they wrote, one line
+  per file. The example is showing the part it is about.
+- §23's `measure` example lists `state.toml` and `README.md` among the files written. See above.
+- §15 says a no-op `set` writes nothing at all — "no event, no projection rewrite, no clock
+  movement" — while §26 prints `no change (status already blocked); note recorded`. Both halves are
+  kept: the *field* writes nothing, and the `--note` becomes a `note` event of its own, because it is
+  an act of attention the user performed and there is no change event left to carry it. Dropping it
+  would discard the only new information in the command. **Stated plainly, because it is the cost:**
+  this re-opens the loop §15's rule closes — `set --status planned --note ping` on a timer buys
+  silence from `review`. It is the same loop `para note x ping` has always allowed, and the design
+  accepts that one, because moving the clock is what a note *is* (§3.6). What §3.6 actually forbids is
+  a *field change* resetting it, and that still holds: no `change` event moves `attention`.
+
+### Carry-forward obligations from Phase 8
+
+- **Phase 12 owes `rebuild` the whole-tree emit walk** that `config set emit.claude true` does not
+  do, and `doctor` the `stale-projection` finding that names it. §26 shows one config write producing
+  eight `CLAUDE.md` files; a mutation may not walk the tree (§2.3), so `rebuild` is the honest repair.
+- **A known divergence from §6.1, live until Phase 13, and it is not merely an emit consequence.**
+  §6.1 says of `CLAUDE.md`'s import list: "it regenerates from the same scope walk that produces the
+  rules (§5.4), so adding or removing a skill keeps it correct with no separate bookkeeping" — and
+  §2.3 says there is "no deferred emit, no dirty flag". `add skills.x` writes the skill's derived rule
+  and leaves every `CLAUDE.md` untouched, so with `emit.claude` on the import list is stale until
+  `rebuild`. §6.1 and §2.3's write-through invariant genuinely conflict here, and §2.3 wins for now
+  because the Claude surface is opt-in, off by default, and separable (§6.1) — which is why the plan
+  put it in Phase 13 at all. **Phase 13 must close it**, and the eight `CLAUDE.md` locations are a
+  fixed set rather than a tree walk, so honouring §6.1 costs a constant number of writes and does not
+  actually violate §2.3's "nothing walks to root" once it is written deliberately. Until then
+  `doctor`'s `stale-projection` is what reports it.
+- **The script suite now needs `-tags para_testhooks`**, because every script from here on asserts
+  journal filenames and dated `ACTIVITY.md` sections. `TestScripts` skips with that reason when the
+  tag is absent; `make test` and CI supply it.
+- **Phase 9 inherits `mutate`'s shape**: a verb decides what changed and builds events; `plan` and
+  `apply` decide how it is written. `move`, `archive`, and `unarchive` will need a second parent
+  (§18.3's "both parents"), which is the one thing `writeset.Mutation` does not yet express.
+
 **Tasks**
 
 1. `add`: directory, `.para/{state.toml, config.toml, logs/}`, README (generated frontmatter, stub

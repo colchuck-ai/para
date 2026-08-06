@@ -7,8 +7,14 @@
 // plus rebuild (§2.4, §19). So the ordering is chosen to make that the only
 // state a crash can produce:
 //
-//	journal append → state.toml → projections → the parent's journal and
-//	ACTIVITY.md, last, and only when containment changed (§3.3)
+//	journal append → state.toml → config.toml → projections → the parent's
+//	journal and ACTIVITY.md, last, and only when containment changed (§3.3)
+//
+// A mutation may have more than one subject — `add` creates a project and its
+// `objectives/` container in one operation (§18.1) — and the phases above are
+// applied across all of them: every subject's truth, then every subject's
+// projections. A crash between the two subjects would otherwise leave the second
+// one missing entirely, which is a state no repair the design defines can fix.
 //
 // Truth first, projections after. A crash at any point leaves the tree with
 // correct truth and possibly stale projections, never with truth lost or half
@@ -41,11 +47,21 @@ type File struct {
 	Bytes []byte
 }
 
-// Mutation is one mutating operation's complete file set.
-type Mutation struct {
+// Subject is one entity's, container's, or root's half of a mutation: the
+// events its journal gains, its truth files, and its projections.
+type Subject struct {
 	// Dir is the subject's own directory. Its journal and truth files live
 	// under Dir/.para/.
 	Dir string
+
+	// Dirs are directories that must exist even while empty, as OS paths.
+	// There is exactly one such directory in the design — a new entity's
+	// .para/logs/, which `add` creates although the journal starts empty
+	// (§18.1) so that every .para/ has the same shape (§5.1, §8.4). Nothing
+	// may depend on it: git does not carry an empty directory, so a fresh
+	// clone will not have one, which is why every reader treats an absent
+	// logs/ as an empty journal.
+	Dirs []string
 
 	// Events are appended to the subject's own journal, in order (§3.1). A
 	// mutation that changes nothing appends nothing: setting a field to the
@@ -57,31 +73,46 @@ type Mutation struct {
 	// state.
 	State []byte
 
+	// Config is the subject's new config.toml, or nil when it did not change.
+	// A config.toml is truth but not state (§2.1), so it is written in the
+	// truth phase beside state.toml: `add` creates an empty one, and
+	// `config set` writes one and nothing else of the kind.
+	Config []byte
+
 	// Projections are the generated files to rewrite, in the order they should
 	// be written. They come from render.Artifacts, so the set is exactly the
 	// files the subject owns.
 	Projections []File
 
-	// Parent is written last, and only when containment changed (§2.3, §3.3):
-	// a note or a field change on a child touches nothing at the parent.
-	Parent *Parent
-
-	// RotateBytes is the resolved log.rotate-bytes (§3.4, §7). Zero means
+	// RotateBytes is log.rotate-bytes as resolved *at this subject* (§3.4,
+	// §7). It is per subject rather than per mutation because the key is
+	// chain-resolved like every other: a project that sets its own must not
+	// decide when its parent bucket's journal rotates. Zero means
 	// journal.DefaultRotateBytes.
 	RotateBytes int64
 }
 
-// Parent is the parent's half of a containment change: its own `child` event,
-// and the ACTIVITY.md that event lands in. Its README frontmatter does not
-// change, because a parent's stored fields say nothing about its children —
-// the child list is `ls` (§8.2).
-type Parent struct {
-	Dir      string
-	Events   []journal.Event
-	Activity File
+// Mutation is one mutating operation's complete file set.
+type Mutation struct {
+	// Subjects are the entities the mutation creates or changes. There is
+	// normally one; `add` has two, because a project's `objectives/` container
+	// is created eagerly in the same operation (§18.1).
+	//
+	// Every subject's truth is written before any subject's projections, so
+	// the one degraded state a crash can produce is still the defined one —
+	// truth correct, projections stale — even for a mutation that creates two
+	// directories at once.
+	Subjects []Subject
+
+	// Parent is written last, and only when containment changed (§2.3, §3.3):
+	// a note or a field change on a child touches nothing at the parent. It is
+	// a Subject because it is one — the fields it leaves empty are the point.
+	// A parent's README frontmatter never changes, because its stored fields
+	// say nothing about its children; the child list is `ls` (§8.2).
+	Parent *Subject
 }
 
-// OpKind distinguishes the two ways Apply touches the filesystem.
+// OpKind distinguishes the ways Apply touches the filesystem.
 type OpKind int
 
 const (
@@ -89,13 +120,19 @@ const (
 	OpAppend OpKind = iota
 	// OpWrite is an atomic whole-file replacement.
 	OpWrite
+	// OpMkdir is the creation of a directory that stays empty.
+	OpMkdir
 )
 
 func (k OpKind) String() string {
-	if k == OpAppend {
+	switch k {
+	case OpAppend:
 		return "append"
+	case OpMkdir:
+		return "mkdir"
+	default:
+		return "write"
 	}
-	return "write"
 }
 
 // Op is one filesystem operation Apply performed.
@@ -126,56 +163,99 @@ func (o Ops) Paths() []string {
 // call rather than a mkdir pass followed by a write pass: the write set is the
 // definition of which directories exist.
 func Apply(m Mutation) (Ops, error) {
-	if m.Dir == "" {
-		return nil, paraerr.New(paraerr.KindInternal, "writeset: mutation has no directory")
+	if len(m.Subjects) == 0 && m.Parent == nil {
+		return nil, paraerr.New(paraerr.KindInternal, "writeset: mutation has no subject")
 	}
-	rotate := m.RotateBytes
+	for _, s := range m.Subjects {
+		if s.Dir == "" {
+			return nil, paraerr.New(paraerr.KindInternal, "writeset: mutation has a subject with no directory")
+		}
+	}
+	var ops Ops
+
+	// 1. Truth, for every subject, before any projection: journals, then
+	//    state.toml, then config.toml. The journal comes first because it is
+	//    the most primitive form truth takes — an append-only line nothing else
+	//    derives from.
+	for _, s := range m.Subjects {
+		written, err := writeTruth(s)
+		ops = append(ops, written...)
+		if err != nil {
+			return ops, err
+		}
+	}
+
+	// 2. The projections. Everything from here on is re-derivable, so a crash
+	//    leaves stale-projection and nothing worse.
+	for _, s := range m.Subjects {
+		written, err := writeFiles(s.Projections)
+		ops = append(ops, written...)
+		if err != nil {
+			return ops, err
+		}
+	}
+
+	// 3. The parent, last, and only when containment changed.
+	if m.Parent != nil {
+		written, err := writeTruth(*m.Parent)
+		ops = append(ops, written...)
+		if err != nil {
+			return ops, err
+		}
+		written, err = writeFiles(m.Parent.Projections)
+		ops = append(ops, written...)
+		if err != nil {
+			return ops, err
+		}
+	}
+
+	return ops, nil
+}
+
+// writeTruth writes one subject's directories, journal lines, and truth files,
+// in that order.
+func writeTruth(s Subject) (Ops, error) {
+	rotate := s.RotateBytes
 	if rotate <= 0 {
 		rotate = journal.DefaultRotateBytes
 	}
 
 	var ops Ops
+	for _, dir := range s.Dirs {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", dir))
+		}
+		ops = append(ops, Op{Kind: OpMkdir, Path: dir})
+	}
 
-	// 1. The journal. Truth first, and the journal is the most primitive form
-	//    truth takes: an append-only line nothing else derives from.
-	appended, err := appendAll(truth.LogsDir(m.Dir), m.Events, rotate)
+	appended, err := appendAll(truth.LogsDir(s.Dir), s.Events, rotate)
 	ops = append(ops, appended...)
 	if err != nil {
 		return ops, err
 	}
 
-	// 2. state.toml. Still truth, and the file every projection derives from.
-	if m.State != nil {
-		if err := writeAtomic(truth.StatePath(m.Dir), m.State); err != nil {
-			return ops, err
-		}
-		ops = append(ops, Op{Kind: OpWrite, Path: truth.StatePath(m.Dir)})
-	}
+	written, err := writeFiles([]File{
+		{Path: truth.StatePath(s.Dir), Bytes: s.State},
+		{Path: truth.ConfigPath(s.Dir), Bytes: s.Config},
+	})
+	ops = append(ops, written...)
+	return ops, err
+}
 
-	// 3. The projections. Everything from here on is re-derivable, so a crash
-	//    leaves stale-projection and nothing worse.
-	for _, f := range m.Projections {
+// writeFiles writes each file whose bytes are non-nil, in order. A nil Bytes
+// means "unchanged", which is how a `note` skips state.toml and a parent skips
+// everything but its ACTIVITY.md.
+func writeFiles(files []File) (Ops, error) {
+	var ops Ops
+	for _, f := range files {
+		if f.Bytes == nil {
+			continue
+		}
 		if err := writeAtomic(f.Path, f.Bytes); err != nil {
 			return ops, err
 		}
 		ops = append(ops, Op{Kind: OpWrite, Path: f.Path})
 	}
-
-	// 4. The parent, last, and only when containment changed.
-	if m.Parent != nil {
-		appended, err := appendAll(truth.LogsDir(m.Parent.Dir), m.Parent.Events, rotate)
-		ops = append(ops, appended...)
-		if err != nil {
-			return ops, err
-		}
-		if m.Parent.Activity.Path != "" {
-			if err := writeAtomic(m.Parent.Activity.Path, m.Parent.Activity.Bytes); err != nil {
-				return ops, err
-			}
-			ops = append(ops, Op{Kind: OpWrite, Path: m.Parent.Activity.Path})
-		}
-	}
-
 	return ops, nil
 }
 
@@ -188,10 +268,11 @@ func appendAll(logsDir string, events []journal.Event, rotate int64) (Ops, error
 	}
 	var ops Ops
 	for _, e := range events {
-		if err := journal.Append(logsDir, e, rotate); err != nil {
+		path, err := journal.Append(logsDir, e, rotate)
+		if err != nil {
 			return ops, err
 		}
-		ops = append(ops, Op{Kind: OpAppend, Path: logsDir})
+		ops = append(ops, Op{Kind: OpAppend, Path: path})
 	}
 	return ops, nil
 }

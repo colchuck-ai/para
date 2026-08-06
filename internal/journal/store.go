@@ -19,27 +19,35 @@ const DefaultRotateBytes int64 = 4 * 1024 * 1024
 // exceeded rotateBytes, or a new file named for e's own timestamp otherwise
 // (§3.4). Rotation only ever opens a new file — a closed file is never
 // reopened for writing once a later one exists.
-func Append(dir string, e Event, rotateBytes int64) error {
+//
+// It returns the file the line landed in. Which file that is cannot be predicted
+// from outside — it depends on the newest existing file's size — and §23 makes a
+// mutation print every file it wrote by name, so the writer is the only honest
+// source for it.
+func Append(dir string, e Event, rotateBytes int64) (string, error) {
 	data, err := Encode(e)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	path, err := targetFile(dir, e, rotateBytes)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("journal: opening %s", path))
+		return "", paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("journal: opening %s", path))
 	}
 	defer f.Close()
 
 	if _, err := f.Write(data); err != nil {
-		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("journal: appending to %s", path))
+		return "", paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("journal: appending to %s", path))
 	}
-	return f.Sync()
+	if err := f.Sync(); err != nil {
+		return "", paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("journal: syncing %s", path))
+	}
+	return path, nil
 }
 
 // targetFile decides which file e's line lands in: the current newest file

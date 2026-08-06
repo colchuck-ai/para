@@ -123,28 +123,22 @@ func walkArchiveStub(path string, loc locator.Locator, visit func(Node) error) e
 	return nil
 }
 
-// classify derives a found directory's Node from its locator alone, per
-// §1.2: a container's name is always a reserved word, and a reserved word
-// can never be an id, so the test is exact. ok is false for a locator
-// kindmeta cannot derive a kind for — malformed placements are doctor's
-// job (a later phase), not the walk's, so Walk simply does not visit them.
+// classify derives a found directory's Node from its locator alone, via the
+// same KindAt every other caller uses. ok is false for a locator kindmeta
+// cannot derive a kind for — malformed placements are doctor's job (a later
+// phase), not the walk's, so Walk simply does not visit them.
 func classify(loc locator.Locator, path string) (Node, bool, error) {
-	name := loc[len(loc)-1]
-	if locator.IsReserved(name) {
-		return Node{
-			Locator:     loc,
-			Path:        path,
-			Kind:        kindmeta.KindContainer,
-			IsContainer: true,
-			Archived:    loc.IsArchived(),
-		}, true, nil
-	}
-
-	info, err := kindmeta.KindOf(loc)
+	kind, err := KindAt(loc)
 	if err != nil {
 		return Node{}, false, nil
 	}
-	return Node{Locator: loc, Path: path, Kind: info.Kind, Archived: info.Archived}, true, nil
+	return Node{
+		Locator:     loc,
+		Path:        path,
+		Kind:        kind,
+		IsContainer: kind == kindmeta.KindContainer,
+		Archived:    loc.IsArchived(),
+	}, true, nil
 }
 
 // walkAgentsSkills scans .agents/skills/para-* the way walkChildren scans a

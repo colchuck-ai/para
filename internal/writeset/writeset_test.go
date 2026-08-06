@@ -33,17 +33,20 @@ func TestApplyWritesTruthBeforeProjections(t *testing.T) {
 	parent := filepath.Join(root, "areas")
 
 	ops, err := writeset.Apply(writeset.Mutation{
-		Dir:    entity,
-		Events: []journal.Event{journal.NewNote(at(t, "2026-03-05T09:00:00"), "hello")},
-		State:  []byte("name = \"Health\"\n"),
-		Projections: []writeset.File{
-			{Path: filepath.Join(entity, "README.md"), Bytes: []byte("readme\n")},
-			{Path: filepath.Join(entity, "ACTIVITY.md"), Bytes: []byte("activity\n")},
-		},
-		Parent: &writeset.Parent{
-			Dir:      parent,
-			Events:   []journal.Event{journal.NewChild(at(t, "2026-03-05T09:00:00"), journal.ChildOpAdded, "health", "", "", "")},
-			Activity: writeset.File{Path: filepath.Join(parent, "ACTIVITY.md"), Bytes: []byte("parent activity\n")},
+		Subjects: []writeset.Subject{{
+			Dir:    entity,
+			Events: []journal.Event{journal.NewNote(at(t, "2026-03-05T09:00:00"), "hello")},
+			State:  []byte("name = \"Health\"\n"),
+			Config: []byte{},
+			Projections: []writeset.File{
+				{Path: filepath.Join(entity, "README.md"), Bytes: []byte("readme\n")},
+				{Path: filepath.Join(entity, "ACTIVITY.md"), Bytes: []byte("activity\n")},
+			},
+		}},
+		Parent: &writeset.Subject{
+			Dir:         parent,
+			Events:      []journal.Event{journal.NewChild(at(t, "2026-03-05T09:00:00"), journal.ChildOpAdded, "health", "", "", "")},
+			Projections: []writeset.File{{Path: filepath.Join(parent, "ACTIVITY.md"), Bytes: []byte("parent activity\n")}},
 		},
 	})
 	if err != nil {
@@ -51,11 +54,12 @@ func TestApplyWritesTruthBeforeProjections(t *testing.T) {
 	}
 
 	want := []string{
-		truth.LogsDir(entity),
+		filepath.Join(truth.LogsDir(entity), "20260305T170000Z.jsonl"),
 		truth.StatePath(entity),
+		truth.ConfigPath(entity),
 		filepath.Join(entity, "README.md"),
 		filepath.Join(entity, "ACTIVITY.md"),
-		truth.LogsDir(parent),
+		filepath.Join(truth.LogsDir(parent), "20260305T170000Z.jsonl"),
 		filepath.Join(parent, "ACTIVITY.md"),
 	}
 	if got := ops.Paths(); strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -82,11 +86,13 @@ func TestApplyTouchesOnlyTheMutationsOwnFiles(t *testing.T) {
 
 	entity := filepath.Join(root, "areas", "health", "training")
 	ops, err := writeset.Apply(writeset.Mutation{
-		Dir:    entity,
-		Events: []journal.Event{journal.NewNote(at(t, "2026-03-05T09:00:00"), "did the weekly plan")},
-		Projections: []writeset.File{
-			{Path: filepath.Join(entity, "ACTIVITY.md"), Bytes: []byte("# Activity\n\n## 2026-03-05\n- Note: did the weekly plan.\n")},
-		},
+		Subjects: []writeset.Subject{{
+			Dir:    entity,
+			Events: []journal.Event{journal.NewNote(at(t, "2026-03-05T09:00:00"), "did the weekly plan")},
+			Projections: []writeset.File{
+				{Path: filepath.Join(entity, "ACTIVITY.md"), Bytes: []byte("# Activity\n\n## 2026-03-05\n- Note: did the weekly plan.\n")},
+			},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
@@ -114,9 +120,11 @@ func TestApplyWithoutAContainmentChangeLeavesTheParentAlone(t *testing.T) {
 
 	entity := filepath.Join(root, "areas", "health", "training")
 	if _, err := writeset.Apply(writeset.Mutation{
-		Dir:    entity,
-		Events: []journal.Event{journal.NewChange(at(t, "2026-03-05T09:00:00"), "name", "Training", "Weekly training", "")},
-		State:  []byte("name = \"Weekly training\"\n"),
+		Subjects: []writeset.Subject{{
+			Dir:    entity,
+			Events: []journal.Event{journal.NewChange(at(t, "2026-03-05T09:00:00"), "name", "Training", "Weekly training", "")},
+			State:  []byte("name = \"Weekly training\"\n"),
+		}},
 	}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -135,7 +143,9 @@ func TestApplyWritesNothingForAMutationWithNothingToWrite(t *testing.T) {
 	root := plantTree(t)
 	before := snapshot(t, root)
 
-	ops, err := writeset.Apply(writeset.Mutation{Dir: filepath.Join(root, "areas", "health")})
+	ops, err := writeset.Apply(writeset.Mutation{
+		Subjects: []writeset.Subject{{Dir: filepath.Join(root, "areas", "health")}},
+	})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -158,8 +168,10 @@ func TestApplyIsAtomicPerFile(t *testing.T) {
 	}
 
 	if _, err := writeset.Apply(writeset.Mutation{
-		Dir:         root,
-		Projections: []writeset.File{{Path: path, Bytes: []byte("new\n")}},
+		Subjects: []writeset.Subject{{
+			Dir:         root,
+			Projections: []writeset.File{{Path: path, Bytes: []byte("new\n")}},
+		}},
 	}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -188,10 +200,13 @@ func TestApplyCreatesTheDirectoriesItsFilesNeed(t *testing.T) {
 	entity := filepath.Join(root, "projects", "acme")
 
 	if _, err := writeset.Apply(writeset.Mutation{
-		Dir:         entity,
-		Events:      []journal.Event{journal.NewNote(at(t, "2026-03-05T09:00:00"), "first")},
-		State:       []byte("name = \"Acme\"\n"),
-		Projections: []writeset.File{{Path: filepath.Join(entity, "README.md"), Bytes: []byte("readme\n")}},
+		Subjects: []writeset.Subject{{
+			Dir:         entity,
+			Dirs:        []string{truth.LogsDir(entity)},
+			Events:      []journal.Event{journal.NewNote(at(t, "2026-03-05T09:00:00"), "first")},
+			State:       []byte("name = \"Acme\"\n"),
+			Projections: []writeset.File{{Path: filepath.Join(entity, "README.md"), Bytes: []byte("readme\n")}},
+		}},
 	}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -209,7 +224,69 @@ func TestApplyCreatesTheDirectoriesItsFilesNeed(t *testing.T) {
 
 func TestApplyRejectsAMutationWithNoDirectory(t *testing.T) {
 	if _, err := writeset.Apply(writeset.Mutation{}); err == nil {
-		t.Error("Apply with no directory returned no error")
+		t.Error("Apply with no subject returned no error")
+	}
+	if _, err := writeset.Apply(writeset.Mutation{Subjects: []writeset.Subject{{}}}); err == nil {
+		t.Error("Apply with a subject that has no directory returned no error")
+	}
+}
+
+// TestApplyWritesEveryTruthFileBeforeAnyProjection is the ordering rule for a
+// mutation with more than one subject — `add` on a project, which creates the
+// project and its objectives/ container in one operation (§18.1).
+//
+// Interleaving per subject (A's truth, A's projections, B's truth, …) would let
+// a crash leave B missing altogether, and a missing container is not the one
+// degraded state the design defines a repair for: `rebuild` regenerates
+// projections from truth, so it cannot invent truth that was never written.
+func TestApplyWritesEveryTruthFileBeforeAnyProjection(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "projects", "acme")
+	container := filepath.Join(project, "objectives")
+
+	ops, err := writeset.Apply(writeset.Mutation{
+		Subjects: []writeset.Subject{
+			{
+				Dir:         project,
+				Dirs:        []string{truth.LogsDir(project)},
+				State:       []byte("name = \"Acme\"\n"),
+				Config:      []byte{},
+				Projections: []writeset.File{{Path: filepath.Join(project, "README.md"), Bytes: []byte("readme\n")}},
+			},
+			{
+				Dir:         container,
+				Dirs:        []string{truth.LogsDir(container)},
+				State:       []byte("name = \"Objectives\"\n"),
+				Config:      []byte{},
+				Projections: []writeset.File{{Path: filepath.Join(container, "README.md"), Bytes: []byte("readme\n")}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	want := []string{
+		truth.LogsDir(project),
+		truth.StatePath(project),
+		truth.ConfigPath(project),
+		truth.LogsDir(container),
+		truth.StatePath(container),
+		truth.ConfigPath(container),
+		filepath.Join(project, "README.md"),
+		filepath.Join(container, "README.md"),
+	}
+	if got := ops.Paths(); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("ops =\n  %v\nwant\n  %v", got, want)
+	}
+
+	// The empty logs/ directory `add` promises is really there, even though no
+	// event has been written into it (§18.1: the journal starts empty).
+	for _, dir := range []string{truth.LogsDir(project), truth.LogsDir(container)} {
+		info, err := os.Stat(dir)
+		if err != nil || !info.IsDir() {
+			t.Errorf("expected %s to be an empty directory: %v", dir, err)
+		}
 	}
 }
 
@@ -227,12 +304,14 @@ func TestApplyStopsAtTheFailingWriteAndReportsWhatItDid(t *testing.T) {
 	}
 
 	ops, err := writeset.Apply(writeset.Mutation{
-		Dir:   entity,
-		State: []byte("name = \"Health\"\n"),
-		Projections: []writeset.File{
-			{Path: filepath.Join(entity, "README.md"), Bytes: []byte("readme\n")},
-			{Path: filepath.Join(blocker, "ACTIVITY.md"), Bytes: []byte("activity\n")},
-		},
+		Subjects: []writeset.Subject{{
+			Dir:   entity,
+			State: []byte("name = \"Health\"\n"),
+			Projections: []writeset.File{
+				{Path: filepath.Join(entity, "README.md"), Bytes: []byte("readme\n")},
+				{Path: filepath.Join(blocker, "ACTIVITY.md"), Bytes: []byte("activity\n")},
+			},
+		}},
 	})
 	if err == nil {
 		t.Fatal("Apply returned no error for an unwritable projection")
@@ -331,4 +410,59 @@ func diff(t *testing.T, before, after map[string]string) []string {
 	}
 	sort.Strings(changed)
 	return changed
+}
+
+// TestApplyRotatesEachSubjectOnItsOwnThreshold pins log.rotate-bytes as a
+// per-subject value.
+//
+// The key is chain-resolved like every other (§3.4, §7), so a project that sets
+// its own must not decide when its parent bucket's journal rotates — and a
+// single threshold shared across a mutation would make it do exactly that,
+// silently, because the parent's own config.toml would never be consulted.
+func TestApplyRotatesEachSubjectOnItsOwnThreshold(t *testing.T) {
+	root := t.TempDir()
+	eager := filepath.Join(root, "projects", "acme")
+	patient := filepath.Join(root, "projects")
+
+	first := at(t, "2026-03-05T09:00:00")
+	second := at(t, "2026-03-05T10:00:00")
+	for _, when := range []time.Time{first, second} {
+		if _, err := writeset.Apply(writeset.Mutation{
+			Subjects: []writeset.Subject{{
+				Dir:         eager,
+				Events:      []journal.Event{journal.NewNote(when, "eager")},
+				RotateBytes: 1, // every event past the first opens a new file
+			}},
+			Parent: &writeset.Subject{
+				Dir:    patient,
+				Events: []journal.Event{journal.NewChild(when, journal.ChildOpAdded, "acme", "", "", "")},
+				// No threshold: journal.DefaultRotateBytes, 4 MiB.
+			},
+		}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+	}
+
+	eagerFiles := journalFiles(t, truth.LogsDir(eager))
+	if len(eagerFiles) != 2 {
+		t.Errorf("the subject's journal has %v, want two files at a 1-byte threshold", eagerFiles)
+	}
+	patientFiles := journalFiles(t, truth.LogsDir(patient))
+	if len(patientFiles) != 1 {
+		t.Errorf("the parent's journal has %v, want one file at the default threshold", patientFiles)
+	}
+}
+
+func journalFiles(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir(%s): %v", dir, err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+	return names
 }

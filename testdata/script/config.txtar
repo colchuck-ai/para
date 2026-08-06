@@ -6,11 +6,23 @@
 # printing nothing at all, while §23 says mutations print what they wrote, one
 # line per file. The prose wins — a `set` that writes a file and says nothing
 # is the one case where a user cannot tell whether --at landed where they meant.
+#
+# Since Phase 8 a config change is also an event in that level's own journal
+# (§8.1), so the file list is three lines rather than one, and the clock has to
+# be fixed for the journal filename to be assertable at all (§0.2).
+
+env PARA_NOW=2026-03-05T17:00:00Z
+env PARA_TZ=America/Los_Angeles
 
 # The chain is built deliberately, one level at a time (§22).
 [para:phase7] cd brain
 [para:phase7] exec para config set --at projects project.stale-after 30
-[para:phase7] stdout '^wrote  projects/\.para/config\.toml\n$'
+[para:phase7] cmp stdout $WORK/want-set-projects.txt
+
+# The change is recorded where it happened (§3.2, §8.1), and reads as a
+# sentence in that level's own digest.
+[para:phase7] grep '"kind":"change","field":"project.stale-after","to":"30"' projects/.para/logs/20260305T170000Z.jsonl
+[para:phase7] grep 'Set \*\*project\.stale-after\*\* to 30' projects/ACTIVITY.md
 
 # §22's worked example, byte for byte: the resolved value, then every level
 # consulted, nearest first, with the winner marked.
@@ -28,7 +40,7 @@
 # A value set at a level, from inside that level's subtree, using "." (§14).
 [para:phase7] cd projects/acme-migration
 [para:phase7] exec para config set --at . project.stale-after 3
-[para:phase7] stdout '^wrote  projects/acme-migration/\.para/config\.toml\n$'
+[para:phase7] stdout '^ +projects/acme-migration/\.para/config\.toml\n'
 [para:phase7] exec para config show project.stale-after .
 [para:phase7] stdout '^3\n'
 [para:phase7] cd $WORK/brain
@@ -37,7 +49,7 @@
 # CLAUDE.md files and the .claude/skills mirror that §26 shows next — is
 # Phase 13's; what this phase owns is the config write.
 [para:phase7] exec para config set emit.claude true
-[para:phase7] stdout '^wrote  \.para/config\.toml\n$'
+[para:phase7] stdout '^ +\.para/config\.toml\n'
 [para:phase7] grep '^emit\.claude = true$' .para/config.toml
 
 # Setting a key to the value it already holds writes nothing and says so (§23).
@@ -46,14 +58,15 @@
 
 # unset removes the value and resolution continues up the chain (§7).
 [para:phase7] exec para config unset --at projects project.stale-after
-[para:phase7] stdout '^wrote  projects/\.para/config\.toml\n$'
+[para:phase7] stdout '^ +projects/\.para/config\.toml\n'
+[para:phase7] grep 'Unset \*\*project\.stale-after\*\* \(was 30\)' projects/ACTIVITY.md
 [para:phase7] exec para config show project.stale-after projects.other-project
 [para:phase7] stdout '^14\n'
 
 # A skill's chain is its own config.toml and then the root, with nothing in
 # between, because .agents/ is not in the PARA tree (§7).
 [para:phase7] exec para config set --at skills.signups-report review.cadence 90
-[para:phase7] stdout '^wrote  \.agents/skills/para-signups-report/\.para/config\.toml\n$'
+[para:phase7] stdout '^ +\.agents/skills/para-signups-report/\.para/config\.toml\n'
 [para:phase7] exec para config show review.cadence skills.signups-report
 [para:phase7] cmp stdout $WORK/want-skill-chain.txt
 
@@ -103,6 +116,10 @@ name = "Signups report"
   projects.acme-migration      —
 → projects                     30
   <root>                       14
+-- want-set-projects.txt --
+wrote  projects/.para/logs/20260305T170000Z.jsonl
+       projects/.para/config.toml
+       projects/ACTIVITY.md
 -- want-projects-config.txt --
 project.stale-after = 30
 -- want-skill-chain.txt --

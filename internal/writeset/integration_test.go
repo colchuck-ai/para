@@ -56,11 +56,13 @@ func TestRenderThenApplyIsTheWholeWritePath(t *testing.T) {
 	}
 
 	if _, err := writeset.Apply(writeset.Mutation{
-		Dir:         entityDir,
-		Events:      in.Events,
-		State:       state,
-		Projections: projections,
-		Parent: &writeset.Parent{
+		Subjects: []writeset.Subject{{
+			Dir:         entityDir,
+			Events:      in.Events,
+			State:       state,
+			Projections: projections,
+		}},
+		Parent: &writeset.Subject{
 			Dir:    filepath.Join(root, "projects"),
 			Events: []journal.Event{journal.NewChild(at(t, "2026-03-05T09:00:00"), journal.ChildOpAdded, "acme-migration", "", "", "")},
 		},

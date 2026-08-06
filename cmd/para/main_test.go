@@ -26,6 +26,7 @@ var implementedPhases = map[int]bool{
 	0: true,
 	4: true,
 	7: true,
+	8: true,
 }
 
 const phaseConditionPrefix = "para:phase"
@@ -42,6 +43,15 @@ func phaseCondition(cond string) (bool, error) {
 }
 
 func TestScripts(t *testing.T) {
+	// Every script from Phase 8 on writes journal files named for the instant
+	// they were written and ACTIVITY.md sections dated by it, so the whole
+	// suite needs a fixed clock — which production deliberately refuses to read
+	// (§0.2). Without the tag the assertions would be about the host's wall
+	// clock, so the honest thing is to say the suite did not run. `make test`
+	// supplies the tag; so does CI.
+	if !testHooksEnabled {
+		t.Skip("script tests need -tags para_testhooks so PARA_NOW fixes the clock; run `make test`")
+	}
 	testscript.Run(t, testscript.Params{
 		Dir:       "../../testdata/script",
 		Condition: phaseCondition,
