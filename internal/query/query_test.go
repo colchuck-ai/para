@@ -548,3 +548,37 @@ func TestIncludeArchivedReachesArchiveWithoutNamingIt(t *testing.T) {
 		t.Errorf("got %v, want it to include archive.projects.old", got)
 	}
 }
+
+// TestAScopedSkillListsThatSkillAndNotEveryOther. `skills` is a second root
+// rather than a subtree of the first (§1.4), and the branch that reaches it must
+// still honour the segments after it: §5.1 gives a skill no children, so a scope
+// naming one is a question about one thing.
+func TestAScopedSkillListsThatSkillAndNotEveryOther(t *testing.T) {
+	root := fixture(t)
+	w := writer(t, root)
+	add(t, w, "skills.commit-style", "name", "Commit style",
+		"description", "when writing a commit message")
+
+	all := list(t, root, query.Options{Scope: loc(t, "skills")})
+	assertLocators(t, locators(all), "skills.commit-style", "skills.signups-report")
+
+	// A skill has no children, so listing beneath one is empty...
+	beneath := list(t, root, query.Options{Scope: loc(t, "skills.signups-report")})
+	assertLocators(t, locators(beneath))
+
+	// ...and naming it is that skill, never the other one.
+	named := list(t, root, query.Options{
+		Scope:       loc(t, "skills.signups-report"),
+		IncludeSelf: true,
+	})
+	assertLocators(t, locators(named), "skills.signups-report")
+}
+
+// TestASkillScopeNamingNothingIsAnError, for the same reason every other scope
+// is: an empty list reads as "you have none of those".
+func TestASkillScopeNamingNothingIsAnError(t *testing.T) {
+	root := fixture(t)
+	if _, err := query.List(reader(t, root), query.Options{Scope: loc(t, "skills.nope")}); err == nil {
+		t.Error("a skill scope naming nothing must be an error")
+	}
+}

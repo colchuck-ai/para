@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/colchuck-ai/para/internal/locator"
-	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/review"
 	"github.com/colchuck-ai/para/internal/view"
 )
@@ -40,8 +39,8 @@ func newReviewCmd() *cobra.Command {
 					return err
 				}
 			}
-			if limit < 0 {
-				return paraerr.Newf(paraerr.KindValidation, "--limit cannot be negative")
+			if err := checkLimit(limit); err != nil {
+				return err
 			}
 
 			var only []review.Group
@@ -81,6 +80,7 @@ func newReviewCmd() *cobra.Command {
 	// converted at all: it is a day somebody chose, not an instant something
 	// happened at (§15.1).
 	read.register(cmd)
+	cmd.Flags().Lookup("local").Usage = "accepted for consistency; review prints no timestamp to convert"
 	return cmd
 }
 
@@ -112,7 +112,8 @@ func printReview(out io.Writer, res review.Result) {
 	for _, s := range res.Sections {
 		t.head(sectionHeading(s))
 		for _, item := range s.Items {
-			t.add(item.Entity.Locator.String(), measureCell(s.Group, item), thresholdCell(s.Group, item))
+			measure, threshold := cells(s.Group, item)
+			t.add(item.Entity.Locator.String(), measure, threshold)
 		}
 	}
 	t.write(out)
@@ -127,20 +128,12 @@ func sectionHeading(s review.Section) string {
 	return fmt.Sprintf("%s (%d)", s.Group, s.Total)
 }
 
-// measureCell is the middle column: the value that put the item in the group,
-// spelled in the group's own units.
-func measureCell(g review.Group, item review.Item) string {
-	switch g {
-	case review.GroupBehind:
-		return "pace " + number(item.Entity.KeyResult.Outlook.Pace)
-	case review.GroupOverdue:
-		return days(item.Days) + " over"
-	default:
-		return days(item.Days)
-	}
-}
-
-// thresholdCell is the right column: what the middle one is past.
+// cells is a row's two right-hand columns: the value that put the item in its
+// group, and what that value is past. They are derived together because the two
+// groups that depart from the common shape depart in both columns at once —
+// `overdue` measures days against a stored date rather than a knob, and `behind`
+// measures a pace rather than days — so splitting them would spell "these two
+// are the special ones" twice.
 //
 // The knob is named in full — `area.stale-after 30` where §26 writes
 // `stale-after 30` — for the reason Phase 10 gave `show`, and more strongly
@@ -151,24 +144,29 @@ func measureCell(g review.Group, item review.Item) string {
 // Where the value came from is carried by --json rather than printed on every
 // row: `show <locator>` is the command for one thing's provenance, and repeating
 // a path down a column of twenty would bury the numbers.
-func thresholdCell(g review.Group, item review.Item) string {
-	if g == review.GroupOverdue {
+func cells(g review.Group, item review.Item) (measure, threshold string) {
+	switch g {
+	case review.GroupOverdue:
 		// A deadline is not a configured number; it is the entity's own stored
 		// `due`, printed as typed (§15.1).
-		return "due " + item.Entity.State.Due
+		return span(item.Days) + " over", "due " + item.Entity.State.Due
+	case review.GroupBehind:
+		pace := dash
+		if v, ok := item.Pace(); ok {
+			pace = number(v)
+		}
+		return "pace " + pace, knobCell(item)
+	default:
+		return span(item.Days), knobCell(item)
 	}
+}
+
+// knobCell is the §7 knob and its value, empty for a group that has none.
+func knobCell(item review.Item) string {
 	if !item.Threshold.Found {
 		return ""
 	}
 	return item.Threshold.Key + " " + exact(item.Threshold.Value)
-}
-
-// days spells §26's `61 days`, keeping the singular honest.
-func days(n int) string {
-	if n == 1 {
-		return "1 day"
-	}
-	return fmt.Sprintf("%d days", n)
 }
 
 // reviewOutput is `review --json`: the sections, and §23's counts.

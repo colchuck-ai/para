@@ -922,13 +922,38 @@ exists to avoid. The options are `IncludeSelf` and `IncludeArchived`, and both a
   argument §3.5 makes for the generated files, and the one `show --local` already follows by keeping
   its staleness verdict in UTC while printing local dates. The only date on a row is a `due`, which is
   never converted at all (§15.1). Stated plainly because a silently inert flag is a defect; this one
-  is inert by construction and says so in the code.
+  is inert by construction, says so in the code, and says so in `--help` — the shared flag's usage
+  string is overridden on this command, because a help line promising a conversion that never happens
+  is worse than one admitting there is nothing to convert.
 - **Empty groups are omitted and an empty review says so.** A heading with no rows claims there is a
   group to look at; printing nothing at all makes "did it run" and "is there nothing" look identical,
   which is the wrong pair to conflate for the command you run every morning.
 - **`kindmeta.StatusBlocked` now exists.** `blocked` was spelled by hand in `mutate` (§18.2's refusal)
   and would have been spelled again here (§20's group). §1.7's vocabulary lives in `kindmeta`, so the
   word does too.
+
+- **"Always exits 0" is about findings, not about whether the command could run.** §20 and §23 both
+  say it flatly, and the reading taken is §0.5's: a mistyped locator and a negative `--limit` are
+  exit 1, exactly as they are on every other command. What §20 is arguing against is a command that
+  fails *because you have work* — "a command that fails whenever you have work is a command you stop
+  running" — and an unparseable request is not work. Recorded rather than left in a test comment,
+  because it is a literal contradiction of a sentence in bold.
+- **`--tags` and `--match` are not on `review`, and that is a decision.** §17 offers them ("on
+  `list`, and on `log`/`activity`/`review` **where the flag makes sense**") and they arguably do make
+  sense — `review --tags kafka` is a real question. They are omitted because §20 gives this command
+  an explicit syntax line listing five flags and no filters, §17's permission is not an obligation,
+  and §17's own closing note says the direction filters should grow is one `--where` over all fields
+  rather than more flags. Adding them later is backwards-compatible, which is the same shape of
+  argument Phase 8 used for `priority`; if it proves wrong, the repair is additive.
+
+**A defect in Phase 10's walk, found by review and fixed here.** `query`'s scoped walk had a
+`scope[0] == "skills"` branch that returned *every* skill and ignored the segments after it, so
+`list skills.signups-report` was a listing of all skills — and `checkScope` refused a bare `skills`
+outright, since §1.4 gives a path to `skills.<id>` and to nothing shorter, so the branch was only ever
+reached by the case it got wrong. `review <skill>` would have inherited both. Now `skills` is the
+address of the second root and always resolves, and a scope naming one skill is about that skill:
+§5.1 gives a skill no children, so anything else answers a question about one thing with an answer
+about all of them.
 
 **A §26 divergence found while transcribing, and left as §20 has it:** §26's block shows
 `para review --stale --behind` with a `stale (3)` group whose rows are elided. Nothing about the

@@ -602,3 +602,108 @@ func TestOneEntityCanHaveTwoReasons(t *testing.T) {
 		}
 	}
 }
+
+// TestTimerGroupsAreOrderedByDistancePastTheThreshold is §20's ordering clause
+// for the groups whose distance is a number of days.
+//
+// Distance past the threshold, not raw age: two kinds with different thresholds
+// in one `stale` group are not comparable by age at all, which is the case this
+// pins. The older area is *less* far past its own knob than the younger project
+// is past its.
+func TestTimerGroupsAreOrderedByDistancePastTheThreshold(t *testing.T) {
+	root := plantTree(t)
+	w := writer(t, root)
+	add(t, w, "areas.fitness", "name", "Fitness", "description", "Staying in one piece.",
+		"created", "2026-01-01") // 63 days old, 3 past a 60-day knob
+	add(t, w, "projects.website", "name", "Website", "description", "A refresh.",
+		"created", "2026-02-01") // 32 days old, 22 past a 10-day knob
+	configure(t, root, "area.stale-after", "60", "project.stale-after", "10")
+
+	got := run(t, root, review.Options{Only: []review.Group{review.GroupStale}})
+	assertLocators(t, section(t, got, review.GroupStale), "projects.website", "areas.fitness")
+
+	items := got.Sections[0].Items
+	if items[0].Over != 22 || items[1].Over != 3 {
+		t.Errorf("over = %v, %v; want 22, 3", items[0].Over, items[1].Over)
+	}
+	// And the raw ages run the other way, so the ordering could not have come
+	// from the age alone.
+	if !(items[0].Days < items[1].Days) {
+		t.Errorf("days = %d, %d; the older thing must be second here", items[0].Days, items[1].Days)
+	}
+}
+
+// TestOverdueIsOrderedByHowFarPastTheDeadline, and a tie falls back to locator
+// so the output is stable enough to be a golden file (§0.2).
+func TestOverdueIsOrderedByHowFarPastTheDeadline(t *testing.T) {
+	root := fixture(t)
+	w := writer(t, root)
+	add(t, w, "projects.b-late", "name", "B", "description", "Late.",
+		"created", "2026-01-01", "due", "2026-02-01")
+	add(t, w, "projects.a-later", "name", "A", "description", "Later.",
+		"created", "2026-01-01", "due", "2026-01-15")
+	add(t, w, "projects.a-tied", "name", "A tied", "description", "Same deadline as b-late.",
+		"created", "2026-01-01", "due", "2026-02-01")
+
+	got := run(t, root, review.Options{Only: []review.Group{review.GroupOverdue}})
+	assertLocators(t, section(t, got, review.GroupOverdue),
+		"projects.a-later", "projects.a-tied", "projects.b-late")
+}
+
+// TestSkillsFiresOffReviewCadenceOrdering covers the fifth group's ordering,
+// which shares staleItem with --stale but reads a different knob.
+func TestSkillsAreOrderedByDistancePastTheCadence(t *testing.T) {
+	root := fixture(t)
+	w := writer(t, root)
+	add(t, w, "skills.old", "name", "Old", "description", "when doing the old thing",
+		"created", "2026-01-01")
+	add(t, w, "skills.newer", "name", "Newer", "description", "when doing the newer thing",
+		"created", "2026-01-20")
+
+	got := run(t, root, review.Options{Only: []review.Group{review.GroupSkills}})
+	assertLocators(t, section(t, got, review.GroupSkills), "skills.old", "skills.newer")
+}
+
+// TestASkillReachesNoGroupButSkills is §20's bullet in full. `--stale` bars
+// skills by name; the other three are barred by what a skill *is* — no status,
+// no due date, and no key-result arithmetic (§1.7, §15) — and that is worth
+// pinning, because the reason is structural rather than written down in
+// classify.
+func TestASkillReachesNoGroupButSkills(t *testing.T) {
+	root := fixture(t)
+	add(t, writer(t, root), "skills.commit-style", "name", "Commit style",
+		"description", "when writing a commit message", "created", "2026-01-01")
+	configure(t, root, "key-result.at-risk-pace", "0.80")
+
+	got := run(t, root, review.Options{})
+	for _, s := range got.Sections {
+		if s.Group == review.GroupSkills {
+			continue
+		}
+		for _, item := range s.Items {
+			if item.Entity.Kind == kindmeta.KindSkill {
+				t.Errorf("%s reached %s; skills are reached by --skills alone (§20)",
+					item.Entity.Locator, s.Group)
+			}
+		}
+	}
+	// The skill is genuinely present in the review, or the loop above proves
+	// nothing about it.
+	assertLocators(t, section(t, got, review.GroupSkills), "skills.commit-style")
+}
+
+// TestAnItemsPaceIsSafeToAskFor: the `behind` group's display reads the pace
+// through Item.Pace rather than through Entity.KeyResult, so an item from any
+// other group answers false instead of panicking.
+func TestAnItemsPaceIsSafeToAskFor(t *testing.T) {
+	root := fixture(t)
+	got := run(t, root, review.Options{Only: []review.Group{review.GroupStale}})
+	for _, item := range got.Sections[0].Items {
+		if item.Entity.Kind == kindmeta.KindKeyResult {
+			continue
+		}
+		if _, ok := item.Pace(); ok {
+			t.Errorf("%s is not a key-result and must have no pace", item.Entity.Locator)
+		}
+	}
+}

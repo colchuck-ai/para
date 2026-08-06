@@ -128,10 +128,19 @@ func (f filterFlags) options(scope locator.Locator) (query.Options, error) {
 		}
 		opts.Sort = key
 	}
-	if f.limit < 0 {
-		return query.Options{}, paraerr.Newf(paraerr.KindValidation, "--limit cannot be negative")
+	if err := checkLimit(f.limit); err != nil {
+		return query.Options{}, err
 	}
 	return opts, nil
+}
+
+// checkLimit refuses a negative `--limit`, which every command taking one owes
+// the same answer to. Zero is "no limit" and is how the flag is absent.
+func checkLimit(n int) error {
+	if n < 0 {
+		return paraerr.Newf(paraerr.KindValidation, "--limit cannot be negative")
+	}
+	return nil
 }
 
 // dash is what an absent value prints as. §17 fixes it for an undefined pace —
@@ -256,18 +265,28 @@ func instant(t time.Time, loc *time.Location) string {
 	return t.In(loc).Format(time.RFC3339)
 }
 
+// span is a bare count of days — §20's "61 days", the length itself rather than
+// a reference to a point in time. It is the root of the other two spellings, so
+// the plural rule is written once.
+func span(days int) string {
+	if days == 1 || days == -1 {
+		return "1 day"
+	}
+	return strconv.Itoa(days) + " days"
+}
+
 // ago spells a day count as §16.1 does: "31 days ago", and "today" for zero,
-// because "0 days ago" is a sentence nobody writes.
+// because "0 days ago" is a sentence nobody writes. §20's column keeps the bare
+// `span` instead, because there the number is a magnitude being compared to a
+// threshold rather than a date being referred to.
 func ago(days int) string {
 	switch {
 	case days < 0:
 		return "in the future"
 	case days == 0:
 		return "today"
-	case days == 1:
-		return "1 day ago"
 	default:
-		return strconv.Itoa(days) + " days ago"
+		return span(days) + " ago"
 	}
 }
 
@@ -275,16 +294,12 @@ func ago(days int) string {
 // it turns into once the deadline passes.
 func until(days int) string {
 	switch {
-	case days < -1:
-		return strconv.Itoa(-days) + " days ago"
-	case days == -1:
-		return "1 day ago"
+	case days < 0:
+		return span(-days) + " ago"
 	case days == 0:
 		return "today"
-	case days == 1:
-		return "in 1 day"
 	default:
-		return "in " + strconv.Itoa(days) + " days"
+		return "in " + span(days)
 	}
 }
 

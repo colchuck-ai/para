@@ -102,3 +102,54 @@ func TestExactAndNumber(t *testing.T) {
 		t.Errorf("number(1) = %q, want 1.00", got)
 	}
 }
+
+// TestTableHeadingTakesNoPartInSizing is why `head` exists: §20's group
+// headings break one table into sections while every row's columns stay aligned
+// down the whole output, which is how §26 prints a review. A heading that
+// widened a column would defeat exactly that.
+func TestTableHeadingTakesNoPartInSizing(t *testing.T) {
+	tbl := table{indent: "  "}
+	tbl.head("stale (2)")
+	tbl.add("areas.fitness", "63 days", "area.stale-after 30")
+	tbl.add("projects.late", "59 days", "project.stale-after 30")
+	tbl.head("blocked (1)")
+	tbl.add("projects.website", "0 days")
+
+	var out bytes.Buffer
+	tbl.write(&out)
+
+	// The heading is unindented and unpadded; the third row's columns line up
+	// with the first two even though its group has one member, and its trailing
+	// empty cell adds no whitespace.
+	want := "stale (2)\n" +
+		"  areas.fitness     63 days  area.stale-after 30\n" +
+		"  projects.late     59 days  project.stale-after 30\n" +
+		"blocked (1)\n" +
+		"  projects.website  0 days\n"
+	if got := out.String(); got != want {
+		t.Errorf("table =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestSpanIsTheRootOfAgoAndUntil keeps one plural rule rather than three: §20's
+// column prints the bare span and §16.1's prints it as a reference to a point in
+// time, and the two disagreeing about "1 day" would be a spelling bug nobody
+// would think to test for.
+func TestSpanIsTheRootOfAgoAndUntil(t *testing.T) {
+	for _, n := range []int{0, 1, 2, 31} {
+		if n > 0 {
+			if got, want := ago(n), span(n)+" ago"; got != want {
+				t.Errorf("ago(%d) = %q, want %q", n, got, want)
+			}
+			if got, want := until(n), "in "+span(n); got != want {
+				t.Errorf("until(%d) = %q, want %q", n, got, want)
+			}
+		}
+	}
+	if got := span(1); got != "1 day" {
+		t.Errorf("span(1) = %q, want %q", got, "1 day")
+	}
+	if got := span(0); got != "0 days" {
+		t.Errorf("span(0) = %q, want %q", got, "0 days")
+	}
+}

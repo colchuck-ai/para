@@ -146,8 +146,21 @@ env PARA_TZ=America/Los_Angeles
 
 # A scope naming nothing is an error, not an empty review — the same reading
 # `list` takes, because "nothing to review there" is a wrong answer to a typo.
+# §20's "always exits 0" is about findings; a command that could not run is
+# §0.5's exit 1, as it is for every other command.
 [para:phase11] ! exec para review projects.nope
 [para:phase11] stderr 'projects\.nope does not exist'
+[para:phase11] ! exec para review --limit -1
+[para:phase11] stderr 'limit cannot be negative'
+
+# A scope naming one skill is about that skill, not about every skill: §5.1
+# gives a skill no children, so the segments after `skills` are not decoration.
+[para:phase11] exec para add skills.commit-style --name 'Commit style' --description 'when writing a commit message' --created 2026-01-01
+[para:phase11] exec para review skills.commit-style
+[para:phase11] stdout 'skills\.commit-style'
+[para:phase11] ! stdout 'skills\.signups-report'
+[para:phase11] exec para review skills
+[para:phase11] stdout 'skills\.signups-report'
 
 # --- a blown deadline is unhideable -----------------------------------------
 

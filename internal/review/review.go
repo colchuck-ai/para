@@ -89,13 +89,27 @@ type Item struct {
 
 	// Over is how far past the threshold this item is, and the ordering key
 	// within its group (§20's "ordered within a group by distance past the
-	// threshold"). It is days minus the threshold for the three timers, the day
-	// count itself for `blocked` — which has no threshold to subtract — and
-	// `at-risk-pace` minus the pace for `behind`.
+	// threshold"). It is `at-risk-pace` minus the pace for `behind`, days minus
+	// the threshold for the two groups that have one — `stale` and `skills` —
+	// and the day count itself for the two that do not, `blocked` having no
+	// timer at all and `overdue` measuring against a date rather than a number.
 	//
 	// Comparable within a group and meaningless across them, which is why it
 	// never leaves one.
 	Over float64
+}
+
+// Pace is the key-result's pace, and false where there is none.
+//
+// It exists so that a caller displaying the `behind` group does not have to
+// reach through Entity.KeyResult and depend on an invariant only behindItem
+// enforces — a nil there would be a panic in the output layer rather than a
+// wrong number, which is the worse of the two failures.
+func (i Item) Pace() (float64, bool) {
+	if i.Entity.KeyResult == nil {
+		return 0, false
+	}
+	return i.Entity.KeyResult.Outlook.Pace, i.Entity.KeyResult.Outlook.HasPace
 }
 
 // Section is one group's findings.
@@ -119,11 +133,12 @@ type Result struct {
 
 // Run classifies everything in scope into §20's groups.
 //
-// The exclusions are §20's: terminal items and archived things are out unless
-// All. The archived half has one qualification the design does not spell out
-// and §16.2 already settles for `list` — naming an archived locator makes what
-// is under it legitimate, because the alternative is an empty answer to an
-// explicit question.
+// §20's two exclusions are applied in two places, each where the rule already
+// lives: archived things never leave the walk (`IncludeArchived` below), and
+// terminal ones are dropped here (`excluded`). The archived half carries one
+// qualification the design does not spell out and §16.2 already settles for
+// `list` — naming an archived locator makes what is under it legitimate,
+// because the alternative is an empty answer to an explicit question.
 func Run(env *view.Env, opts Options) (Result, error) {
 	found, err := query.List(env, query.Options{
 		Scope: opts.Scope,
@@ -192,18 +207,17 @@ func selected(only []Group) map[Group]bool {
 	return out
 }
 
-// excluded is §20's "terminal items and archived things are excluded unless
-// `--all`".
+// excluded is the terminal half of §20's "terminal items and archived things
+// are excluded unless `--all`". The archived half is `query.IncludeArchived`,
+// set from the same flag — writing it here as well would put one rule in two
+// packages, and the copy here could only ever agree or be wrong.
 //
 // Terminal is the *effective* status (§1.7), so a whole subtree goes quiet when
 // its project is dropped, rather than each entity needing its own terminal
 // status. And `missed` is deliberately not terminal (§1.7), which is what makes
 // a blown deadline unhideable — the one thing §20's exclusion must not reach.
 func excluded(ent view.Entity, opts Options) bool {
-	if opts.All {
-		return false
-	}
-	return ent.Terminal || (ent.Archived && !opts.Scope.IsArchived())
+	return ent.Terminal && !opts.All
 }
 
 // classify decides whether ent belongs in g, and with what measurement.
