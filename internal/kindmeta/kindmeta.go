@@ -159,9 +159,22 @@ func skillChain(loc locator.Locator, rest []string) (Info, error) {
 	return Info{Kind: KindSkill}, nil
 }
 
+// checkID is the two rules an id position must satisfy: the word is not one
+// §1.4 reserves, and it is a legal locator segment.
+//
+// The second is not redundant with locator.Parse, and the gap it closes is a
+// real one. KindOf's argument does not always come from something a human
+// typed: the walk builds a locator out of *directory names* (§1.4 — "locator =
+// path, always"), and a directory called `UPPER` or `Big Thing` would otherwise
+// derive a perfectly good project kind, be walked as an entity, and be given
+// generated files by rebuild — at a locator `show` and `list` then refuse to
+// parse. Refusing here makes it §10's `misplaced`, which is what it is.
 func checkID(loc locator.Locator, id string) error {
 	if locator.IsReserved(id) {
 		return paraerr.Newf(paraerr.KindConflict, "%q: %q is a reserved word and cannot be used as an id", loc.String(), id)
+	}
+	if !locator.ValidSegment(id) {
+		return misplaced(loc, fmt.Sprintf("%q is not a legal id (must match [a-z0-9-]+)", id))
 	}
 	return nil
 }

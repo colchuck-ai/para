@@ -300,38 +300,27 @@ func setList(st *truth.State, field kindmeta.Field, values []string) {
 
 // checkState runs the rules that judge a state as a whole rather than one value
 // at a time.
+//
+// The rules themselves are `truth`'s, because doctor applies the same two to
+// stored truth (§10's `invalid`): a state a `set` accepts and a `doctor` then
+// faults would be para disagreeing with itself about one pair of values, and
+// the only way two callers cannot disagree is for there to be one rule. What
+// stays here is this path's own posture — it refuses where doctor reports, so
+// the parse failures below are errors rather than a separate finding, and the
+// stored value they refuse to write against is named.
 func (e *Env) checkState(kind kindmeta.Kind, st truth.State) error {
 	if st.Created != "" && st.Due != "" {
-		created, err := ptime.ParseAt(st.Created, time.UTC)
-		if err != nil {
+		if _, err := ptime.ParseAt(st.Created, time.UTC); err != nil {
 			return paraerr.Newf(paraerr.KindValidation, "created: %s", unwrapMessage(err))
 		}
-		due, err := ptime.Deadline(st.Due)
-		if err != nil {
+		if _, err := ptime.Deadline(st.Due); err != nil {
 			return paraerr.Newf(paraerr.KindValidation, "due: %s", unwrapMessage(err))
 		}
-		if err := ptime.CheckNotAfterDue(created, due); err != nil {
-			return paraerr.Newf(paraerr.KindValidation, "created %s", unwrapMessage(err))
-		}
 	}
-
-	if kind != kindmeta.KindKeyResult || st.Type == "" || st.Target == "" {
-		return nil
+	if err := truth.CheckCreatedNotAfterDue(st); err != nil {
+		return paraerr.Newf(paraerr.KindValidation, "created %s", unwrapMessage(err))
 	}
-	typ := krvalue.Type(st.Type)
-	target, err := krvalue.Parse(typ, st.Target)
-	if err != nil {
-		return err
-	}
-	var start *krvalue.Value
-	if st.Start != "" {
-		v, err := krvalue.Parse(typ, st.Start)
-		if err != nil {
-			return err
-		}
-		start = &v
-	}
-	return krvalue.ValidateBounds(typ, start, target)
+	return truth.CheckBounds(kind, st)
 }
 
 // diff reports the fields that actually changed between two states, in §15's

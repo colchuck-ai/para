@@ -984,6 +984,172 @@ not terminal, §1.7), and `--skills` fires off `review.cadence` resolved through
 
 ## Phase 12 — `rebuild` and `doctor`
 
+**Status: done** (branch `impl`). `internal/rebuild` and `internal/doctor` land, plus `para rebuild`
+and `para doctor` with `--dry-run`, `--json`, and the 0/1/2 exit contract.
+
+### The seam, and why `doctor` renders nothing
+
+`stale-projection` is defined as "a generated file differs from what would be written now" (§10), and
+`rebuild` is the command that writes it. So the two must agree exactly about what "would be written
+now" means, and the way they are made to agree is that **doctor asks rebuild**: `rebuild.Derive` is the
+one function that turns a subject on disk into the bytes its files should hold, and a `stale-projection`
+finding is precisely an artifact it reports as stale. A doctor with a renderer of its own would be a
+second opinion about the same bytes, which is the thing principle 3 exists to prevent.
+
+`rebuild` reads no clock, and the absence is load-bearing rather than incidental. A projection is a
+function of truth alone — §2.5 keeps everything clock-dependent out of the files — so a rebuild today
+and a rebuild tomorrow over the same tree produce the same bytes. If that ever stops being true,
+`doctor` starts reporting drift on a tree nobody touched.
+
+### Shared seams this phase added or moved
+
+Four rules had two prospective callers each, and each became one function rather than two copies —
+the discipline Phase 10 and 11 both paid for learning:
+
+- **`truth.Check`** is §15's rules over a *stored* state, and `mutate.checkState` now delegates its two
+  whole-state rules to it. A state a `set` accepts and a `doctor` faults would be para disagreeing with
+  itself about one pair of values.
+- **`render.RuleFilenames`** is `CLAUDE.md`'s import list, built from the *skills* — one derived rule
+  per skill (§5.3, §6.1) — and used by the write path and by `rebuild` alike. `tree.Rules`, which
+  lists the rule files actually on disk, has exactly one legitimate caller: `doctor`'s `orphan-rule`.
+  The distinction is the phase's sharpest lesson and is written up below.
+- **`tree.Resolves`** answers "does this locator address something that is actually there", for the
+  three ways of existing (entity, stub, the second root). `query`'s scope check, `rebuild`'s, and
+  `doctor`'s `scope-unresolved` all read it; a skill whose scope doctor calls broken and `list` happily
+  lists would be para contradicting itself about one locator.
+- **`render.Collect`** is the two-phase render — read every artifact's current bytes, *then* render —
+  that the write path and rebuild both need. Two renderers copy a human-owned part of the file already
+  on disk and one copies every prior day of it, so interleaving the phases is wrong in a way that
+  stays invisible until two renderers on one subject read each other's files.
+
+### The defect the review found in this phase's own code
+
+**`CLAUDE.md` was a projection derived from a directory of projections.** The import list came from
+listing `.agents/rules/`, and both review agents found it independently — which per the Phase 11 note
+is the strongest signal a run produces. The failure it caused is exactly the one §21.1 legislates
+against in the words "never reads a projection to produce one": on a tree planted as truth alone —
+§2.4's own "a merge resolved truth and left the projections wrong" — `rebuild` writes the root and the
+buckets before it reaches `.agents/skills/`, so all eight `CLAUDE.md` files were derived from a rules
+directory it had not repaired yet, and the run needed a second pass to converge. `para rebuild && para
+doctor` exited 1. The same bug from the other side had `rebuild` writing an `@` import for a rule file
+`doctor` was simultaneously reporting as `orphan-rule`.
+
+The fix is one line of principle: the list comes from the skills, through `render.RuleFilenames`. Worth
+recording as a general lesson, because "one rule, one function" was already being applied and did not
+prevent it — `tree.Rules` *was* a single shared function, and it was reading from the wrong side of
+§2.1. **A shared derivation is only as sound as the side of the truth/projection line it reads from.**
+
+### Two defects this phase exposed in older code
+
+- **The walk could not see through a stubbed *container*.** Archiving one objective out of a live
+  project leaves `archive/projects/acme/objectives/` as a bare directory (§1.6), and `walkChildren`
+  refused to descend into any bare directory whose name was reserved — so the archived objective and
+  everything under it were invisible to every read, and `doctor` reported them as orphans on a tree
+  para itself produced. The stub branch now descends through legal container positions
+  (`kindmeta.IsContainer`), and `walkArchiveStub` classifies with `tree.KindAt` rather than
+  `kindmeta.KindOf`, which is defined to refuse every container.
+- **A reserved word used as an id was invisible.** `tree.KindAt` called anything with a reserved last
+  segment a container, so `projects/skills/` — §10's own `collision` — walked as a legal container and
+  nothing ever reported it. Containers are now decided by *position* (`kindmeta.IsContainer`: the four
+  buckets, the three archived mirrors, `objectives/` under a project, `key-results/` under an
+  objective), and the error `kindmeta.KindOf` already returns distinguishes the two findings — tagged
+  `KindConflict` for a collision and `KindValidation` for a misplacement.
+- **An id that was not a legal locator segment derived a kind anyway**, found by the review.
+  `kindmeta.checkID` tested only the reserved-word list, never the `[a-z0-9-]` charset `locator.Parse`
+  enforces on what you type — so `projects/UPPER/` walked as a project, `rebuild` manufactured a
+  `README.md` and an `ACTIVITY.md` for it, `list` printed the locator, and `show` then refused to parse
+  the locator `list` had just printed. `locator.ValidSegment` is now one function with two callers, and
+  the directory is §10's `misplaced`, which is what it is. The same hole existed at the second root:
+  `walkAgentsSkills` admitted any `para-*` directory, so a reserved word used as a *skill* id was
+  blessed by `doctor` and refused by `add`; it now classifies through `tree.KindAt` like every other
+  position.
+
+### Decisions worth recording
+
+- **`orphan` vs `misplaced` is decided by reachability first.** §10 gives three answers for a
+  `state.toml` the fast walk did not visit and they name different repairs, so the discriminator has to
+  be sharp: if the walk cannot *descend* to the directory's parent it is an `orphan` whatever its shape,
+  and only a directory the walk could have reached is judged on whether its locator derives a kind. A
+  skill is where descent stops — §1.3 gives skills one level and §5.1 makes everything inside one the
+  author's — so an entity planted under a skill is beneath content exactly as one under a project's
+  `notes/` is.
+- **Everything beneath an orphan is its own finding.** Moving an objective into `notes/` produces three
+  orphans: the objective, its `key-results/` container, and the key-result. Folding them into one would
+  be a guess about which directory the repair addresses, and the report is a list of what a read gets
+  wrong rather than a list of edits.
+- **`doctor` skips only `.git` in the deep scan.** §21.2's "walks every directory including inside
+  content" is taken at its word, including the directories para itself owns: an entity hand-`mv`'d into
+  a `.para/` or a `.claude/` is exactly the vanishing §8.5 names as the walk's weakness, and skipping
+  them hid it. An earlier version skipped both, and the review showed the stated reason for `.claude/`
+  was false: §6.1's "**`.para/` is never mirrored**" means a `copy`-mode mirror cannot be read as a
+  second entity, and a `symlink`-mode one is never descended because `WalkDir` reports a symlink as a
+  non-directory whatever it points at. §6.1 already prevents the phantom; the skip bought nothing.
+  `.git` stays, and is a different kind of thing: a repository's own object store is not the tree,
+  cannot hold an entity, and is thousands of directories deep. Walking `.para/` needs one guard — a
+  directory whose name is a reserved word is never `untracked`, because `projects/.para/` sits directly
+  in a bucket and is para's own.
+- **`config.toml` is checked too, and its failure suppresses the drift comparison.** §10's `invalid`
+  row opens with "unparseable TOML" and does not say which truth file it means; §2.2 makes `config.toml`
+  the other one. Leaving it unchecked was worse than an omission — an unparseable config broke the §7
+  chain for every descendant, so it surfaced as one `stale-projection` per subject, naming directories
+  rather than the file and leaking an absolute path. Now the file is reported once, at the level that
+  owns it, with the parse error; and a subject whose chain will not resolve is not compared, on the same
+  ground as unreadable state.
+- **A subject whose truth or journal will not read is not compared for drift.** Every projection is
+  derived from those two, so "what would be written now" is unanswerable — reporting drift would be
+  reporting a comparison that was never made, and reporting the same broken line twice.
+- **A projection para cannot *produce* is reported as `stale-projection`, not `invalid`.** The case is a
+  delimited block whose markers were edited out of an `AGENTS.md` or a `.gitattributes`: §10's `invalid`
+  is about truth files, and a generated file that cannot be regenerated differs from what would be
+  written now in the strongest possible sense.
+- **A missing generated file is stale.** §10 asks whether the file "differs from what would be written
+  now", and an absent file differs from every possible answer. This is what discharges Phase 8's debt:
+  `config set emit.claude true` leaves eight `CLAUDE.md` files unwritten, `doctor` now reports each as
+  missing, and `rebuild` writes them.
+- **`rebuild` writes as it goes rather than deriving the whole tree first**, so a tree too big to hold
+  in memory is still one that can be rebuilt. The consequence is stated rather than hidden: if a
+  subject's truth will not read, the subjects already visited have been written and the ones after it
+  have not — the same degraded state a crash produces, with the same repair (§2.4).
+- **`rebuild` writes; it does not delete.** An `orphan-rule`, an `orphan-mirror`, or a `CLAUDE.md` left
+  behind by turning `emit.claude` off are residue rather than drift, and Phase 13 owns removing them —
+  its task 3 is "a config change plus `rebuild` removes the old shape and writes the new one, leaving
+  no residue". Reporting them is this phase's job and it does; sweeping them is not.
+- **`doctor`'s scoped scan does not check the rules or the mirror.** A derived rule lives in
+  `.agents/rules/` and a mirror in `.claude/skills/`, neither of which is inside any entity's subtree —
+  so `doctor projects.acme` cannot reach them, and reporting them anyway would make a scoped scan
+  quietly tree-wide.
+- **An unknown key in a truth file is `invalid`.** §10's list does not name it and §8.3 does not declare
+  the schema closed, so this is an addition rather than a transcription. It earns its place because
+  `DecodeState` *ignores* unknown keys — one stray key must not make every read of an entity fail — and
+  ignoring is not accepting: an unknown key is either a typo that silently does nothing (`descripton`)
+  or a field written by a newer para, and both are worth a word.
+- **A stub is never a subject, at any scope.** `tree.Subtree` used to classify the scope root from the
+  locator alone, so `doctor archive.projects.acme` read a bare ancestry placeholder as a project and
+  reported a spurious `invalid` for the `state.toml` a stub is defined not to have (§1.6) — while `list`
+  answered the same locator correctly. Found by the review; the scope root is now classified against the
+  filesystem like every other node.
+- **`broken-link` consults neither `emit.claude` nor `emit.claude-skills`.** A symlink that does not
+  resolve is broken whatever the config says, and a mirror materialised as a plain file is §10's named
+  `core.symlinks=false` checkout. §10 scopes the finding to "a `symlink`-mode mirror", and this is
+  wider by one case: a plain file where a `copy`-mode mirror belongs is wrong too, and the entry claims
+  to be a mirror while not being one, which is what the finding is about. Reading the mode to decide
+  *which name to give the same broken file* would be a distinction with no different repair. What the
+  config does decide is whether the mirror should be there at all, which is `orphan-mirror`'s question
+  and Phase 13's repair.
+- **`journal.Decode` now requires `at`.** §3.1 makes it load-bearing — "ordering comes from `at`, never
+  from file position" — so a line without one would sort as the year 1 and head every digest. Refusing
+  in the codec is what lets doctor name the file and the line, since the only thing that can point at a
+  line is whatever refused it.
+- **`paraerr.Status` carries an exit code with no message.** `doctor`'s findings *are* its output and
+  the code is a second channel saying how to read them (§21.2); printing `error: 3 findings` beneath a
+  report that already lists them is noise §26's own transcript does not show.
+- **`doctor --json` carries `exit`.** It is the only way a test can tell 1 from 2, since testscript
+  distinguishes zero from non-zero and no more — and the difference between the two is the whole point
+  of the contract.
+- **`--local` is registered on `doctor` and has nothing to convert**, for the reason Phase 11 gave
+  `review`: the one timestamp a finding can print is the `at` of a journal line, quoted back exactly as
+  the line stores it so that the line can be found. The help string says so.
+
 **Tasks**
 
 1. `rebuild [<locator>] [--dry-run]`: regenerate every projection from `state.toml`, `tree.toml`, and
@@ -1000,6 +1166,33 @@ not terminal, §1.7), and `--skills` fires off `review.cadence` resolved through
 **Done when** a hand-mutated tree produces exactly the expected finding set, the dated `ACTIVITY.md`
 drift report is tested against a hand-edited prior day, and `rebuild` is proven idempotent by running
 it twice and diffing.
+
+### Carry-forward obligations from Phase 12
+
+- **Phase 13 owes `CLAUDE.md` on a skill mutation, and it is now a reported defect rather than a
+  theoretical one.** With `emit.claude` on, `add skills.<id>` and `remove skills.<id>` change the set of
+  derived rules and therefore every `CLAUDE.md` import list — and a mutation writes its subject's files
+  and no others (§2.3), so all eight are left stale until `rebuild`. This is the §6.1-versus-§2.3 slip
+  already recorded under Phase 8: §6.1 says the list "regenerates from the same scope walk that produces
+  the rules … with no separate bookkeeping", §2.3 forbids a mutation walking to root. The resolution
+  stands — the eight locations are a *fixed set*, not a tree walk, so Phase 13 can honour §6.1 at
+  constant cost — and it is Phase 13's because it is Phase 13's surface. Until then `rebuild` is the
+  honest repair, `doctor` names every stale file, and the script test asserts exactly that sequence.
+- **Phase 13 owes the pruning half of `rebuild`.** This phase's `rebuild` writes and never deletes, so
+  turning `emit.claude` off leaves eight `CLAUDE.md` files and a `.claude/skills/` mirror that nothing
+  removes and nothing reports. Phase 13's task 3 already requires "no residue" on a mode switch; that is
+  where the removal belongs, together with pruning a rule and a mirror when a skill goes.
+- **Phase 13 should decide whether `orphan-mirror` and `broken-link` deserve to fire when
+  `emit.claude` is off.** They currently report what is on disk regardless, which is right for a broken
+  link and arguable for a mirror whose skill exists but whose surface has been turned off — that case is
+  residue, and residue is the finding Phase 13 will have a repair for.
+- **Phase 14's crash matrix has its assertion ready.** `doctor` reporting exactly `stale-projection`
+  and `rebuild` restoring cleanliness is now a thing the binary can be asked, and `doctor --json`'s
+  `exit` field is how a harness reads the verdict without parsing prose.
+- **Phase 14 should property-test the two modes of `ACTIVITY.md` against each other through
+  `doctor`.** The dated drift report is only meaningful because incremental and full mode produce
+  identical bytes for the same history; that equivalence is asserted today by `render`'s own tests and
+  by "doctor is clean after a mutation", and a property over generated histories is what keeps it.
 
 ---
 

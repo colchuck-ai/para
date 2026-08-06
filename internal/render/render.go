@@ -243,21 +243,61 @@ func For(in In) []Renderer {
 	return rs
 }
 
-// Artifacts renders every file the subject owns, in For's order. It is the
-// seam rebuild writes through and doctor compares against (§10, §21.1).
+// Artifacts renders every file the subject owns, in For's order, from the
+// In it is given and nothing else.
 func Artifacts(in In) ([]Artifact, error) {
-	rs := For(in)
-	out := make([]Artifact, 0, len(rs))
-	for _, r := range rs {
+	return Collect(in, For(in), nil)
+}
+
+// Collect renders the given renderers in order, reading each one's current
+// bytes through read before any of them renders.
+//
+// The two phases are the point, and they are why this is one function rather
+// than a loop in each caller. Two renderers copy a human-owned part of the file
+// already on disk (§2.1) and one copies every prior day of it (§3.5), so every
+// path has to be read *before* rendering starts — a caller that interleaved the
+// two would render the first file against an Existing map that did not yet hold
+// the last one. Both the write path and rebuild need exactly that order, and it
+// is the kind of ordering that goes wrong silently: the output is right until
+// the day two renderers on one subject read each other's files.
+//
+// read is given each artifact's root-relative path and returns its current
+// bytes, or nil where the file does not exist. A nil read means the subject is
+// rendered from In alone — which is only correct where In.Existing is already
+// populated or where none of the renderers has a human-owned part to preserve.
+func Collect(in In, renderers []Renderer, read func(path string) ([]byte, error)) ([]Artifact, error) {
+	// in is a copy, so filling the map here cannot reach back into the
+	// caller's — but a caller that supplied one deserves to keep it.
+	if in.Existing == nil {
+		in.Existing = map[string][]byte{}
+	}
+
+	paths := make([]string, len(renderers))
+	for i, r := range renderers {
 		path, err := r.Path(in)
 		if err != nil {
 			return nil, err
 		}
+		paths[i] = path
+		if read == nil {
+			continue
+		}
+		data, err := read(path)
+		if err != nil {
+			return nil, err
+		}
+		if data != nil {
+			in.Existing[path] = data
+		}
+	}
+
+	out := make([]Artifact, 0, len(renderers))
+	for i, r := range renderers {
 		data, err := r.Render(in)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, Artifact{Path: path, Bytes: data})
+		out = append(out, Artifact{Path: paths[i], Bytes: data})
 	}
 	return out, nil
 }

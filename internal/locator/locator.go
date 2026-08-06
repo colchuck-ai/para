@@ -30,6 +30,17 @@ func IsReserved(s string) bool {
 
 var segmentPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 
+// ValidSegment reports whether s is a legal locator segment: non-empty and
+// drawn from [a-z0-9-] (§1.4).
+//
+// It is exported because a locator is a path (§1.4) and the implication runs
+// both ways: a *directory name* that is not a legal segment names no locator,
+// so kindmeta can derive no kind for it and doctor must report it as
+// `misplaced` (§10). Parse enforces this on what you type; this is the same
+// rule asked about what is on disk, and it is one function so that the two
+// cannot come to different answers about the same name.
+func ValidSegment(s string) bool { return segmentPattern.MatchString(s) }
+
 // Parse splits s on "." into segments, validating that every segment is
 // non-empty and drawn from the charset [a-z0-9-] (§1.4). It does not check
 // reserved words or structural legality — a segment that happens to equal a

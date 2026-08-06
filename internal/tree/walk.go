@@ -70,7 +70,14 @@ func walkChildren(dir string, loc locator.Locator, visit func(Node) error) error
 			if err := walkChildren(childPath, childLoc, visit); err != nil {
 				return err
 			}
-		case inArchive && !locator.IsReserved(name):
+		case inArchive && (!locator.IsReserved(name) || kindmeta.IsContainer(childLoc)):
+			// A stub chain runs through containers as well as entities:
+			// archiving one objective out of a live project leaves
+			// archive/projects/acme/objectives/ as a bare directory with the
+			// archived objective inside it (§1.6). Refusing every reserved name
+			// here would stop the walk at that `objectives/` and lose the
+			// entity beneath it — which `doctor` then reports as an orphan, for
+			// a tree para itself produced.
 			if err := walkArchiveStub(childPath, childLoc, visit); err != nil {
 				return err
 			}
@@ -96,7 +103,10 @@ func walkChildren(dir string, loc locator.Locator, visit func(Node) error) error
 // content nested inside a project, which cannot nest) is content beyond
 // doubt, and is skipped without even trying.
 func walkArchiveStub(path string, loc locator.Locator, visit func(Node) error) error {
-	if _, err := kindmeta.KindOf(loc); err != nil {
+	// KindAt rather than kindmeta.KindOf, because a stub chain passes through
+	// container positions too and KindOf is defined to refuse every one of
+	// them: a container's name is always a reserved word (§1.2).
+	if _, err := KindAt(loc); err != nil {
 		return nil
 	}
 
@@ -161,7 +171,18 @@ func walkAgentsSkills(skillsDir string, visit func(Node) error) error {
 		if !fileExists(filepath.Join(childPath, ".para", "state.toml")) {
 			continue
 		}
-		node := Node{Locator: locator.Locator{"skills", id}, Path: childPath, Kind: kindmeta.KindSkill}
+		// The id is checked here for the same reason classify checks a bucket's
+		// children: the second root is a root, not an exemption. A directory
+		// called `para-projects` or `para-Foo` names no skill — the first
+		// because §1.4 reserves the word, the second because it is not a legal
+		// segment — and admitting it would have `add` refuse an id that `list`
+		// then prints. Skipping it leaves the state.toml for doctor to classify
+		// as `collision` or `misplaced`, which is what it is (§10).
+		skillLoc := locator.Locator{"skills", id}
+		if _, err := KindAt(skillLoc); err != nil {
+			continue
+		}
+		node := Node{Locator: skillLoc, Path: childPath, Kind: kindmeta.KindSkill}
 		if err := visit(node); err != nil {
 			return err
 		}

@@ -20,8 +20,17 @@ func ResolvePath(root string, loc locator.Locator) (string, error) {
 
 // KindAt classifies what a locator names, which is more than kindmeta.KindOf
 // answers on its own: a container's name is always a reserved word and a
-// reserved word can never be an id (§1.2), so the last segment decides, and
-// KindOf — which only ever sees id positions — never returns KindContainer.
+// reserved word can never be an id (§1.2), so KindOf — which only ever sees id
+// positions — never returns KindContainer.
+//
+// A reserved last segment is *not* on its own enough to make something a
+// container, and the difference is one of §10's findings. `projects/skills/` is
+// a project someone named with a reserved word (`collision`);
+// `projects/acme/key-results/` is a container in a position that has none
+// (`misplaced`). Both look like containers to a rule that tests only the name,
+// which is why the position is asked instead — and why the error KindOf returns
+// is passed through rather than replaced: it already distinguishes the two,
+// tagged KindConflict and KindValidation respectively.
 //
 // The empty locator is the tree root, which is not an entity but the tree
 // (§8.1), and so has no kind: it reports KindUnknown and no error. Every caller
@@ -31,7 +40,7 @@ func KindAt(loc locator.Locator) (kindmeta.Kind, error) {
 	if len(loc) == 0 {
 		return kindmeta.KindUnknown, nil
 	}
-	if locator.IsReserved(loc[len(loc)-1]) {
+	if kindmeta.IsContainer(loc) {
 		return kindmeta.KindContainer, nil
 	}
 	info, err := kindmeta.KindOf(loc)

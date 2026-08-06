@@ -82,6 +82,34 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
+// Status is an error that carries nothing but an exit code, for the command
+// that has already said everything it has to say on stdout.
+//
+// `doctor` is the only caller and §21.2 is why it needs one: its findings *are*
+// its output, and the exit code is a second channel that says how to read them
+// — "CI gates on 1 and ignores 2; an agent learns from the code alone whether
+// judgement is required". A tree with three findings is not a command that
+// failed, so printing "error: 3 findings" beneath a report that already lists
+// them would be noise §26's own transcript does not show.
+//
+// It is spelled as an error rather than as a second return value because the
+// exit code has to travel out through cobra's RunE, which has room for exactly
+// one thing.
+func Status(code int) error { return statusError{code: code} }
+
+// statusError is Status's implementation. Its message exists for the %v of a
+// stray log line and is never what a user reads.
+type statusError struct{ code int }
+
+func (e statusError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
+
+// IsStatus reports whether err is one of Status's — the test the command
+// runner makes before printing an error message.
+func IsStatus(err error) bool {
+	var se statusError
+	return errors.As(err, &se)
+}
+
 // ExitCode maps err to a process exit code per design §0.5:
 //
 //	0  success (err is nil)
@@ -90,6 +118,10 @@ func (e *Error) Unwrap() error {
 func ExitCode(err error) int {
 	if err == nil {
 		return 0
+	}
+	var se statusError
+	if errors.As(err, &se) {
+		return se.code
 	}
 	var perr *Error
 	if errors.As(err, &perr) && perr.Kind == KindAdvisory {

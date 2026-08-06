@@ -32,11 +32,12 @@
 package mutate
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/colchuck-ai/para/internal/clock"
@@ -327,43 +328,43 @@ func (p *plan) render() ([]writeset.File, error) {
 	}
 	renderers = withActivityMode(renderers, days)
 
-	// The existing bytes are read first, because two of the renderers copy a
-	// human-owned part of the current file through untouched (§2.1) and one
-	// copies every prior day of it (§3.5).
-	paths := make([]string, len(renderers))
-	for i, r := range renderers {
-		path, err := r.Path(in)
+	// CLAUDE.md's import list is the one thing a renderer needs that is not in
+	// the subject's own truth (§6.1). It is loaded only when that renderer is in
+	// the set, so a mutation on an entity never reads the rules directory.
+	if slices.Contains(renderers, render.Claude) {
+		ids, err := tree.SkillIDs(p.subj.env.Root)
 		if err != nil {
 			return nil, err
 		}
-		paths[i] = path
+		in.Rules = render.RuleFilenames(ids)
+	}
+
+	existing := map[string][]byte{}
+	artifacts, err := render.Collect(in, renderers, func(path string) ([]byte, error) {
 		data, err := os.ReadFile(filepath.Join(p.subj.env.Root, filepath.FromSlash(path)))
-		if err == nil {
-			in.Existing[path] = data
-		} else if !os.IsNotExist(err) {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		if err != nil {
 			return nil, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("reading %s", path))
 		}
-		if r == render.Claude {
-			if in.Rules, err = listRules(p.subj.env.Root); err != nil {
-				return nil, err
-			}
-		}
+		existing[path] = data
+		return data, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	var out []writeset.File
-	for i, r := range renderers {
-		data, err := r.Render(in)
-		if err != nil {
-			return nil, err
-		}
-		if prior, ok := in.Existing[paths[i]]; ok && string(prior) == string(data) {
+	for _, a := range artifacts {
+		if prior, ok := existing[a.Path]; ok && bytes.Equal(prior, a.Bytes) {
 			// Write-through re-derives every projection; it does not rewrite a
 			// file that already holds the right bytes.
 			continue
 		}
 		out = append(out, writeset.File{
-			Path:  filepath.Join(p.subj.env.Root, filepath.FromSlash(paths[i])),
-			Bytes: data,
+			Path:  filepath.Join(p.subj.env.Root, filepath.FromSlash(a.Path)),
+			Bytes: a.Bytes,
 		})
 	}
 	return out, nil
@@ -457,26 +458,6 @@ func withActivityMode(renderers []render.Renderer, days []string) []render.Rende
 		}
 	}
 	return out
-}
-
-// listRules names the derived rule files, for CLAUDE.md's import list (§6.1).
-// Only the para- prefixed ones: everything else in .agents/rules/ is yours and
-// para never reads or writes it (§5.3).
-func listRules(root string) ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(render.RulesDir)))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, paraerr.Wrap(paraerr.KindInternal, err, "reading "+render.RulesDir)
-	}
-	var out []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), "para-") && strings.HasSuffix(e.Name(), ".md") {
-			out = append(out, e.Name())
-		}
-	}
-	return out, nil
 }
 
 // parentPlan is the parent's half of a containment change: its own child event

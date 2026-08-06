@@ -24,7 +24,7 @@ func Run(clk clock.Clock, args []string, stdout, stderr io.Writer) int {
 	root.SetContext(clock.WithContext(context.Background(), clk))
 
 	err := root.Execute()
-	if err != nil {
+	if err != nil && !paraerr.IsStatus(err) {
 		// §26 spells every refusal "error: …", lower case, one line. Cobra's own
 		// "Error: …" is silenced above so that the one spelling in the design is
 		// the one the user sees.
@@ -62,5 +62,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newArchiveCmd())
 	root.AddCommand(newUnarchiveCmd())
 	root.AddCommand(newRemoveCmd())
+	root.AddCommand(newRebuildCmd())
+	root.AddCommand(newDoctorCmd())
 	return root
 }

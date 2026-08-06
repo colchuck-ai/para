@@ -11,17 +11,25 @@ import (
 // Subtree returns the container or entity at loc followed by everything beneath
 // it, in the same stable, lexical, depth-first order Walk visits (§8.5).
 //
-// It exists for the relocating verbs, which are the operations that touch more
-// than one entity's worth of bytes (§19). A move or an archive changes the
-// locator of every descendant, and a locator is a path — so `move` has to know
-// what it is about to carry with it, both to report the count §26 prints and to
-// re-render the one projection that names a locator.
+// It exists for the operations that are about a *region* of the tree rather
+// than one entity: the relocating verbs, which §19 names as "the operations
+// that touch more than one entity's worth of bytes" and which have to know what
+// they are about to carry with them; a scoped `list` or `review`; and Phase
+// 12's `rebuild <locator>` and `doctor <locator>`. It is the subtree walk §2.3
+// forbids a field mutation, and those are the whole exception to it.
 //
-// It is a walk of a subtree, which §2.3 forbids of a field mutation and which
-// these four verbs are the whole exception to. Nothing else may call it.
+// `skills` is answered here rather than by each caller, because the skills are a
+// second root rather than a subtree of the first (§1.4) and the segments after
+// `skills` still have to mean something: a scope naming the container is every
+// skill, and one naming a skill is that skill alone — §5.1 gives a skill no
+// children, so descending into one would answer a question about a single thing
+// with an answer about the files inside it.
 func Subtree(root string, loc locator.Locator) ([]Node, error) {
 	if len(loc) == 0 {
 		return nil, paraerr.New(paraerr.KindValidation, "the tree root is not a subtree")
+	}
+	if loc.Bucket() == "skills" {
+		return skillSubtree(root, loc)
 	}
 	path, err := ResolvePath(root, loc)
 	if err != nil {
@@ -39,12 +47,41 @@ func Subtree(root string, loc locator.Locator) ([]Node, error) {
 		return nil, err
 	}
 	if ok {
+		// classify answers from the locator alone, which is right for every
+		// node the walk reaches — it only ever classifies a directory it has
+		// already found a state.toml in. The scope root is the one node nothing
+		// has checked, and it may legitimately have no truth of its own: an
+		// archive stub is a bare ancestry placeholder (§1.6), and calling one an
+		// entity hands the caller a subject whose state.toml is not there.
+		if !fileExists(filepath.Join(path, ".para", "state.toml")) {
+			self = Node{Locator: loc, Path: path, Archived: loc.IsArchived(), Stub: true}
+		}
 		if err := collect(self); err != nil {
 			return nil, err
 		}
 	}
 	if err := walkChildren(path, loc, collect); err != nil {
 		return nil, err
+	}
+	return out, nil
+}
+
+// skillSubtree is Subtree over the second root: every skill for a bare
+// `skills`, and the one named skill for `skills.<id>`, with no descent in
+// either case.
+func skillSubtree(root string, loc locator.Locator) ([]Node, error) {
+	all, err := Skills(root)
+	if err != nil {
+		return nil, err
+	}
+	if len(loc) == 1 {
+		return all, nil
+	}
+	var out []Node
+	for _, n := range all {
+		if n.Locator.String() == loc.String() {
+			out = append(out, n)
+		}
 	}
 	return out, nil
 }
@@ -97,6 +134,28 @@ func Skills(root string) ([]Node, error) {
 	return out, err
 }
 
+// SkillIDs lists the ids of the skills that exist, in the same lexical order
+// Skills walks them in.
+//
+// It is what CLAUDE.md's import list is built from (§6.1): one derived rule per
+// skill, named by render.RuleFilenames. Asking the skills rather than listing
+// .agents/rules/ is what keeps a projection from being derived from a
+// projection (§21.1) — see Rules, which is the listing and has exactly one
+// legitimate caller.
+func SkillIDs(root string) ([]string, error) {
+	nodes, err := Skills(root)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if len(n.Locator) == 2 {
+			out = append(out, n.Locator[1])
+		}
+	}
+	return out, nil
+}
+
 // IsStub reports whether loc names an archive stub: a directory under archive/
 // that is there but holds no .para/state.toml of its own (§1.6).
 //
@@ -115,6 +174,39 @@ func IsStub(root string, loc locator.Locator) (bool, error) {
 		return false, err
 	}
 	return dirExists(path) && !fileExists(filepath.Join(path, ".para", "state.toml")), nil
+}
+
+// Resolves reports whether loc addresses something that is actually there: a
+// live container or entity, an archive stub, or the second root.
+//
+// It is the question two commands ask in different words and must not answer
+// differently. A scoped read refuses a locator that resolves to nothing,
+// because an empty result is a wrong answer to an explicit question (Phase 10);
+// doctor asks the same of every `scope` entry a skill carries, because an entry
+// naming nothing is §10's `scope-unresolved`. A skill whose scope doctor calls
+// broken and `list` happily lists would be para contradicting itself about one
+// locator.
+//
+// The three ways to resolve are three different kinds of existing, and all
+// three are real:
+//
+//   - a directory holding .para/state.toml — an entity or a container;
+//   - an archive stub, which is a position in the tree with real things
+//     beneath it and no entity of its own (§1.6);
+//   - a bare `skills`, which addresses the second root rather than a directory
+//     of its own (§1.4) and exists whenever the tree does.
+func Resolves(root string, loc locator.Locator) (bool, error) {
+	if len(loc) == 0 {
+		return true, nil
+	}
+	if len(loc) == 1 && loc[0] == "skills" {
+		return true, nil
+	}
+	exists, err := Exists(root, loc)
+	if err != nil || exists {
+		return exists, err
+	}
+	return IsStub(root, loc)
 }
 
 // DirExists reports whether loc's directory is present at all, entity or not.

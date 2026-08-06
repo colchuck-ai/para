@@ -65,7 +65,15 @@ func Encode(e Event) ([]byte, error) {
 }
 
 // Decode parses one journal line into an Event, rejecting anything outside
-// the four kinds §3.1 defines.
+// the four kinds §3.1 defines and any line with no instant.
+//
+// The two required keys are `at` and `kind`, and they are required here rather
+// than checked by each reader because §3.1 makes the first of them load
+// bearing: "ordering comes from `at`, never from file position". A line with no
+// `at` would sort as the year 1 and take its place at the head of every
+// digest — a silently wrong answer where refusing is a reportable one. It is
+// also what lets doctor name the file and the line (§10's `journal` finding),
+// since the only thing that can point at a line is whatever refused it.
 func Decode(line []byte) (Event, error) {
 	var e Event
 	if err := json.Unmarshal(bytes.TrimSpace(line), &e); err != nil {
@@ -75,6 +83,9 @@ func Decode(line []byte) (Event, error) {
 	case KindChange, KindMeasurement, KindNote, KindChild:
 	default:
 		return Event{}, paraerr.Newf(paraerr.KindValidation, "unknown journal event kind %q", e.Kind)
+	}
+	if e.At.IsZero() {
+		return Event{}, paraerr.New(paraerr.KindValidation, "journal event has no at")
 	}
 	return e, nil
 }

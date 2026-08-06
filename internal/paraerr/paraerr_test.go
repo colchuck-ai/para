@@ -23,6 +23,9 @@ func TestExitCode(t *testing.T) {
 		{"internal error is exit 1", paraerr.New(paraerr.KindInternal, "unreachable"), 1},
 		{"wrapped advisory error is exit 2", fmt.Errorf("outer: %w", paraerr.New(paraerr.KindAdvisory, "inner")), 2},
 		{"plain non-paraerr error is exit 1", errors.New("boom"), 1},
+		{"a status error carries its own code", paraerr.Status(2), 2},
+		{"a status error of 1 is exit 1", paraerr.Status(1), 1},
+		{"a wrapped status error carries its code", fmt.Errorf("outer: %w", paraerr.Status(2)), 2},
 	}
 
 	for _, tc := range cases {
@@ -53,6 +56,23 @@ func TestNewHasNoWrappedError(t *testing.T) {
 	}
 	if errors.Unwrap(err) != nil {
 		t.Error("New() should not wrap an underlying error")
+	}
+}
+
+// TestIsStatus pins the other half of Status's contract: the command runner
+// asks this before printing a message, and a real error must never answer yes.
+func TestIsStatus(t *testing.T) {
+	if !paraerr.IsStatus(paraerr.Status(2)) {
+		t.Error("IsStatus(Status(2)) = false, want true")
+	}
+	if !paraerr.IsStatus(fmt.Errorf("outer: %w", paraerr.Status(1))) {
+		t.Error("IsStatus of a wrapped status error = false, want true")
+	}
+	if paraerr.IsStatus(paraerr.New(paraerr.KindValidation, "bad input")) {
+		t.Error("IsStatus of a validation error = true, want false")
+	}
+	if paraerr.IsStatus(nil) {
+		t.Error("IsStatus(nil) = true, want false")
 	}
 }
 

@@ -190,33 +190,14 @@ func List(env *view.Env, opts Options) (Result, error) {
 // checkScope refuses a scope that names nothing, so that a mistyped locator is
 // an error rather than an empty list — which reads as "you have none of those".
 func checkScope(env *view.Env, scope locator.Locator) error {
-	if len(scope) == 0 {
-		return nil
-	}
-	// A bare `skills` addresses the second root rather than a directory of its
-	// own: §1.4 gives a path to `skills.<id>` and to nothing shorter, so asking
-	// whether it holds a state.toml is a question with no answer. It exists
-	// whenever the tree does. A skill *under* it is checked like anything else.
-	if len(scope) == 1 && scope[0] == "skills" {
-		return nil
-	}
-	exists, err := tree.Exists(env.Root, scope)
+	resolves, err := tree.Resolves(env.Root, scope)
 	if err != nil {
 		return err
 	}
-	if exists {
-		return nil
+	if !resolves {
+		return paraerr.Newf(paraerr.KindNotFound, "%s does not exist", scope)
 	}
-	// A stub is a real position in the tree with real things beneath it
-	// (§1.6), so listing beneath one is a legitimate question.
-	stub, err := tree.IsStub(env.Root, scope)
-	if err != nil {
-		return err
-	}
-	if stub {
-		return nil
-	}
-	return paraerr.Newf(paraerr.KindNotFound, "%s does not exist", scope)
+	return nil
 }
 
 // walk visits every node beneath scope, plus the skills, in the §8.5 walk's
@@ -231,7 +212,7 @@ func walk(root string, opts Options, visit func(tree.Node) error) error {
 	if len(scope) == 0 {
 		return tree.Walk(root, visit)
 	}
-	nodes, err := scoped(root, scope)
+	nodes, err := tree.Subtree(root, scope)
 	if err != nil {
 		return err
 	}
@@ -246,35 +227,6 @@ func walk(root string, opts Options, visit func(tree.Node) error) error {
 		}
 	}
 	return nil
-}
-
-// scoped returns the node at scope followed by everything beneath it, in the
-// §8.5 walk's order.
-//
-// `skills` needs its own branch because the skills are a second root rather than
-// a subtree of the first (§1.4), so `tree.Subtree` cannot reach them. What that
-// branch must not do is ignore the segments after `skills`: a listing of the
-// container is every skill, and a listing scoped to one skill is that skill
-// alone — §5.1 gives a skill no children, so anything else would answer a
-// question about one thing with an answer about all of them.
-func scoped(root string, scope locator.Locator) ([]tree.Node, error) {
-	if scope[0] != "skills" {
-		return tree.Subtree(root, scope)
-	}
-	all, err := tree.Skills(root)
-	if err != nil {
-		return nil, err
-	}
-	if len(scope) == 1 {
-		return all, nil
-	}
-	var out []tree.Node
-	for _, n := range all {
-		if n.Locator.String() == scope.String() {
-			out = append(out, n)
-		}
-	}
-	return out, nil
 }
 
 // visible decides whether a walked node can be a row at all, before any filter

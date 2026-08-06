@@ -1,0 +1,346 @@
+# §26's `para rebuild` / `para doctor` block, plus the findings §10 lists that
+# block does not reach.
+#
+# The tree is planted as truth alone — tree.toml and the seven bucket
+# state.toml files, and not one generated file — and the first thing the script
+# does is rebuild it. That is deliberate: §2.4 lists "a merge resolved truth and
+# left the projections wrong" among the four things rebuild answers, and a
+# planted tree is that state exactly. Everything after it is built with `para
+# add`, `note` and `measure`, so what doctor reports is a function of what the
+# write path recorded rather than of the fixture.
+#
+# Departures from §26's spelling, all recorded in the plan before the phase
+# started:
+#
+#  - §26 shows the hand edit as `echo "hand-edited" >> …/ACTIVITY.md`.
+#    testscript has no append, so the file is overwritten with an empty
+#    ACTIVITY.md instead. The finding is the same one and the dated day is the
+#    same day, because the earliest day the two renderings disagree about is the
+#    earliest day the journal has.
+#  - Exit code 2 is asserted through `doctor --json`, which carries the code it
+#    is about to exit with. testscript can tell zero from non-zero and no more,
+#    and the difference between 1 and 2 is the whole point of §21.2.
+
+env PARA_NOW=2026-03-05T17:00:00Z
+env PARA_TZ=America/Los_Angeles
+[para:phase12] cd brain
+
+# --- rebuild regenerates a tree that has truth and no projections ------------
+
+[para:phase12] exec para rebuild
+[para:phase12] stdout '^rewrote  README\.md$'
+[para:phase12] stdout '^rewrote  AGENTS\.md$'
+[para:phase12] stdout '^rewrote  \.gitattributes$'
+[para:phase12] stdout '^rewrote  projects/README\.md$'
+[para:phase12] stdout '^rewrote  archive/resources/ACTIVITY\.md$'
+[para:phase12] exists README.md
+[para:phase12] exists projects/AGENTS.md
+
+# Idempotent: running it again writes nothing (§21.1).
+[para:phase12] exec para rebuild
+[para:phase12] stdout '^nothing to rewrite \(8 places up to date\)$'
+
+[para:phase12] exec para doctor
+[para:phase12] stdout '^clean$'
+
+# --- write-through leaves nothing for rebuild to do (§2.3) ------------------
+
+[para:phase12] exec para add projects.acme-migration --name 'Acme migration' --description 'Rebuild the consumer.' --status in-progress --created 2026-01-05 --due 2026-09-30
+[para:phase12] exec para note projects.acme-migration 'the ingest team is blocked' --at 2026-01-05
+[para:phase12] exec para add projects.acme-migration.objectives.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.' --created 2026-01-05
+[para:phase12] exec para add projects.acme-migration.objectives.q1-growth.key-results.signups --name 'Weekly signups' --type ratio --start 480/9000 --target 2000/12000 --created 2026-01-05
+[para:phase12] exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 880/11000
+[para:phase12] exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope projects --created 2026-01-05
+
+# The property the whole design rests on: every projection was already written,
+# so there is nothing to regenerate and nothing to report.
+[para:phase12] exec para rebuild
+[para:phase12] stdout '^nothing to rewrite \(14 places up to date\)$'
+[para:phase12] exec para doctor
+[para:phase12] stdout '^clean$'
+
+# --- §26's block, transcribed ------------------------------------------------
+
+[para:phase12] cp $WORK/empty-activity.md projects/acme-migration/ACTIVITY.md
+[para:phase12] ! exec para doctor
+[para:phase12] cmp stdout $WORK/want-doctor-stale.txt
+
+[para:phase12] exec para rebuild projects.acme-migration --dry-run
+[para:phase12] stdout '^would rewrite  projects/acme-migration/ACTIVITY\.md$'
+# --dry-run changes nothing: the file is byte for byte what it was, and the
+# finding is still there. The second assertion alone would pass if --dry-run had
+# written something wrong.
+[para:phase12] cmp projects/acme-migration/ACTIVITY.md $WORK/empty-activity.md
+[para:phase12] ! exec para doctor
+
+[para:phase12] exec para rebuild projects.acme-migration
+[para:phase12] stdout '^rewrote  projects/acme-migration/ACTIVITY\.md$'
+
+[para:phase12] exec para doctor
+[para:phase12] stdout '^clean$'
+
+# The dated day discriminates. A rotated journal file puts an older day in the
+# file, and rebuild re-derives ACTIVITY.md from *every* journal file backing it
+# (§3.5, §21.1) — so the day named is the oldest one that differs, not the
+# newest day the file has and not the only day the journal has.
+[para:phase12] cp $WORK/rotated-log.jsonl projects/acme-migration/.para/logs/20251201T090000Z.jsonl
+[para:phase12] exec para rebuild projects.acme-migration
+[para:phase12] stdout '^rewrote  projects/acme-migration/ACTIVITY\.md$'
+[para:phase12] grep '^## 2025-12-01$' projects/acme-migration/ACTIVITY.md
+[para:phase12] grep 'from a rotated file' projects/acme-migration/ACTIVITY.md
+[para:phase12] exec para doctor
+[para:phase12] stdout '^clean$'
+
+# Break only the newest day and the report names that day; break the oldest and
+# it names the oldest.
+[para:phase12] cp $WORK/newest-day-broken.md projects/acme-migration/ACTIVITY.md
+[para:phase12] ! exec para doctor
+[para:phase12] stdout 'ACTIVITY\.md differs from journal \(from 2026-01-05\)$'
+[para:phase12] cp $WORK/oldest-day-broken.md projects/acme-migration/ACTIVITY.md
+[para:phase12] ! exec para doctor
+[para:phase12] stdout 'ACTIVITY\.md differs from journal \(from 2025-12-01\)$'
+[para:phase12] exec para rebuild projects.acme-migration
+[para:phase12] exec para doctor
+[para:phase12] stdout '^clean$'
+
+# --- the advisory, and exit 2 ------------------------------------------------
+
+# A plain directory directly in a bucket is loose filing, not an error: CI gates
+# on 1 and ignores 2 (§21.2).
+[para:phase12] mkdir projects/notes-dump
+[para:phase12] ! exec para doctor
+[para:phase12] cmp stdout $WORK/want-doctor-untracked.txt
+[para:phase12] ! exec para doctor --json
+[para:phase12] stdout '"exit": 2'
+[para:phase12] stdout '"errors": 0'
+[para:phase12] stdout '"advisories": 1'
+
+# Content *inside* an entity is content and is never reported.
+[para:phase12] mkdir projects/acme-migration/notes
+[para:phase12] ! exec para doctor
+[para:phase12] cmp stdout $WORK/want-doctor-untracked.txt
+[para:phase12] rm projects/notes-dump
+
+# --- the error findings ------------------------------------------------------
+
+# orphan: §8.5's named weakness — an entity hand-moved into content vanishes
+# from every read, and everything beneath it goes with it.
+[para:phase12] mv projects/acme-migration/objectives/q1-growth projects/acme-migration/notes/q1-growth
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +orphan +projects/acme-migration/notes/q1-growth holds a state\.toml the walk cannot reach — an entity beneath content$'
+[para:phase12] stdout '^error +orphan +projects/acme-migration/notes/q1-growth/key-results holds'
+[para:phase12] stdout '^error +orphan +projects/acme-migration/notes/q1-growth/key-results/signups holds'
+[para:phase12] mv projects/acme-migration/notes/q1-growth projects/acme-migration/objectives/q1-growth
+[para:phase12] exec para doctor
+[para:phase12] stdout '^clean$'
+
+# misplaced: a state.toml at a location that derives no kind (§10).
+[para:phase12] mkdir projects/acme-migration/nested/.para
+[para:phase12] cp $WORK/nested-state.toml projects/acme-migration/nested/.para/state.toml
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +misplaced +projects/acme-migration/nested .*a project cannot nest'
+[para:phase12] rm projects/acme-migration/nested
+
+# collision: a reserved word used as an id (§1.4).
+[para:phase12] mkdir projects/skills/.para
+[para:phase12] cp $WORK/nested-state.toml projects/skills/.para/state.toml
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +collision +projects/skills .*"skills" is a reserved word'
+[para:phase12] rm projects/skills
+
+# invalid: a required field missing, and an enum out of range (§15).
+[para:phase12] cp projects/acme-migration/.para/state.toml $WORK/saved-state.toml
+[para:phase12] cp $WORK/broken-state.toml projects/acme-migration/.para/state.toml
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +invalid +projects/acme-migration/\.para/state\.toml name: name is required on project and is missing$'
+[para:phase12] stdout '^error +invalid +projects/acme-migration/\.para/state\.toml status: "shipped" is not a project status$'
+[para:phase12] cp $WORK/saved-state.toml projects/acme-migration/.para/state.toml
+
+# journal: a line that is not a journal event, reported with file and line
+# (§3.1, §10). The projections are not compared for an entity whose journal will
+# not read — there is no "what would be written now" to differ from.
+[para:phase12] cp $WORK/broken-log.jsonl projects/acme-migration/.para/logs/20260105T000000Z.jsonl
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +journal +projects/acme-migration/\.para/logs/20260105T000000Z\.jsonl:2 '
+[para:phase12] ! stdout 'stale-projection'
+[para:phase12] rm projects/acme-migration/.para/logs/20260105T000000Z.jsonl
+
+# scope-unresolved: an entry naming a locator that does not exist (§5.4). The
+# write path stores it without complaint, because an entry may name something
+# not created yet — this is where it surfaces.
+[para:phase12] exec para set skills.signups-report --scope projects,projects.nowhere
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +scope-unresolved +\.agents/skills/para-signups-report/\.para/state\.toml scope names projects\.nowhere, which does not exist$'
+[para:phase12] exec para set skills.signups-report --scope projects
+
+# orphan-rule: a derived rule whose generated_from skill is gone (§5.3).
+[para:phase12] cp $WORK/para-gone.md .agents/rules/para-gone.md
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +orphan-rule +\.agents/rules/para-gone\.md is generated from skills\.gone, which is gone$'
+[para:phase12] rm .agents/rules/para-gone.md
+
+# orphan-mirror: something under .claude/skills/ carrying the para- prefix whose
+# skill is gone (§6.1). The mirror itself is Phase 13's; doctor reports what is
+# on disk whoever put it there.
+[para:phase12] mkdir .claude/skills/para-gone
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +orphan-mirror +\.claude/skills/para-gone mirrors skills\.gone, which is gone$'
+[para:phase12] rm .claude/skills/para-gone
+
+# broken-link: a mirror materialised as a plain file, which is what a checkout
+# with core.symlinks=false leaves behind (§6.1, §10).
+[para:phase12] cp $WORK/materialised-link .claude/skills/para-signups-report
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +broken-link +\.claude/skills/para-signups-report is a plain file where a mirror belongs'
+[para:phase12] rm .claude/skills
+
+# --- scope, and --json -------------------------------------------------------
+
+[para:phase12] exec para doctor
+[para:phase12] stdout '^clean$'
+
+# A scoped scan reports what is under the locator and nothing else.
+[para:phase12] cp $WORK/empty-activity.md areas/ACTIVITY.md
+[para:phase12] exec para doctor projects.acme-migration
+[para:phase12] stdout '^clean$'
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +stale-projection +areas/ACTIVITY\.md '
+[para:phase12] exec para rebuild areas
+[para:phase12] exec para doctor
+[para:phase12] stdout '^clean$'
+
+# A locator that names nothing is an error, not an empty report.
+[para:phase12] ! exec para doctor projects.nowhere
+[para:phase12] stderr 'does not exist'
+[para:phase12] ! exec para rebuild projects.nowhere
+[para:phase12] stderr 'does not exist'
+
+# --json on a clean tree still says so, and says it as data (§23).
+[para:phase12] exec para doctor --json
+[para:phase12] stdout '"clean": true'
+[para:phase12] stdout '"exit": 0'
+[para:phase12] stdout '"findings": \[\]'
+
+# There is no --fix, deliberately (§21.2): rebuild is the repair for the one
+# finding that has one, and a --fix that repaired that class and not the others
+# would teach people that doctor cleans up after itself.
+[para:phase12] ! exec para doctor --fix
+[para:phase12] stderr 'unknown flag'
+
+# --- the Claude surface, which is where a projection could be derived from a
+# --- projection (§21.1)
+
+# Turning emit.claude on leaves eight CLAUDE.md files unwritten: a config change
+# writes one file and does not walk the tree (§2.3). doctor reports each as
+# missing, and rebuild is the repair — the honest one, until Phase 13.
+[para:phase12] exec para config set emit.claude true
+[para:phase12] ! exec para doctor
+[para:phase12] stdout '^error +stale-projection +CLAUDE\.md is missing$'
+[para:phase12] stdout '^error +stale-projection +archive/projects/CLAUDE\.md is missing$'
+
+# One pass, not two. CLAUDE.md imports one rule per *skill* (§6.1), derived from
+# the skills rather than from a listing of .agents/rules/ — a rebuild that read
+# the rule files would write every CLAUDE.md before it repaired the rules they
+# name, and would need a second pass to converge.
+[para:phase12] exec para rebuild
+[para:phase12] exec para doctor
+[para:phase12] stdout '^clean$'
+[para:phase12] exec para rebuild
+[para:phase12] stdout '^nothing to rewrite'
+[para:phase12] grep '^@\.agents/rules/para-signups-report\.md$' CLAUDE.md
+[para:phase12] grep '^@\.\./\.agents/rules/para-signups-report\.md$' projects/CLAUDE.md
+
+# The same rule from the other side: a rule file whose skill is gone is
+# `orphan-rule`, and para does not import residue it is reporting.
+[para:phase12] cp $WORK/para-gone.md .agents/rules/para-gone.md
+[para:phase12] exec para rebuild
+[para:phase12] stdout '^nothing to rewrite'
+[para:phase12] ! grep 'para-gone' CLAUDE.md
+[para:phase12] rm .agents/rules/para-gone.md
+
+-- brain/.para/tree.toml --
+schema = 1
+name = "brain"
+description = "Everything I am carrying."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/projects/.para/state.toml --
+name = "Projects"
+description = "What I am working on now."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/areas/.para/state.toml --
+name = "Areas"
+description = "What I keep going."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/resources/.para/state.toml --
+name = "Resources"
+description = "What I keep to hand."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/.para/state.toml --
+name = "Archive"
+description = "What is over."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/projects/.para/state.toml --
+name = "Archived projects"
+description = "Projects that are over."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/areas/.para/state.toml --
+name = "Archived areas"
+description = "Areas no longer kept."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/resources/.para/state.toml --
+name = "Archived resources"
+description = "Resources no longer kept."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/.agents/skills/.keep --
+-- empty-activity.md --
+# Activity
+-- rotated-log.jsonl --
+{"at":"2025-12-01T09:00:00Z","kind":"note","note":"from a rotated file"}
+-- newest-day-broken.md --
+# Activity
+
+## 2026-01-05
+- Note: something else entirely.
+- Created.
+
+## 2025-12-01
+- Note: from a rotated file.
+-- oldest-day-broken.md --
+# Activity
+
+## 2026-01-05
+- Note: the ingest team is blocked.
+- Created.
+
+## 2025-12-01
+- Note: something else entirely.
+-- nested-state.toml --
+name = "Nested"
+description = "Somewhere no kind is derived."
+created = "2026-01-05T00:00:00Z"
+-- broken-state.toml --
+description = "A project with no name and a status nothing admits."
+status = "shipped"
+created = "2026-01-05T00:00:00Z"
+-- broken-log.jsonl --
+{"at":"2026-01-05T00:00:00Z","kind":"note","note":"the first line is fine"}
+{"at":"2026-01-05T00:00:01Z","kind":"note"
+-- para-gone.md --
+---
+generated_from: "para-gone"
+---
+Use the **Gone** skill (`.agents/skills/para-gone/SKILL.md`) when nothing applies.
+-- materialised-link --
+../../.agents/skills/para-signups-report
+-- want-doctor-stale.txt --
+error  stale-projection  projects/acme-migration/ACTIVITY.md differs from journal (from 2026-01-05)
+-- want-doctor-untracked.txt --
+advisory  untracked  projects/notes-dump is a plain directory in a bucket, where only entities belong

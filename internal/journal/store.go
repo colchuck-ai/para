@@ -87,6 +87,26 @@ func newestFile(dir string) (string, error) {
 	return names[len(names)-1], nil
 }
 
+// Files lists dir's journal files, oldest first, as absolute paths.
+//
+// §3.4's fixed, zero-padded filename layout makes lexical order match
+// chronology, which is what lets ReadAll concatenate them and what lets doctor
+// report a bad line as "this file, this line" rather than as an offset into a
+// journal that spans several. It is exported so that the answer to "which files
+// are this entity's journal" has one definition: a reader that guessed the
+// glob would eventually disagree with the writer about a name.
+func Files(dir string) ([]string, error) {
+	names, err := listJSONL(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		out = append(out, filepath.Join(dir, name))
+	}
+	return out, nil
+}
+
 // listJSONL lists the *.jsonl entries directly in dir, sorted lexically. An
 // absent dir reports no entries and no error.
 func listJSONL(dir string) ([]string, error) {

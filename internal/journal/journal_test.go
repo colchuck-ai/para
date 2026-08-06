@@ -135,6 +135,26 @@ func TestDecode_InvalidJSON(t *testing.T) {
 	}
 }
 
+// TestDecode_MissingAt covers §3.1's other required key. A line with no `at`
+// has no place in an ordering that comes from `at` and never from file
+// position, so the codec refuses it here rather than letting it sort as the
+// zero instant — which is also what lets doctor report it as a `journal`
+// finding with a file and a line (§10).
+func TestDecode_MissingAt(t *testing.T) {
+	cases := map[string]string{
+		"absent": `{"kind":"note","note":"no instant"}`,
+		"empty":  `{"at":"","kind":"note","note":"no instant"}`,
+		"zero":   `{"at":"0001-01-01T00:00:00Z","kind":"note","note":"no instant"}`,
+	}
+	for name, line := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := Decode([]byte(line)); err == nil {
+				t.Errorf("Decode(%s): want error, got nil", line)
+			}
+		})
+	}
+}
+
 // TestEncode_Deterministic pins the byte-stability guarantee (§0.2): two
 // independent Encode calls over the same event produce identical bytes.
 func TestEncode_Deterministic(t *testing.T) {

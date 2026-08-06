@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 
 	"github.com/colchuck-ai/para/internal/kindmeta"
@@ -28,6 +29,31 @@ const ruleKeyGeneratedFrom = "generated_from"
 // RuleFilename is the rule file basename for a skill id — the same para-<id>
 // spelling the skill's own directory carries (§1.4).
 func RuleFilename(id string) string { return "para-" + id + ".md" }
+
+// RuleFilenames is CLAUDE.md's import list for a set of skill ids: one rule per
+// skill, sorted, deduplicated.
+//
+// It takes *skills* and not a directory listing of .agents/rules/, and that is
+// the whole point of it existing. A rule is a projection of a skill and nothing
+// else (§5.3), so CLAUDE.md — itself a projection — must be derived from the
+// skills, or rebuild would be reading a projection to produce a projection,
+// which §21.1 forbids in those words. The consequence is not theoretical: a
+// rebuild of a tree whose rule files are missing writes every CLAUDE.md before
+// it writes the rules, so a list read off disk is a list of what has not been
+// repaired yet, and the run needs a second pass to converge. Derived from the
+// skills, it is right on the first.
+//
+// It also settles what happens to a rule file whose skill is gone: it is
+// `orphan-rule` (§10), and para does not import residue it is simultaneously
+// reporting.
+func RuleFilenames(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, RuleFilename(id))
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
 
 func (ruleRenderer) Path(in In) (string, error) {
 	if in.Kind != kindmeta.KindSkill || len(in.Locator) != 2 {
