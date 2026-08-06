@@ -9,10 +9,17 @@ import "slices"
 // must all agree on it. §1.7's other two columns are elsewhere on purpose: the
 // derived key-result statuses belong to krvalue, which computes them, and
 // terminality is read by the commands that hide terminal items (§16.2, §20).
+// StatusBlocked is the one status code reads by name rather than by position:
+// `set` refuses it without a reason (§18.2) and `review --blocked` is a group of
+// nothing else (§20). It is declared here because this is where §1.7's
+// vocabulary is, and a status word spelled in three packages is a status word
+// one of them will eventually misspell.
+const StatusBlocked = "blocked"
+
 var (
 	// plannableStatuses are a project's and an objective's, and the default is
 	// the first of them.
-	plannableStatuses = []string{"planned", "in-progress", "blocked", "done", "dropped"}
+	plannableStatuses = []string{"planned", "in-progress", StatusBlocked, "done", "dropped"}
 
 	// keyResultStatuses is the one settable value carved out of a derived
 	// status (§4.3): a key-result's status is computed from its measurements,

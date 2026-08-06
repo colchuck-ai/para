@@ -156,9 +156,23 @@ type table struct {
 	// what keeps §16.1's long key-result numbers from widening the name column
 	// of every row above it.
 	notes map[int]string
+	// heads are headings, keyed by the row they precede. They are unindented,
+	// unpadded, and take no part in sizing, so §20's group headings can break
+	// up one table rather than starting a new one per group — which is what
+	// keeps every row's columns aligned across the whole review, as §26 shows
+	// them.
+	heads map[int]string
 }
 
 func (t *table) add(cells ...string) { t.rows = append(t.rows, cells) }
+
+// head records a heading printed above the next row added.
+func (t *table) head(text string) {
+	if t.heads == nil {
+		t.heads = map[int]string{}
+	}
+	t.heads[len(t.rows)] = text
+}
 
 // note attaches a continuation line to the row just added.
 func (t *table) note(text string) {
@@ -185,6 +199,9 @@ func (t table) write(out io.Writer) {
 	}
 
 	for n, row := range t.rows {
+		if head, ok := t.heads[n]; ok {
+			fmt.Fprintln(out, head)
+		}
 		last := lastNonEmpty(row)
 		var b strings.Builder
 		b.WriteString(t.indent)

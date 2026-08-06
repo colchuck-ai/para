@@ -860,6 +860,82 @@ a container row while still finding entities beneath one.
 
 ## Phase 11 — `review`
 
+**Status: done** (branch `impl`). `internal/review` lands as a classifier over Phase 10's read layer,
+plus `para review` with `--json`. It is the smallest phase since Phase 2, and deliberately: every value
+§20's table tests is one `view` already derives, so the only new rules are which kinds a group admits
+and the ordering within one.
+
+### The seam, and why the package is this thin
+
+`review` is the command that decides whether something needs looking at, and `show` is the command that
+prints the same verdict for one entity. The two disagreeing about one key-result is a defect neither
+one's tests would catch, so nothing here re-derives: staleness is `view.Env.Stale` (which resolves
+through `config.StaleKey`, so no group re-derives which knob a kind reads), overdue is
+`view.Entity.Overdue`, the pace is `krvalue.Assess`'s, and the entities are `query.List`'s. What is
+genuinely this package's is §20's membership table and its "ordered within a group by distance past
+the threshold, because the ordering is the point".
+
+**`query` grew the two options `list` never sets, rather than `review` growing a walk of its own.**
+What an entity row *is* — a container is transparent, a stub is not a thing, a symlink is never
+followed — is one set of rules, and two walks answering it separately is the drift the read path
+exists to avoid. The options are `IncludeSelf` and `IncludeArchived`, and both are decisions:
+
+- **`review <locator>` includes the entity you named; `list <locator>` does not.** Not an
+  inconsistency: §16.1 carves `list` out explicitly ("`show` is how you see the thing you named"),
+  and §21.1's "regenerates every projection **under** the locator" plainly includes the locator's own
+  — so "under" is inclusive everywhere the document does not say otherwise. `review` is a question
+  about a region of the tree, and the root of the region is in the region.
+- **`--all` reaches `archive/` without naming it.** §16.2 keeps archived things out of `list` because
+  they are somewhere else rather than hidden (§1.6); §20 lists them beside terminal ones as two things
+  one flag brings back. Naming an archived locator still makes what is under it legitimate, for the
+  reason Phase 10 gave: an empty result is a wrong answer to an explicit question.
+
+### Decisions worth recording
+
+- **No flag means every group**, including `--skills`. §20's `|` reads as exclusive but §26's own
+  example passes two, so the flags name a subset — and naming none of them is not the same as naming
+  an empty one. §20's "skills are reached by `--skills` and nothing else" is about which group can
+  *contain* a skill, not about which groups a bare `review` runs.
+- **`--limit` truncates each group, not the answer.** §20 groups by reason, so a limit spent on the
+  first group would silence whole reasons rather than shortening the output — the opposite of what a
+  limit is for once the output is already partitioned. The heading carries both counts when it fires:
+  `stale (1 of 5)`.
+- **`--blocked` has no threshold, so it is ordered by the same clock as everything else.** §20 gives
+  it no timer and therefore no distance to be past; longest untouched first is §20's ordering with a
+  threshold of zero rather than an ordering of its own. It reads the *effective* status (§1.7) for the
+  same reason `--status` does: a blocked objective under a dropped project is not blocked any more.
+- **`--behind` is spelled exactly as §4.3's `at-risk` is** — strictly below, undefined pace never
+  qualifying — because they are the same question asked twice. A key-result that reads `at-risk` and
+  is not listed as behind would be para contradicting itself about one number. The script test asserts
+  the `at-risk` status and the `behind` row for the same reading.
+- **The threshold key is named in full**, `area.stale-after 30` where §26 writes `stale-after 30`.
+  Phase 10 settled this for `show` and the argument is stronger here: one `stale` group mixes kinds,
+  and an area and a project in the same list are reading two different knobs. Where the value came
+  from is carried by `--json` rather than printed on every row — `show` is the command for one thing's
+  provenance, and a path repeated down twenty rows would bury the numbers.
+- **One table across every group, not one per group.** §26 prints the `stale` and `behind` rows with
+  their second columns at the same offset, which per-group sizing cannot produce. `table` gained
+  headings that take no part in column sizing.
+- **`--local` is registered and has nothing to convert.** §16.2.1 names `review` among the commands
+  carrying it, so it is there; but every number `review` prints is a comparison against a committed
+  threshold, and §7's answer to "is this stale" must not depend on which continent asked — the
+  argument §3.5 makes for the generated files, and the one `show --local` already follows by keeping
+  its staleness verdict in UTC while printing local dates. The only date on a row is a `due`, which is
+  never converted at all (§15.1). Stated plainly because a silently inert flag is a defect; this one
+  is inert by construction and says so in the code.
+- **Empty groups are omitted and an empty review says so.** A heading with no rows claims there is a
+  group to look at; printing nothing at all makes "did it run" and "is there nothing" look identical,
+  which is the wrong pair to conflate for the command you run every morning.
+- **`kindmeta.StatusBlocked` now exists.** `blocked` was spelled by hand in `mutate` (§18.2's refusal)
+  and would have been spelled again here (§20's group). §1.7's vocabulary lives in `kindmeta`, so the
+  word does too.
+
+**A §26 divergence found while transcribing, and left as §20 has it:** §26's block shows
+`para review --stale --behind` with a `stale (3)` group whose rows are elided. Nothing about the
+elided rows is checkable, so the script test transcribes the *shape* — heading with count, rows
+indented two spaces, measure then threshold — against a tree whose every date is stated, rather than
+inventing three rows to match a number.
+
 **Tasks**
 
 1. The five groups (§20): `--stale`, `--blocked` (no timer), `--overdue`, `--behind`, `--skills`.
@@ -869,6 +945,15 @@ a container row while still finding entities beneath one.
 
 **Done when** the §26 review output matches, a test proves a blown deadline is unhideable (`missed` is
 not terminal, §1.7), and `--skills` fires off `review.cadence` resolved through the chain.
+
+### Carry-forward obligations from Phase 11
+
+- **Phase 12's `doctor` owes the findings `review` steps around**, unchanged from Phase 10's note:
+  `view` treats truth it cannot parse as absent, so a `created` that will not read makes an entity
+  quietly un-stale rather than reporting anything. Nothing reports it yet.
+- **Phase 14's conformance sweep should assert the `at-risk`/`behind` agreement as a property**, not
+  only on the one key-result the script test measures. The two read one knob through one function
+  today; a property over generated histories is what keeps them there.
 
 ---
 

@@ -10,8 +10,9 @@ import (
 )
 
 // blockedStatus is the one status that may not be set without a reason (§18.2):
-// "a blocker with no recorded reason is worthless in six months".
-const blockedStatus = "blocked"
+// "a blocker with no recorded reason is worthless in six months". The word
+// itself is §1.7's, and lives with the rest of that vocabulary.
+const blockedStatus = kindmeta.StatusBlocked
 
 // Set writes any number of fields at once, one event per field changed, in one
 // write-through pass (§18.2).

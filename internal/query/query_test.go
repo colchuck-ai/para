@@ -3,6 +3,7 @@ package query_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -493,5 +494,57 @@ func TestAnExplicitTerminalStatusIsNotHidden(t *testing.T) {
 	}
 	if len(unfiltered.HiddenStatuses) != 2 {
 		t.Errorf("hidden statuses: got %v, want both done and dropped", unfiltered.HiddenStatuses)
+	}
+}
+
+// TestIncludeSelfPutsTheNamedEntityInTheResult is the seam `review` needs and
+// `list` must never take: `list` is a listing of contents (§16.1: "`show` is how
+// you see the thing you named"), while `review` is a question about a region of
+// the tree, and the root of the region is in the region.
+func TestIncludeSelfPutsTheNamedEntityInTheResult(t *testing.T) {
+	root := fixture(t)
+
+	without := list(t, root, query.Options{Scope: loc(t, "projects.acme-migration")})
+	assertLocators(t, locators(without),
+		"projects.acme-migration.objectives.q1-growth",
+		"projects.acme-migration.objectives.q1-growth.key-results.signups")
+
+	with := list(t, root, query.Options{
+		Scope:       loc(t, "projects.acme-migration"),
+		IncludeSelf: true,
+	})
+	assertLocators(t, locators(with),
+		"projects.acme-migration",
+		"projects.acme-migration.objectives.q1-growth",
+		"projects.acme-migration.objectives.q1-growth.key-results.signups")
+}
+
+// TestIncludeSelfOnAContainerStillEmitsNoContainerRow: transparency is decided
+// after the scope is included, not before, so naming a container adds nothing.
+func TestIncludeSelfOnAContainerStillEmitsNoContainerRow(t *testing.T) {
+	root := fixture(t)
+	got := list(t, root, query.Options{Scope: loc(t, "projects"), IncludeSelf: true})
+	for _, e := range got.Entities {
+		if e.Container {
+			t.Errorf("%s is a container and must never be a row (§16.2)", e.Locator)
+		}
+	}
+}
+
+// TestIncludeArchivedReachesArchiveWithoutNamingIt is §20's `--all`, which
+// covers archived things as well as terminal ones — unlike `list`, where
+// archive/ is somewhere else rather than hidden (§1.6, §16.2).
+func TestIncludeArchivedReachesArchiveWithoutNamingIt(t *testing.T) {
+	root := fixture(t)
+
+	for _, name := range locators(list(t, root, query.Options{})) {
+		if strings.HasPrefix(name, "archive.") {
+			t.Fatalf("%s: archive/ is not traversed unless named (§16.2)", name)
+		}
+	}
+
+	got := locators(list(t, root, query.Options{IncludeArchived: true}))
+	if !slices.Contains(got, "archive.projects.old") {
+		t.Errorf("got %v, want it to include archive.projects.old", got)
 	}
 }

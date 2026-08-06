@@ -1,6 +1,12 @@
-// Package query is `list`'s half of the read surface: the walk that finds
-// entities, §17's filters over them, and the sort and limit applied to what
-// survives (design §16.2, §17).
+// Package query is the entity-finding half of the read surface: the walk that
+// finds entities, §17's filters over them, and the sort and limit applied to
+// what survives (design §16.2, §17).
+//
+// `list` is its main caller and `review` is the other, which is why the two
+// options `list` never sets live here rather than in a second walk of `review`'s
+// own: what an entity row *is* — a container is transparent, a stub is not a
+// thing — is one set of rules, and two walks answering it separately is exactly
+// the drift §2.5 spends the read path avoiding.
 //
 // It is a layer over `tree` and `view` and holds no rules of its own about what
 // an entity *is*. What it does own is what §16.2 calls transparency — the
@@ -57,6 +63,26 @@ type Options struct {
 	Reverse bool
 	// Limit truncates the sorted result. Zero means no limit.
 	Limit int
+
+	// IncludeSelf returns the entity Scope names as well as what is beneath it.
+	//
+	// `list` never sets it, because §16.1 draws that line explicitly — "`show`
+	// is how you see the thing you named". `review` does, because it is a
+	// question about a region of the tree rather than a listing of contents,
+	// and the root of the region is in the region: §21.1's "every projection
+	// **under** the locator" plainly includes the locator's own, so the
+	// document's "under" is inclusive everywhere except the one place §16.1
+	// carves out.
+	IncludeSelf bool
+
+	// IncludeArchived traverses `archive/` without the scope naming it, which
+	// is §20's `--all`.
+	//
+	// It is the one respect in which `review` reads the tree differently from
+	// `list`: §16.2 keeps archived things out because they are somewhere else
+	// rather than hidden (§1.6), whereas §20 lists them beside terminal ones as
+	// two things one flag brings back.
+	IncludeArchived bool
 }
 
 // Result is what `list` prints, and the three counts §17 and §23 require it to
@@ -114,7 +140,7 @@ func List(env *view.Env, opts Options) (Result, error) {
 	hidden := map[string]bool{}
 	hiddenCount := 0
 
-	err := walk(env.Root, opts.Scope, func(node tree.Node) error {
+	err := walk(env.Root, opts, func(node tree.Node) error {
 		if !visible(node, opts) {
 			return nil
 		}
@@ -193,7 +219,8 @@ func checkScope(env *view.Env, scope locator.Locator) error {
 // .agents/skills/ rather than beneath a bucket (§1.4) — so they are reached
 // only by an unscoped list or by one scoped to `skills`, never by walking down
 // from `projects`.
-func walk(root string, scope locator.Locator, visit func(tree.Node) error) error {
+func walk(root string, opts Options, visit func(tree.Node) error) error {
+	scope := opts.Scope
 	if len(scope) == 0 {
 		return tree.Walk(root, visit)
 	}
@@ -214,8 +241,9 @@ func walk(root string, scope locator.Locator, visit func(tree.Node) error) error
 		return err
 	}
 	for _, n := range nodes {
-		// Subtree includes the scope itself; `list` is of what is beneath it.
-		if len(n.Locator) == len(scope) {
+		// Subtree includes the scope itself, which `list` is not a listing of
+		// (§16.1) and `review` is a review of.
+		if len(n.Locator) == len(scope) && !opts.IncludeSelf {
 			continue
 		}
 		if err := visit(n); err != nil {
@@ -233,11 +261,11 @@ func visible(node tree.Node, opts Options) bool {
 		// Traversed, never printed: a container has nothing to set and a stub
 		// has nothing behind it (§16.2, §1.6).
 		return false
-	case node.Archived && !opts.Scope.IsArchived():
+	case node.Archived && !opts.Scope.IsArchived() && !opts.IncludeArchived:
 		// §16.2: archive/ is not traversed unless you name it. Reached here
 		// rather than in the walk because the unscoped walk has to descend
 		// through archive/ to find nothing, and a scope inside archive/ makes
-		// every node under it legitimate.
+		// every node under it legitimate. §20's `--all` is the third way in.
 		return false
 	case opts.Filter.Direct && ReaderDepth(node.Locator, opts.Scope) != 1:
 		return false
