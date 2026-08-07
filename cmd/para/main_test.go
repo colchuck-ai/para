@@ -31,6 +31,7 @@ var implementedPhases = map[int]bool{
 	10: true,
 	11: true,
 	12: true,
+	13: true,
 }
 
 const phaseConditionPrefix = "para:phase"

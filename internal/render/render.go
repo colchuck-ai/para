@@ -164,15 +164,28 @@ func (in In) shape() shape {
 // else — not on entities, not on objectives/, not on key-results/ — because
 // AGENTS.md orients an agent to the framework, and those eight places cover
 // every concept there is.
-var agentsLocations = []string{
-	"",
-	"projects",
-	"areas",
-	"resources",
-	"archive",
-	"archive.projects",
-	"archive.areas",
-	"archive.resources",
+//
+// It is a fixed set rather than a walk, and that is what lets a skill mutation
+// keep every CLAUDE.md correct without violating §2.3: §6.1 wants the import
+// list to regenerate "with no separate bookkeeping", §2.3 forbids a mutation
+// walking to root, and eight known locations are neither.
+var agentsLocations = []locator.Locator{
+	nil,
+	{"projects"},
+	{"areas"},
+	{"resources"},
+	{"archive"},
+	{"archive", "projects"},
+	{"archive", "areas"},
+	{"archive", "resources"},
+}
+
+// AgentsLocations returns those eight, in the order they are written and
+// reported. The root is the empty locator.
+func AgentsLocations() []locator.Locator {
+	out := make([]locator.Locator, len(agentsLocations))
+	copy(out, agentsLocations)
+	return out
 }
 
 // HasAgents reports whether loc is one of the eight places AGENTS.md and
@@ -180,11 +193,22 @@ var agentsLocations = []string{
 func HasAgents(loc locator.Locator) bool {
 	target := loc.String()
 	for _, l := range agentsLocations {
-		if l == target {
+		if l.String() == target {
 			return true
 		}
 	}
 	return false
+}
+
+// HasClaude reports whether CLAUDE.md is emitted for loc: one of the eight
+// AGENTS.md locations, with the Claude Code surface turned on there (§6, §6.1).
+//
+// It is one predicate rather than an `&&` at each site because three places ask
+// it and they must not disagree: For, which renders the file; rebuild, which
+// removes it when the answer turns false; and doctor, which reports either as
+// drift.
+func HasClaude(loc locator.Locator, cfg Config) bool {
+	return cfg.EmitClaude && HasAgents(loc)
 }
 
 // For returns the renderers the subject in owns, in the order a mutation
@@ -215,7 +239,7 @@ func For(in In) []Renderer {
 		rs = append(rs, Skill, Activity, Rule)
 	case shapeRoot:
 		rs = append(rs, Readme, Agents, Activity)
-		if in.Config.EmitClaude {
+		if HasClaude(in.Locator, in.Config) {
 			rs = append(rs, Claude)
 		}
 		if in.Config.EmitGitattributes {
@@ -227,7 +251,7 @@ func For(in In) []Renderer {
 			rs = append(rs, Agents)
 		}
 		rs = append(rs, Activity)
-		if HasAgents(in.Locator) && in.Config.EmitClaude {
+		if HasClaude(in.Locator, in.Config) {
 			rs = append(rs, Claude)
 		}
 	case shapeEntity:

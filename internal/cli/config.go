@@ -193,7 +193,9 @@ func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (boo
 	if err != nil {
 		return err
 	}
-	printWrote(out, res.Wrote)
+	// Not just the file list: setting either `emit.claude` key writes or sweeps
+	// the whole Claude surface in the same command (§6.1, §26).
+	printEffects(out, res)
 	return nil
 }
 

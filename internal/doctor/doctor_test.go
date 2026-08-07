@@ -3,6 +3,7 @@ package doctor_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -382,11 +383,28 @@ func TestOrphanRule(t *testing.T) {
 	}
 }
 
-// TestMirrorFindings covers the two mirror findings and the plain-file case
-// §10 names — a checkout with core.symlinks=false (§6.1).
+// claudeTree is cleanTree with the Claude Code surface turned on and rebuilt,
+// so the eight CLAUDE.md files and the mirror are there to be broken. Every
+// mirror finding needs one: with `emit.claude` off, an entry under
+// .claude/skills/ is residue whatever else is wrong with it.
+func claudeTree(t *testing.T) string {
+	t.Helper()
+	root := cleanTree(t)
+	write(t, root, ".para/config.toml", "emit.claude = true\n")
+	if _, err := rebuild.Run(rebuild.NewEnv(root), rebuild.Options{}); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if rep := run(t, root, doctor.Options{}); !rep.Clean() {
+		t.Fatalf("a tree with the Claude surface rebuilt is not clean: %v", lines(rep))
+	}
+	return root
+}
+
+// TestMirrorFindings covers the two mirror findings §10 names, including the
+// plain-file case a `core.symlinks=false` checkout leaves behind (§6.1).
 func TestMirrorFindings(t *testing.T) {
 	t.Run("orphan-mirror", func(t *testing.T) {
-		root := cleanTree(t)
+		root := claudeTree(t)
 		mkdir(t, root, ".claude/skills/para-gone")
 
 		rep := run(t, root, doctor.Options{})
@@ -398,10 +416,12 @@ func TestMirrorFindings(t *testing.T) {
 	})
 
 	t.Run("a symlink that does not resolve", func(t *testing.T) {
-		root := cleanTree(t)
-		mkdir(t, root, ".claude/skills")
+		root := claudeTree(t)
 		link := filepath.Join(root, ".claude", "skills", "para-report")
-		if err := os.Symlink(filepath.Join(root, ".agents", "skills", "para-nowhere"), link); err != nil {
+		if err := os.Remove(link); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("../../.agents/skills/para-nowhere", link); err != nil {
 			t.Skipf("symlinks unavailable: %v", err)
 		}
 
@@ -413,7 +433,10 @@ func TestMirrorFindings(t *testing.T) {
 	})
 
 	t.Run("a link materialised as a plain file", func(t *testing.T) {
-		root := cleanTree(t)
+		root := claudeTree(t)
+		if err := os.Remove(filepath.Join(root, ".claude", "skills", "para-report")); err != nil {
+			t.Fatal(err)
+		}
 		write(t, root, ".claude/skills/para-report", "../../.agents/skills/para-report")
 
 		rep := run(t, root, doctor.Options{})
@@ -424,11 +447,21 @@ func TestMirrorFindings(t *testing.T) {
 		}
 	})
 
+	t.Run("a mirror in the wrong mode is stale", func(t *testing.T) {
+		root := claudeTree(t)
+		write(t, root, ".para/config.toml", "emit.claude = true\nemit.claude-skills = \"copy\"\n")
+
+		rep := run(t, root, doctor.Options{})
+
+		got := findings(rep, doctor.KindStaleProjection)
+		if len(got) != 1 || !strings.Contains(got[0], "symlink where a copy belongs") {
+			t.Fatalf("stale-projection findings = %v, want one naming the mode", got)
+		}
+	})
+
 	t.Run("a symlinked mirror is never walked as an entity", func(t *testing.T) {
-		root := cleanTree(t)
-		mkdir(t, root, ".claude/skills")
-		link := filepath.Join(root, ".claude", "skills", "para-report")
-		if err := os.Symlink(filepath.Join(root, ".agents", "skills", "para-report"), link); err != nil {
+		root := claudeTree(t)
+		if _, err := os.Readlink(filepath.Join(root, ".claude", "skills", "para-report")); err != nil {
 			t.Skipf("symlinks unavailable: %v", err)
 		}
 
@@ -438,6 +471,59 @@ func TestMirrorFindings(t *testing.T) {
 			t.Fatalf("a healthy symlink mirror is not clean: %v", lines(rep))
 		}
 	})
+}
+
+// TestSurfaceResidue is the answer Phase 12 left open: with `emit.claude` off,
+// everything the surface leaves behind is residue — one finding, one repair —
+// rather than orphan-mirror or broken-link, which would name a cause that is
+// not the cause.
+func TestSurfaceResidue(t *testing.T) {
+	root := claudeTree(t)
+	write(t, root, ".para/config.toml", "emit.claude = false\n")
+
+	rep := run(t, root, doctor.Options{})
+
+	got := findings(rep, doctor.KindStaleProjection)
+	want := []string{
+		".claude/skills/para-report: should not exist; emit.claude is off",
+		"CLAUDE.md: should not exist; emit.claude is off",
+		"archive/CLAUDE.md: should not exist; emit.claude is off",
+		"archive/areas/CLAUDE.md: should not exist; emit.claude is off",
+		"archive/projects/CLAUDE.md: should not exist; emit.claude is off",
+		"archive/resources/CLAUDE.md: should not exist; emit.claude is off",
+		"areas/CLAUDE.md: should not exist; emit.claude is off",
+		"projects/CLAUDE.md: should not exist; emit.claude is off",
+		"resources/CLAUDE.md: should not exist; emit.claude is off",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("stale-projection findings =\n%v\nwant\n%v", got, want)
+	}
+	assertOnly(t, rep, doctor.KindStaleProjection)
+
+	if _, err := rebuild.Run(rebuild.NewEnv(root), rebuild.Options{}); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if rep := run(t, root, doctor.Options{}); !rep.Clean() {
+		t.Errorf("rebuild did not sweep the residue: %v", lines(rep))
+	}
+}
+
+// TestMissingMirrorIsStale: a mirror is a projection (§6.1), so one that is not
+// there differs from what would be written now exactly as a missing CLAUDE.md
+// does.
+func TestMissingMirrorIsStale(t *testing.T) {
+	root := claudeTree(t)
+	if err := os.RemoveAll(filepath.Join(root, ".claude")); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := run(t, root, doctor.Options{})
+
+	got := findings(rep, doctor.KindStaleProjection)
+	want := []string{".claude/skills/para-report: is missing; skills.report has no mirror"}
+	if !slices.Equal(got, want) {
+		t.Errorf("stale-projection findings = %v, want %v", got, want)
+	}
 }
 
 // TestStaleProjection is §26's own case, and the plan's "the dated ACTIVITY.md

@@ -121,7 +121,7 @@ func (e *Env) write(subj *subject, f Fields, next truth.State, note string) (Res
 		events := []journal.Event{journal.NewNote(e.Now.UTC(), note)}
 		wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil)
 		res.Wrote, res.NoteRecorded = wrote, true
-		return res, err
+		return e.syncSurface(res, err)
 	}
 
 	events := make([]journal.Event, 0, len(changes))
@@ -137,7 +137,7 @@ func (e *Env) write(subj *subject, f Fields, next truth.State, note string) (Res
 	p := &plan{subj: subj, events: events, writeState: true, createdMoved: changed(changes, kindmeta.FieldCreated)}
 	wrote, err := apply(e, []*plan{p}, nil)
 	res.Wrote = wrote
-	return res, err
+	return e.syncSurface(res, err)
 }
 
 func changed(changes []Change, field kindmeta.Field) bool {

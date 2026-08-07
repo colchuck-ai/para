@@ -1198,6 +1198,9 @@ it twice and diffing.
 
 ## Phase 13 — The Claude Code surface
 
+**Status: done** (branch `impl`). `internal/mirror` lands; `rebuild`, `doctor`, and the write path all
+grow their half of the surface, and `testdata/script/claude.txtar` is the acceptance script.
+
 Late and separable, because it is opt-in and touches nothing else (§6.1).
 
 **Tasks**
@@ -1213,6 +1216,143 @@ Late and separable, because it is opt-in and touches nothing else (§6.1).
 
 **Done when** both modes round-trip through `rebuild`, switching modes leaves no residue of the other,
 and the hostile-checkout test passes.
+
+### The seam: one classifier, two consumers
+
+`internal/mirror` is the only thing that says what `.claude/skills/` should contain, and it says it
+*once*, as a classification rather than as a repair. `Inspect` returns the entries that are not what
+§6.1 says they should be, each carrying one of five states — `missing`, `stale`, `residue`, `orphan`,
+`broken`. `doctor` maps those states onto §10's finding names and prints them; `rebuild` maps the same
+list onto removals and writes. Neither of them looks at the directory itself.
+
+That is the same seam Phase 12 built between `doctor` and `rebuild.Derive`, applied to the one artifact
+`Derive` could not cover. §10 gives two mirror problems their own names, so a doctor that decided for
+itself which links were broken and a rebuild that decided for itself which to replace would be two
+opinions about one directory — and the disagreement would show up as a `doctor` that stays red after a
+`rebuild`.
+
+The same discipline settled three smaller rules, each of which had acquired or was about to acquire a
+second copy:
+
+- **`render.HasClaude`** — whether a `CLAUDE.md` is emitted at a location. Three places ask: `render.For`,
+  which renders it; `rebuild.residue`, which removes it when the answer turns false; and `doctor`, which
+  reports either as drift.
+- **`render.AgentsLocations`** — the eight locations, now a `[]locator.Locator` rather than a list of
+  strings, because the surface refresh iterates them and `HasAgents` only compared them.
+- **`mirror.plan`** — what fixing one issue amounts to. `Repair` does it and `Planned` reports it, so
+  `rebuild --dry-run`'s list cannot differ from what `rebuild` does.
+
+### The two debts Phase 12 handed over, and how they were paid
+
+**`CLAUDE.md` on a skill mutation (the §6.1-versus-§2.3 slip).** §6.1 says the import list "regenerates
+from the same scope walk that produces the rules … with no separate bookkeeping"; §2.3 forbids a
+mutation walking to root. The resolution Phase 8 predicted holds: the surface is a **fixed set**, not a
+walk. `CLAUDE.md` is emitted at exactly eight locations (§6) and the mirror holds exactly one entry per
+skill, so `rebuild.WriteClaudeSurface` plus `rebuild.SyncMirror` cost a number of writes that depends on
+how many skills there are and not at all on how big the tree is. §2.3 forbids a mutation whose cost
+grows with the tree; this is not one.
+
+Which mutations refresh it is decided in one place, `mutate.syncSurface`, and the trigger is broader
+than `add`/`remove`: **any mutation whose subject is a skill**. In copy mode the mirror holds the
+skill's own `SKILL.md` and `ACTIVITY.md`, so a `note skills.x` drifts it too. Symlink mode cannot drift,
+which is exactly why it is the default — but the mode is configuration, and the write path has to be
+right in both. `measure` is the one verb not wired in, and does not need to be: a measurement is a
+key-result's event (§4.4).
+
+`config set` on either `emit.claude` key refreshes the surface in the same command, which makes §26's
+transcript literal — one command prints the config file, the eight `CLAUDE.md` files, and a link per
+skill. §6.1's "switching modes is a config change plus a `rebuild`" stays true, because `rebuild` is
+still idempotent afterwards; what changed is that the rebuild is no longer *required*. The refresh
+builds a **fresh resolver** rather than reusing the command's, because `config set` has just rewritten
+the very `config.toml` the command's resolver cached — asking it would answer with the value the command
+was called to change.
+
+**The pruning half of `rebuild`.** Phase 12's rebuild wrote and never deleted. It now has two deletions
+and no more:
+
+- a `CLAUDE.md` at one of the eight locations with `emit.claude` off, carried as an `Artifact` whose new
+  `Wanted` field is false;
+- a `.claude/skills/para-X` that `mirror.Inspect` calls residue or orphan, together with
+  `.claude/skills/` and `.claude/` themselves once the sweep leaves them empty — so a tree that turns
+  the surface off is back to the shape §26's `init` describes, "no CLAUDE.md, no .claude/".
+
+`.gitattributes` is deliberately **not** a third. It is *partly* generated — a delimited block inside a
+file whose other lines belong to the repository (§9) — so turning `emit.gitattributes` off leaves a
+block to remove rather than a file, and removing the file would take lines para never wrote. That is a
+real gap, and it is recorded below rather than fixed here, because the fix is a renderer change and not
+a deletion.
+
+### Decisions worth recording
+
+- **Residue is `stale-projection`, not a twelfth finding.** §10's finding set is closed, and it does not
+  need widening: "a generated file differs from what would be written now" reads perfectly well when
+  what would be written now is nothing, and the row already promises `rebuild` as the repair — which is
+  exactly the repair. The detail line says which knob turned it off, so the reader is not left inferring
+  it: `should not exist; emit.claude is off`.
+- **With `emit.claude` off, every `para-` entry under `.claude/skills/` is residue and nothing else.**
+  This is the question Phase 12 left open, and the answer is that reporting a doomed entry as
+  `orphan-mirror` would send the reader to look at a skill, and as `broken-link` would tell them their
+  checkout mangled a link that is about to be deleted. Both would be true; neither would be the repair.
+  With the surface *on*, those two names are what an entry gets. `repair.txtar` and `claude.txtar` assert
+  the same directory under the two settings, so the pair is visible.
+- **A missing or wrong-mode mirror is `stale-projection` too.** §6.1 says outright that "both modes are
+  projections" and that `doctor` "reports the divergence as `stale-projection`" for a `copy` that
+  drifts; a mirror that is not there at all differs from what would be written now in the same way a
+  missing `CLAUDE.md` does. Without this, switching modes would leave `doctor` clean over a tree in the
+  old shape.
+- **A copy carries symlinks as symlinks, and skips nothing else.** One function, `mirror.contents`,
+  lists both the source and the destination, so what a copy consists of and what the comparison checks
+  cannot drift apart — the failure that would otherwise show up as a mirror rewritten on every rebuild,
+  or never. Regular files and symlinks are carried; a device or a socket inside a skill directory is
+  skipped on both sides, since no copy could hold one and calling the mirror stale forever would be
+  worse than not carrying it. `.para/` is excluded at *any* depth, not just the top, because §6.1's
+  reason — a reachable `.claude/skills/para-X/.para/state.toml` satisfying §1.2's entity test — does not
+  care how deep it sits.
+- **The mirror is synced last, and only on an unscoped `rebuild`.** Last, because a copy-mode mirror
+  reproduces files the subject loop has just rewritten. Unscoped, because `.claude/skills/` sits in no
+  entity's subtree — the same rule that already keeps a scoped `doctor` off the derived rules (§5.3).
+  A scoped `rebuild projects` still owns `projects/CLAUDE.md`, which is a file inside its scope rather
+  than a tree-wide artifact.
+- **A mirror write is not atomic, and does not need to be.** Replacing one means removing a directory
+  and writing another, which no per-file rename makes atomic anyway. A crash midway leaves precisely the
+  degraded state §0.2 defines — truth correct, a projection stale — with `doctor` naming it and
+  `rebuild` fixing it.
+- **`rebuild` labels every output line; a mutation labels the first.** §23's shape is one verb applied
+  to four or five files, so aligning the rest under one label reads well. A rebuild's list now mixes
+  three verbs (`rewrote`, `removed`, `linked`/`copied`/`removed`), and a reader scanning it for the
+  deletions should not have to count back to the last label to find where they start. `--dry-run` puts
+  all of them in the conditional: `would rewrite`, `would remove`, `would link`.
+
+### Two spec slips this phase exposed
+
+- **§26's `config set emit.claude true` prints the eight files compacted onto two lines with
+  "(8 files)"**, while §23 says a mutation prints what it wrote "one line per file". §23 wins, as it has
+  since Phase 8, and §26's parenthetical hint about `copy` is dropped — the same sentence lives in
+  `config list`'s `Doc` for `emit.claude-skills`, where it is discoverable rather than shown once at the
+  moment you happen to turn the flag on.
+- **§9's "copied skills, being ordinary generated files, take the `merge=ours` line above" is not true
+  of the block §9 quotes.** No pattern in it matches `.claude/skills/para-X/SKILL.md`; `**/ACTIVITY.md`
+  happens to catch a copied `ACTIVITY.md` and nothing catches the rest. The quoted block is the
+  normative thing and is reproduced verbatim, so no line was added. Worth a sentence in §9 rather than a
+  code change.
+
+### Carry-forward obligations from Phase 13
+
+- **Phase 14 owns the `.gitattributes` residue.** Turning `emit.gitattributes` off leaves para's
+  delimited block in a file nothing removes and nothing reports. It is the same defect `emit.claude` had
+  until this phase, with a different repair: the renderer has to emit the file *without* the block, so
+  it is a `render` change plus one more `Artifact` whose `Wanted` is true and whose bytes are shorter —
+  not a deletion.
+- **Phase 14's Windows job is now the thing that proves `copy` mode.** `mirror.write` names the repair
+  in its error — a platform that will not create links wants `emit.claude-skills = "copy"` — and the
+  hostile-checkout path is asserted on every platform by simulation, but only a real Windows runner
+  exercises the failure itself.
+- **Phase 14's property tests should include the surface.** "Any legal mutation sequence followed by
+  `rebuild` is a no-op" now has a second axis: the sequence has to be run with the surface both on and
+  off, and with both mirror modes, because the write path's refresh and `rebuild`'s sync are two code
+  paths that must produce identical trees.
+- **Phase 15 owns the `--help` text for the two `emit.claude` keys**, which is the one place a user
+  learns that turning the flag on writes eight files.
 
 ---
 

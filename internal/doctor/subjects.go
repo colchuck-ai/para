@@ -377,6 +377,16 @@ func (s *scan) checkStale(sub rebuild.Subject) error {
 // may be the visible end of a journal that was. §26 spells the ACTIVITY.md line
 // out, and the others follow its shape.
 func staleDetail(a rebuild.Artifact) string {
+	if !a.Wanted {
+		// Residue: the file is there and nothing generates it any more (§6.1).
+		// §10 has no row for that and does not need one — "differs from what
+		// would be written now" covers it, since what would be written now is
+		// nothing, and `rebuild` is the same repair that row already promises.
+		if baseName(a.Path) == "CLAUDE.md" {
+			return "should not exist; emit.claude is off"
+		}
+		return "should not exist; nothing generates it now"
+	}
 	if !a.Present {
 		return "is missing"
 	}

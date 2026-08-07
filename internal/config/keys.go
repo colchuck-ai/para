@@ -35,7 +35,19 @@ import (
 const (
 	KeyAtRiskPace    = "key-result.at-risk-pace"
 	KeyReviewCadence = "review.cadence"
+	// The two keys that decide the Claude Code surface's shape, and turn on
+	// together because it is one concern (§6.1). Named because a mutation has
+	// to recognise a write to either of them and refresh the surface.
+	KeyEmitClaude       = "emit.claude"
+	KeyEmitClaudeSkills = "emit.claude-skills"
 )
+
+// AffectsClaudeSurface reports whether writing key changes what the Claude Code
+// surface should contain — which is the question `config set` asks before
+// deciding whether one file changed or eight did (§6.1).
+func AffectsClaudeSurface(key string) bool {
+	return key == KeyEmitClaude || key == KeyEmitClaudeSkills
+}
 
 // Type is a config key's declared value type. It decides how a command-line
 // string parses (Parse), what a stored value must be (Check), and how a
@@ -104,12 +116,12 @@ var specs = buildSpecs()
 func buildSpecs() []Spec {
 	out := []Spec{
 		{
-			Key: "emit.claude", Type: TypeBool,
+			Key: KeyEmitClaude, Type: TypeBool,
 			def: ptoml.Bool(false), hasDef: true,
 			Doc: "emit the Claude Code compatibility surface: CLAUDE.md and the .claude/skills mirror",
 		},
 		{
-			Key: "emit.claude-skills", Type: TypeEnum, Enum: []string{"symlink", "copy"},
+			Key: KeyEmitClaudeSkills, Type: TypeEnum, Enum: []string{"symlink", "copy"},
 			def: ptoml.String("symlink"), hasDef: true,
 			Doc: "how skills are mirrored into .claude/skills when emit.claude is on",
 		},

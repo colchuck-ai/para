@@ -2,29 +2,24 @@ package doctor
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/mdfile"
-	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/tree"
 )
 
-// mirrorDir is where the Claude Code compatibility surface mirrors skills
-// (§6.1), relative to the tree root.
-const mirrorDir = ".claude/skills"
-
-// mirrorPrefix marks para's own entries in that directory. Everything there
-// without it belongs to whoever put it there, and para neither reads nor
-// removes it (§6.1).
+// mirrorPrefix marks para's own entries in .claude/skills/ and .agents/rules/.
+// Everything there without it belongs to whoever put it there, and para neither
+// reads nor removes it (§5.3, §6.1).
 const mirrorPrefix = "para-"
 
-// checkMirrors reports the three findings about files that are projections of a
-// skill but do not live under it: `orphan-rule`, `orphan-mirror`, and
-// `broken-link` (§5.3, §6.1, §10).
+// checkMirrors reports the findings about files that are projections of a skill
+// but do not live under it: `orphan-rule`, `orphan-mirror`, and `broken-link`,
+// plus the `stale-projection` a mirror can be in (§5.3, §6.1, §10).
 //
 // They run only on an unscoped scan, and that is a statement about where they
 // live rather than a shortcut. A derived rule sits in .agents/rules/ and a
@@ -39,7 +34,7 @@ func (s *scan) checkMirrors() error {
 	if err := s.checkRules(skills); err != nil {
 		return err
 	}
-	return s.checkMirrorEntries(skills)
+	return s.checkMirrorEntries()
 }
 
 // skillIDs is the set of skills that exist, taken from the walk that already
@@ -109,61 +104,50 @@ func (s *scan) ruleSkillID(rel, name string) (string, bool) {
 	return id, true
 }
 
-// checkMirrorEntries reports the two findings about .claude/skills/ (§6.1):
-// `orphan-mirror`, a para- prefixed entry whose skill is gone, and
-// `broken-link`, a symlink-mode mirror that does not resolve.
+// checkMirrorEntries reports what is wrong with `.claude/skills/`.
 //
-// A plain file where a mirror belongs is a broken link too, and §10 says so
-// outright: that is what a `core.symlinks=false` checkout leaves behind — git
-// writes the link's target as the file's contents, so the mirror becomes a
-// one-line text file pointing nowhere. It is worth naming as its own case
-// because the repair is a config change plus a rebuild rather than anything the
-// user did wrong.
+// Nothing here decides what is wrong with a mirror; `mirror.Inspect` does, and
+// `rebuild` acts on the same list. That split is the same one `stale-projection`
+// already rests on: a doctor that classified links itself would be a second
+// opinion about a directory it does not repair, and §10 gives two of these
+// answers their own names — so the two consumers have to agree about which
+// answer an entry gets.
 //
-// The directory is read with Lstat throughout: asking Stat about a mirror would
-// follow the very link whose health is the question.
-func (s *scan) checkMirrorEntries(skills map[string]bool) error {
-	dir := filepath.Join(s.root, filepath.FromSlash(mirrorDir))
-	entries, err := os.ReadDir(dir)
+// The mapping from a mirror state to a §10 finding is the whole of this
+// function, and only `residue` is not obvious. A mirror left behind by turning
+// `emit.claude` off is a generated thing that nothing generates any more, which
+// is what `stale-projection` means, and `rebuild` is the repair that row
+// promises. It is deliberately *not* reported as `orphan-mirror` or
+// `broken-link` even when the skill is also gone or the link also dangles:
+// those two sentences would send a reader to look at a skill or at their git
+// config, when the answer is that the surface is switched off.
+func (s *scan) checkMirrorEntries() error {
+	cfg, err := s.env.Resolver.RenderConfig(nil)
 	if err != nil {
-		if os.IsNotExist(err) {
-			// No mirror is the default: emit.claude is off unless asked for
-			// (§6.1), and a tree that never turned it on has nothing here.
-			return nil
-		}
-		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("reading %s", mirrorDir))
+		return err
 	}
-
-	for _, entry := range entries {
-		name := entry.Name()
-		id, ok := strings.CutPrefix(name, mirrorPrefix)
-		if !ok || id == "" {
-			continue
-		}
-		rel := mirrorDir + "/" + name
-
-		if !skills[id] {
-			s.add(Finding{
-				Kind: KindOrphanMirror, Path: rel,
-				Detail: fmt.Sprintf("mirrors skills.%s, which is gone", id),
-			})
-			continue
-		}
-
-		switch {
-		case entry.Type()&fs.ModeSymlink != 0:
-			if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
-				s.add(Finding{
-					Kind: KindBrokenLink, Path: rel,
-					Detail: "is a symlink that does not resolve",
-				})
-			}
-		case !entry.IsDir():
-			s.add(Finding{
-				Kind: KindBrokenLink, Path: rel,
-				Detail: "is a plain file where a mirror belongs — a checkout with core.symlinks=false",
-			})
-		}
+	ids, err := tree.SkillIDs(s.root)
+	if err != nil {
+		return err
+	}
+	issues, err := mirror.Inspect(s.root, cfg, ids)
+	if err != nil {
+		return err
+	}
+	for _, issue := range issues {
+		s.add(Finding{Kind: mirrorFinding(issue.State), Path: issue.Path, Detail: issue.Detail})
 	}
 	return nil
+}
+
+// mirrorFinding is §10's name for one mirror state.
+func mirrorFinding(state mirror.State) Kind {
+	switch state {
+	case mirror.StateOrphan:
+		return KindOrphanMirror
+	case mirror.StateBroken:
+		return KindBrokenLink
+	default:
+		return KindStaleProjection
+	}
 }

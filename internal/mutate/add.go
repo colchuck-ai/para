@@ -82,7 +82,7 @@ func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
 	}
 
 	wrote, err := apply(e, plans, parents(parent))
-	return Result{Locator: loc, Kind: info.Kind, Wrote: wrote}, err
+	return e.syncSurface(Result{Locator: loc, Kind: info.Kind, Wrote: wrote}, err)
 }
 
 // newState builds the entity's state.toml from the fields given, refusing a

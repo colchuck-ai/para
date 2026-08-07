@@ -216,5 +216,7 @@ func (r *Removal) Apply() (Result, error) {
 			return res, err
 		}
 	}
-	return res, nil
+	// A skill has no parent to log at (§1.4), so this is the only place its
+	// removal reaches the surface: the mirror goes with the rule (§6.1, §18.2).
+	return e.syncSurface(res, nil)
 }

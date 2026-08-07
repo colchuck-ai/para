@@ -43,6 +43,7 @@ import (
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/render"
 	"github.com/colchuck-ai/para/internal/tree"
@@ -91,10 +92,24 @@ type Result struct {
 	// Changed names every file rewritten, in write order, as a root-relative
 	// slash-separated path — the form §23 prints.
 	Changed []string
+	// Removed names every generated file deleted because nothing generates it
+	// any more: a CLAUDE.md left by turning `emit.claude` off (§6.1). It is
+	// separate from Changed because the two need different words — "rewrote"
+	// beside a file that is gone would be a lie.
+	Removed []string
+	// Mirror is what happened to `.claude/skills/`, which is neither a rewrite
+	// nor a plain deletion: a link, a copy, or a sweep (§6.1).
+	Mirror []mirror.Change
 	// Subjects is how many places were re-derived, which is the number that
 	// makes "nothing to rewrite" mean "I looked" rather than "I found nothing
 	// to look at".
 	Subjects int
+}
+
+// Empty reports whether the rebuild did nothing at all, across all three of the
+// ways it can act.
+func (r Result) Empty() bool {
+	return len(r.Changed) == 0 && len(r.Removed) == 0 && len(r.Mirror) == 0
 }
 
 // Run re-derives every projection under opts.Scope and writes the ones whose
@@ -123,6 +138,16 @@ func Run(env *Env, opts Options) (Result, error) {
 			if !a.Stale() {
 				continue
 			}
+			if !a.Wanted {
+				res.Removed = append(res.Removed, a.Path)
+				if opts.DryRun {
+					continue
+				}
+				if err := os.Remove(filepath.Join(env.Root, filepath.FromSlash(a.Path))); err != nil && !os.IsNotExist(err) {
+					return res, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("removing %s", a.Path))
+				}
+				continue
+			}
 			res.Changed = append(res.Changed, a.Path)
 			if opts.DryRun {
 				continue
@@ -130,6 +155,20 @@ func Run(env *Env, opts Options) (Result, error) {
 			if err := writeset.WriteFile(filepath.Join(env.Root, filepath.FromSlash(a.Path)), a.Derived); err != nil {
 				return res, err
 			}
+		}
+	}
+
+	// The mirror last, and only on an unscoped run. Last because a copy-mode
+	// mirror reproduces files the subject loop has just rewritten, so syncing it
+	// first would copy the versions being replaced; unscoped because
+	// `.claude/skills/` sits in no entity's subtree, and `rebuild projects`
+	// reaching it would make a scoped repair quietly tree-wide — the same rule
+	// that keeps a scoped `doctor` off the derived rules (§5.3, §6.1).
+	if len(opts.Scope) == 0 {
+		changes, err := env.SyncMirror(opts.DryRun)
+		res.Mirror = changes
+		if err != nil {
+			return res, err
 		}
 	}
 	return res, nil
@@ -204,11 +243,24 @@ type Artifact struct {
 	// file "differs from what would be written now", and an absent file
 	// differs from every possible answer.
 	Present bool
+	// Wanted reports whether the file should exist. It is false for residue —
+	// a CLAUDE.md left behind by turning `emit.claude` off (§6.1) — and that is
+	// the same question §10 asks, read the other way: what would be written now
+	// is nothing, and a file that is there differs from nothing.
+	//
+	// §10's finding set is closed and has no row for residue, which is the
+	// argument for folding it into `stale-projection` rather than inventing a
+	// twelfth finding: the repair is `rebuild`, which is exactly what that row
+	// promises.
+	Wanted bool
 }
 
 // Stale reports whether the file on disk is not what truth says it should be —
 // which is doctor's `stale-projection` (§10) and rebuild's whole to-do list.
 func (a Artifact) Stale() bool {
+	if !a.Wanted {
+		return a.Present
+	}
 	return !a.Present || !bytes.Equal(a.Existing, a.Derived)
 }
 
@@ -229,11 +281,9 @@ func (e *Env) Derive(s Subject) ([]Artifact, error) {
 		// CLAUDE.md's import list is the one thing a renderer needs that is not
 		// in the subject's own truth (§6.1), and it is loaded only where that
 		// renderer is in the set.
-		ids, err := tree.SkillIDs(e.Root)
-		if err != nil {
+		if in.Rules, err = e.rules(); err != nil {
 			return nil, err
 		}
-		in.Rules = render.RuleFilenames(ids)
 	}
 
 	existing := map[string][]byte{}
@@ -251,12 +301,31 @@ func (e *Env) Derive(s Subject) ([]Artifact, error) {
 		return nil, err
 	}
 
-	out := make([]Artifact, 0, len(artifacts))
+	out := make([]Artifact, 0, len(artifacts)+1)
 	for _, a := range artifacts {
 		prior, present := existing[a.Path]
-		out = append(out, Artifact{Path: a.Path, Derived: a.Bytes, Existing: prior, Present: present})
+		out = append(out, Artifact{Path: a.Path, Derived: a.Bytes, Existing: prior, Present: present, Wanted: true})
 	}
-	return out, nil
+
+	residue, err := e.residue(in)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, residue...), nil
+}
+
+// rules is CLAUDE.md's import list: one derived rule per skill that exists.
+//
+// It asks the skills rather than listing .agents/rules/, because a rule is a
+// projection of a skill (§5.3) and §21.1 forbids deriving a projection from
+// one — the listing would import a rule this same rebuild is about to delete,
+// and would need a second pass to converge.
+func (e *Env) rules() ([]string, error) {
+	ids, err := tree.SkillIDs(e.Root)
+	if err != nil {
+		return nil, err
+	}
+	return render.RuleFilenames(ids), nil
 }
 
 // load reads everything a subject's renderers need: its truth, its whole

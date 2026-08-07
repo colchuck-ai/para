@@ -9,6 +9,7 @@ import (
 
 	"github.com/colchuck-ai/para/internal/doctor"
 	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/rebuild"
 	"github.com/colchuck-ai/para/internal/tree"
@@ -66,7 +67,7 @@ func newRebuildCmd() *cobra.Command {
 // written or only considered.
 func printRebuild(out io.Writer, res rebuild.Result, dryRun bool) {
 	printChanged(out, res, dryRun)
-	if len(res.Changed) == 0 {
+	if res.Empty() {
 		// Saying nothing would leave "did it run" and "was there nothing to do"
 		// looking identical, which for the command you run to repair a tree is
 		// the wrong pair to conflate — the same argument `review` makes.
@@ -79,14 +80,41 @@ func printRebuild(out io.Writer, res rebuild.Result, dryRun bool) {
 }
 
 // printChanged is the file list alone: one line per file, labelled by whether
-// it was written or only considered.
+// it was written or only considered, and by what was done to it.
+//
+// A rebuild has three kinds of effect now, not one. Turning `emit.claude` off
+// makes a rebuild's whole job a deletion (§6.1), and reporting that under
+// "rewrote" would be reporting the opposite of what happened.
+// Every line carries its own label rather than aligning under the first, which
+// is where this differs from a mutation's file list (§23). A mutation's list is
+// one verb applied to four or five files; a rebuild's is a long list of three
+// verbs, and a reader scanning it for the deletions should not have to count
+// back to the last label to find where they start.
 func printChanged(out io.Writer, res rebuild.Result, dryRun bool) {
-	label := "rewrote  "
-	if dryRun {
-		label = "would rewrite  "
+	printEach(out, tense("rewrote", "would rewrite", dryRun), res.Changed)
+	printEach(out, tense("removed", "would remove", dryRun), res.Removed)
+	for _, c := range res.Mirror {
+		printEach(out, tense(string(c.Verb), wouldVerb(c.Verb), dryRun), []string{mirrorLine(c)})
 	}
-	for _, path := range res.Changed {
-		fmt.Fprintf(out, "%s%s\n", label, path)
+}
+
+func tense(did, would string, dryRun bool) string {
+	if dryRun {
+		return would
+	}
+	return did
+}
+
+// wouldVerb is a mirror verb in the tense a dry run needs: a run that says
+// "linked" when it linked nothing is describing something that did not happen.
+func wouldVerb(v mirror.Verb) string {
+	switch v {
+	case mirror.VerbLinked:
+		return "would link"
+	case mirror.VerbCopied:
+		return "would copy"
+	default:
+		return "would remove"
 	}
 }
 

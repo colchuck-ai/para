@@ -5,23 +5,37 @@ import (
 	"io"
 	"strings"
 
+	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/mutate"
 )
 
-// wroteLabel and its continuation indent are §23's shape: "mutations print what
-// they wrote, one line per file, because write-through touches four or five
-// files and a user who cannot see that will not believe it".
-const (
-	wroteLabel  = "wrote  "
-	wroteIndent = "       "
-)
+// printLabelled renders §23's file-list shape: "mutations print what they
+// wrote, one line per file, because write-through touches four or five files
+// and a user who cannot see that will not believe it" — a labelled first line
+// with the rest aligned under it. An empty list prints nothing, which is how a
+// no-op stays silent about files (§15).
+func printLabelled(out io.Writer, label string, items []string) {
+	pad := strings.Repeat(" ", len(label))
+	for i, item := range items {
+		if i > 0 {
+			label = pad
+		}
+		fmt.Fprintf(out, "%s  %s\n", label, item)
+	}
+}
 
-// printWrote renders the file list §23 requires: a labelled first line and the
-// rest aligned under it. A mutation that wrote nothing prints nothing, which is
-// how a no-op stays silent about files (§15).
+// printEach is the other shape: every line carries the label. It is what a
+// list mixing several verbs needs, which is `rebuild`'s case and not §23's.
+func printEach(out io.Writer, label string, items []string) {
+	for _, item := range items {
+		fmt.Fprintf(out, "%s  %s\n", label, item)
+	}
+}
+
+// printWrote is that list for the files a mutation wrote.
 func printWrote(out io.Writer, paths []string) {
 	seen := map[string]bool{}
-	label := wroteLabel
+	uniq := make([]string, 0, len(paths))
 	for _, path := range paths {
 		// A multi-field `set` appends several lines to one journal file, so the
 		// same path can appear more than once in the write record. The record
@@ -30,24 +44,61 @@ func printWrote(out io.Writer, paths []string) {
 			continue
 		}
 		seen[path] = true
-		fmt.Fprintf(out, "%s%s\n", label, path)
-		label = wroteIndent
+		uniq = append(uniq, path)
+	}
+	printLabelled(out, "wrote", uniq)
+}
+
+// printEffects prints everything a mutation did to files: what it wrote, what
+// it removed, and what it did to the `.claude/skills/` mirror.
+//
+// Three lists rather than one, because they need three different verbs.
+// "wrote" beside a deleted CLAUDE.md would be a lie, and §26 gives the mirror
+// its own word — `linked …/para-signups-report → ../../.agents/skills/…` — for
+// the good reason that a link is the one thing para writes whose content is a
+// path rather than bytes.
+func printEffects(out io.Writer, res mutate.Result) {
+	printWrote(out, res.Wrote)
+	printLabelled(out, "removed", res.Removed)
+	printMirror(out, res.Mirror)
+}
+
+// printMirror prints one line per mirror change, runs of the same verb grouped
+// under it the way §26's transcript groups two links.
+func printMirror(out io.Writer, changes []mirror.Change) {
+	for i := 0; i < len(changes); {
+		verb := changes[i].Verb
+		var items []string
+		for ; i < len(changes) && changes[i].Verb == verb; i++ {
+			items = append(items, mirrorLine(changes[i]))
+		}
+		printLabelled(out, string(verb), items)
 	}
 }
 
-// printResult prints a mutation's summary lines, then its file list, separated
-// by a blank line — the layout §23's worked example uses.
+// mirrorLine is one mirror change: the entry, and for a link the target it now
+// points at, because a link nobody can see the far end of is a link nobody can
+// check.
+func mirrorLine(c mirror.Change) string {
+	if c.Target == "" {
+		return c.Path
+	}
+	return c.Path + " → " + c.Target
+}
+
+// printResult prints a mutation's summary lines, then what it did to files,
+// separated by a blank line — the layout §23's worked example uses.
 func printResult(out io.Writer, summary []string, res mutate.Result) {
 	for _, line := range summary {
 		fmt.Fprintln(out, line)
 	}
-	if len(res.Wrote) == 0 {
+	if len(res.Wrote) == 0 && len(res.Removed) == 0 && len(res.Mirror) == 0 {
 		return
 	}
 	if len(summary) > 0 {
 		fmt.Fprintln(out)
 	}
-	printWrote(out, res.Wrote)
+	printEffects(out, res)
 }
 
 // changeLines is §26's `set` output: one line per field that changed, naming

@@ -1,6 +1,7 @@
 package mutate
 
 import (
+	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/render"
@@ -21,11 +22,17 @@ import (
 // the journal of the thing it happened to, and `config set --at projects` is
 // something that happened to projects/.
 //
-// Only ACTIVITY.md is re-rendered. A config change alters no state, so no other
-// projection of this level can have changed — with one exception that is
-// deliberately left to `rebuild`: the emit knobs (§6.1, §9) decide which files
-// exist across the *whole tree*, and honouring them here would make one config
-// write walk every entity, which §2.3 forbids of a mutation.
+// Only ACTIVITY.md is re-rendered at the level itself. A config change alters
+// no state, so no other projection of this level can have changed.
+//
+// The two `emit.claude` keys are the exception, and it is one §26 spells out:
+// `config set emit.claude true` prints the config file, eight CLAUDE.md files,
+// and a link per skill. That is legal here and not a §2.3 violation, because
+// the Claude surface is a fixed set of locations rather than a walk — see
+// claude.go. `emit.gitattributes` is deliberately *not* a second exception: it
+// governs a delimited block inside a file whose other lines belong to the
+// repository (§9), so turning it off leaves a block to remove rather than a
+// file, and that is `rebuild`'s to do.
 func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byte) (Result, error) {
 	subj, err := e.open(loc)
 	if err != nil {
@@ -40,5 +47,9 @@ func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byt
 		onlyProjections: []render.Renderer{render.Activity},
 	}
 	wrote, err := apply(e, []*plan{p}, nil)
-	return Result{Locator: loc, Kind: subj.kind, Wrote: wrote}, err
+	res := Result{Locator: loc, Kind: subj.kind, Wrote: wrote}
+	if err != nil || !config.AffectsClaudeSurface(key) {
+		return res, err
+	}
+	return e.refreshSurface(res)
 }

@@ -45,6 +45,7 @@ import (
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/render"
 	"github.com/colchuck-ai/para/internal/tree"
@@ -110,6 +111,16 @@ type Result struct {
 	Changes []Change
 	NoOps   []NoOp
 	Wrote   []string
+
+	// Removed names every generated file the mutation deleted because nothing
+	// generates it any more — the eight CLAUDE.md files when `emit.claude` is
+	// turned off (§6.1). It is separate from Wrote because "wrote" beside a
+	// file that has just been deleted would be a lie.
+	Removed []string
+
+	// Mirror is what the mutation did to `.claude/skills/`, which is neither a
+	// write nor a plain deletion: a link, a copy, or a sweep (§6.1).
+	Mirror []mirror.Change
 
 	// NoteRecorded is true when a --note was written as a note event of its
 	// own, which happens only when nothing else about the mutation changed
