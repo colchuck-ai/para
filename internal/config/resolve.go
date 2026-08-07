@@ -207,8 +207,8 @@ func (r *Resolver) Resolve(loc locator.Locator, key string) (Resolution, error) 
 // that did would be reading truth it was not given — so this is the seam
 // between §7's chain and the projection engine.
 //
-// The two `emit.claude` keys are resolved **at the root** whatever loc is, and
-// they are the only keys in the design that are. §6.1 opens by saying the whole
+// The three keys config.RootOnly names are resolved **at the root** whatever loc
+// is, and they are the only keys in the design that are. §6.1 opens by saying the whole
 // subsection is "off by default and turns on together, because it is one
 // concern", and §7's table gives both keys `root` as where they live. The reason
 // it has to be enforced rather than merely advised is that the surface has two
@@ -236,7 +236,11 @@ func (r *Resolver) RenderConfig(loc locator.Locator) (render.Config, error) {
 		out.EmitClaudeSkills = v
 	}
 
-	gitattributes, err := r.Resolve(loc, "emit.gitattributes")
+	// At the root, whatever loc is, for the reason RootOnly gives: .gitattributes
+	// sits at the root and nowhere else (§9), so a value set at any other level
+	// is read by nothing. Resolving it chained would let `config list projects`
+	// report a value that decides no byte of any file.
+	gitattributes, err := r.Resolve(nil, KeyEmitGitattributes)
 	if err != nil {
 		return render.Config{}, err
 	}

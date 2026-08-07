@@ -76,3 +76,15 @@ func (e *Env) refreshSurface(res Result) (Result, error) {
 	res.Mirror = append(res.Mirror, changes...)
 	return res, err
 }
+
+// refreshGitAttributes puts §9's block into the root's .gitattributes or takes
+// it out, after a `config set` of the key that decides which.
+//
+// It builds a fresh resolver for the reason refreshSurface does: the command
+// has just rewritten the config.toml its own resolver cached, so asking that
+// one would answer with the value the command was called to change.
+func (e *Env) refreshGitAttributes(res Result) (Result, error) {
+	wrote, err := rebuild.NewEnv(e.Root).WriteGitAttributes()
+	res.Wrote = append(res.Wrote, wrote...)
+	return res, err
+}

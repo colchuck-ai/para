@@ -25,6 +25,26 @@ Pass flags through the pipe with `sh -s --`, e.g. `sh -s -- --dir "$HOME/bin"`. 
 `scripts/install.sh --help` for the full option list, including `--ref`, `--dry-run`, and
 `--uninstall`.
 
+## Scale
+
+Measured against a generated tree of **2,480 entities** — 200 projects with their objectives and key
+results, 600 areas, 400 resources, 20 skills, 60 archived things, and roughly 5,600 files — on an
+Apple M-series laptop. Reproduce with `go test ./internal/scale/ -run TestScaleTimings -v`.
+
+| | |
+| --- | --- |
+| `para rebuild` — cold, writes every projection | 1.4 s |
+| `para rebuild` — idempotent, writes nothing | 0.46 s |
+| `para doctor` — deep scan of the whole tree | 0.98 s |
+| `para list` — whole tree, 2,420 rows | 0.33 s |
+| `para list projects.<one>` — 6 rows | 0.001 s |
+| any single mutation | **2–10 files, whatever the size of the tree** |
+
+The last row is the one that matters and the only one asserted as a test rather than reported as a
+number: write-through touches the subject's own files and, when containment changed, its parent's —
+never a subtree, never a walk to the root. The same `para note` writes the same two files on a tree of
+four entities and on a tree of 2,480.
+
 ## Status
 
 Under active development, phase by phase, against

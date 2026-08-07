@@ -39,7 +39,7 @@ func Walk(root string, visit func(Node) error) error {
 	if err := walkChildren(root, nil, visit); err != nil {
 		return err
 	}
-	return walkAgentsSkills(filepath.Join(root, ".agents", "skills"), visit)
+	return walkAgentsSkills(filepath.Join(root, filepath.FromSlash(skillsDir)), visit)
 }
 
 func walkChildren(dir string, loc locator.Locator, visit func(Node) error) error {

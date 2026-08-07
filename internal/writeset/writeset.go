@@ -23,8 +23,11 @@
 // Truth first, projections after. A crash at any point leaves the tree with
 // correct truth and possibly stale projections, never with truth lost or half
 // written. Individual file writes are atomic — a temp file in the same
-// directory, fsync, rename — and the journal append is an O_APPEND of a single
-// line, which is atomic for a line this size on every filesystem para targets.
+// directory, rename — and the journal append is an O_APPEND of a single line,
+// which is atomic for a line this size on every filesystem para targets.
+//
+// Truth is also fsynced and projections are not, which is the same argument
+// applied to power loss rather than to a process dying. See durability.
 //
 // Apply returns what it actually did, because §2.3's invariant is a claim about
 // how many files a mutation touches ("nothing walks a subtree on write, nothing
@@ -36,6 +39,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/paraerr"
@@ -58,13 +63,15 @@ type Subject struct {
 	// under Dir/.para/.
 	Dir string
 
-	// Dirs are directories that must exist even while empty, as OS paths.
-	// There is exactly one such directory in the design — a new entity's
-	// .para/logs/, which `add` creates although the journal starts empty
-	// (§18.1) so that every .para/ has the same shape (§5.1, §8.4). Nothing
-	// may depend on it: git does not carry an empty directory, so a fresh
-	// clone will not have one, which is why every reader treats an absent
-	// logs/ as an empty journal.
+	// Dirs are directories that must exist even while empty, as OS paths: a new
+	// entity's .para/logs/, which `add` creates although the journal starts
+	// empty (§18.1) so that every .para/ has the same shape (§5.1, §8.4), and
+	// `init`'s two .agents/ directories. Nothing may depend on any of them: git
+	// does not carry an empty directory, so a fresh clone will not have one,
+	// which is why every reader treats an absent logs/ as an empty journal.
+	//
+	// They are created *after* the subject's truth, for exactly that reason —
+	// see writeTruth.
 	Dirs []string
 
 	// Events are appended to the subject's own journal, in order (§3.1). A
@@ -76,6 +83,19 @@ type Subject struct {
 	// change — a `note` or a `measure` changes the journal without changing
 	// state.
 	State []byte
+
+	// Tree is the new .para/tree.toml, or nil. It is the root's State by
+	// another name: the root has no state.toml because the root is not an
+	// entity, it is the tree (§8.1). Only `init` sets it, and only on the root,
+	// so no subject ever carries both.
+	//
+	// It is written in the truth phase like every other truth file, and `init`
+	// deliberately makes the root its *last* subject so that this is the last
+	// truth byte to land. Until it exists the directory is not a tree at all,
+	// which is a state `init` can simply be run on again; once it exists, every
+	// other subject's truth is already there and what remains is projections —
+	// the one degraded state the design defines a repair for (§2.4).
+	Tree []byte
 
 	// Config is the subject's new config.toml, or nil when it did not change.
 	// A config.toml is truth but not state (§2.1), so it is written in the
@@ -187,7 +207,7 @@ func Relocate(r Relocation) (Ops, error) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", dir))
 		}
-		ops = append(ops, Op{Kind: OpMkdir, Path: dir})
+		ops = record(ops, Op{Kind: OpMkdir, Path: dir})
 	}
 
 	for _, m := range r.Moves {
@@ -211,10 +231,25 @@ func Relocate(r Relocation) (Ops, error) {
 			return ops, paraerr.Wrap(paraerr.KindInternal, err,
 				fmt.Sprintf("writeset: renaming %s to %s (a tree spanning two filesystems must be moved by hand, then `para rebuild`)", m.From, m.To))
 		}
-		ops = append(ops, Op{Kind: OpMove, From: m.From, Path: m.To})
+		ops = record(ops, Op{Kind: OpMove, From: m.From, Path: m.To})
 	}
 
-	for _, path := range r.Prunes {
+	// Deepest first, which is the only ordering among the prunes that matters.
+	//
+	// `remove --keep-files` deletes para's footprint throughout a subtree
+	// (§18.4), and a shallow-first sweep spends the interval between two of them
+	// with an entity's `.para/` gone and its descendants' still there — a
+	// state.toml the walk can no longer descend to, which §10 calls `orphan`,
+	// which is an *error*, and which no `rebuild` can repair. Deepest first, the
+	// worst a crash leaves is a partly-stripped subtree whose remaining footprint
+	// is still reachable from the top: content inside an entity, which is never
+	// reported, or one `untracked` directory at the end (§0.2, §21.2).
+	prunes := slices.Clone(r.Prunes)
+	slices.SortStableFunc(prunes, func(a, b string) int {
+		return strings.Count(b, string(filepath.Separator)) - strings.Count(a, string(filepath.Separator))
+	})
+
+	for _, path := range prunes {
 		if _, err := os.Lstat(path); err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -224,7 +259,7 @@ func Relocate(r Relocation) (Ops, error) {
 		if err := os.RemoveAll(path); err != nil {
 			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: removing %s", path))
 		}
-		ops = append(ops, Op{Kind: OpPrune, Path: path})
+		ops = record(ops, Op{Kind: OpPrune, Path: path})
 	}
 
 	return ops, nil
@@ -278,6 +313,31 @@ type Op struct {
 // evidence for §2.3's invariant.
 type Ops []Op
 
+// record appends op and gives the crash hook a chance to end the process.
+//
+// Every operation this package *reports* goes through it, which is what lets
+// Phase 14's crash matrix sweep PARA_CRASH_AFTER from 1 upward and step over no
+// reported write. Three things it does not reach, named because "exhaustive"
+// would be the wrong word without them:
+//
+//   - the MkdirAll inside appendAll, writeAtomic, and Relocate, each of which
+//     makes a directory on the way to a write rather than as one;
+//   - the inside of writeAtomic, whose temp file, write, chmod and rename are
+//     one recorded op — a kill between them is unreachable here.
+//
+// Both leave residue that has been checked by hand rather than swept: an empty
+// entity directory, which is the `untracked` advisory the matrix already covers,
+// and a leftover `.<name>.para-*` temp file, which no reader and no doctor check
+// looks at. Neither can lose truth, because neither happens after a truth file
+// has been renamed into place.
+//
+// In a production build crashPoint compiles to nothing.
+func record(ops Ops, op Op) Ops {
+	ops = append(ops, op)
+	crashPoint(op)
+	return ops
+}
+
 // Paths returns the paths touched, in order.
 func (o Ops) Paths() []string {
 	out := make([]string, 0, len(o))
@@ -321,7 +381,7 @@ func Apply(m Mutation) (Ops, error) {
 	// 2. The projections. Everything from here on is re-derivable, so a crash
 	//    leaves stale-projection and nothing worse.
 	for _, s := range m.Subjects {
-		written, err := writeFiles(s.Projections)
+		written, err := writeFiles(s.Projections, rederivable)
 		ops = append(ops, written...)
 		if err != nil {
 			return ops, err
@@ -335,7 +395,7 @@ func Apply(m Mutation) (Ops, error) {
 		if err != nil {
 			return ops, err
 		}
-		written, err = writeFiles(p.Projections)
+		written, err = writeFiles(p.Projections, rederivable)
 		ops = append(ops, written...)
 		if err != nil {
 			return ops, err
@@ -354,40 +414,55 @@ func writeTruth(s Subject) (Ops, error) {
 	}
 
 	var ops Ops
-	for _, dir := range s.Dirs {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", dir))
-		}
-		ops = append(ops, Op{Kind: OpMkdir, Path: dir})
-	}
-
 	appended, err := appendAll(truth.LogsDir(s.Dir), s.Events, rotate)
 	ops = append(ops, appended...)
 	if err != nil {
 		return ops, err
 	}
 
+	// tree.toml goes last of the three, and it is the only ordering decision
+	// among them that matters: it is the marker that makes a directory a tree
+	// (§8.1), so nothing should be able to find a root above a truth file that
+	// is not there yet. See Subject.Tree.
 	written, err := writeFiles([]File{
 		{Path: truth.StatePath(s.Dir), Bytes: s.State},
 		{Path: truth.ConfigPath(s.Dir), Bytes: s.Config},
-	})
+		{Path: truth.TreePath(s.Dir), Bytes: s.Tree},
+	}, durable)
 	ops = append(ops, written...)
-	return ops, err
+	if err != nil {
+		return ops, err
+	}
+
+	// The empty directories last, after every byte of truth. They are scaffolding
+	// rather than truth — nothing may depend on them existing, since git does not
+	// carry an empty directory (§18.1) — and creating them first would make the
+	// first thing a crash can leave behind an empty directory in a bucket, which
+	// `doctor` reports as `untracked` and `rebuild` will not remove. Truth first
+	// means the first thing a crash leaves is a state.toml, and that is the one
+	// degraded state the design defines a repair for (§0.2, §2.4).
+	for _, dir := range s.Dirs {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", dir))
+		}
+		ops = record(ops, Op{Kind: OpMkdir, Path: dir})
+	}
+	return ops, nil
 }
 
 // writeFiles writes each file whose bytes are non-nil, in order. A nil Bytes
 // means "unchanged", which is how a `note` skips state.toml and a parent skips
 // everything but its ACTIVITY.md.
-func writeFiles(files []File) (Ops, error) {
+func writeFiles(files []File, d durability) (Ops, error) {
 	var ops Ops
 	for _, f := range files {
 		if f.Bytes == nil {
 			continue
 		}
-		if err := writeAtomic(f.Path, f.Bytes); err != nil {
+		if err := writeAtomic(f.Path, f.Bytes, d); err != nil {
 			return ops, err
 		}
-		ops = append(ops, Op{Kind: OpWrite, Path: f.Path})
+		ops = record(ops, Op{Kind: OpWrite, Path: f.Path})
 	}
 	return ops, nil
 }
@@ -405,28 +480,60 @@ func appendAll(logsDir string, events []journal.Event, rotate int64) (Ops, error
 		if err != nil {
 			return ops, err
 		}
-		ops = append(ops, Op{Kind: OpAppend, Path: path})
+		ops = record(ops, Op{Kind: OpAppend, Path: path})
 	}
 	return ops, nil
 }
 
-// WriteFile atomically replaces the file at path, creating its directory if
-// needed.
+// durability says whether a file's bytes must survive a power failure or only a
+// process crash — the difference between an fsync and no fsync, and, measured,
+// the difference between 10ms a file and 0.25ms.
 //
-// It is the same primitive Apply uses for every file in a mutation, exported
-// for the writes that are not mutations of an entity: a config.toml is truth
-// but not state (§2.1), so `config set` writes one file and appends no event,
-// and it should still be as crash-safe as everything else para writes.
-func WriteFile(path string, data []byte) error {
-	return writeAtomic(path, data)
+// The two answers fall straight out of §0.2 rather than out of taste. Truth is
+// the only thing para cannot re-derive, so it is written durably. A projection
+// is a function of truth (§2.2), so a projection lost to a power failure leaves
+// the tree in *precisely* the degraded state §0.2 already defines and §2.4
+// already repairs: truth correct, projections stale, `doctor` names it and
+// `rebuild` fixes it. Paying ten milliseconds a file to avoid a state that has a
+// one-command repair is paying for nothing — and it is what made a whole-tree
+// rebuild cost a minute where it now costs seconds.
+//
+// Both are equally safe against the crash the design actually models, and the
+// one the crash matrix exercises: a process that stops. A rename is visible to
+// every subsequent reader whether or not anything was flushed to the platter.
+type durability int
+
+const (
+	// durable fsyncs the bytes and the directory entry before returning.
+	durable durability = iota
+	// rederivable does neither, because what is at stake is a file `rebuild`
+	// writes from truth.
+	rederivable
+)
+
+// WriteProjection atomically replaces the generated file at path, creating its
+// directory if needed, and does not fsync.
+//
+// It is `rebuild`'s primitive, and the only one exported: a mutation's truth
+// goes through Apply, which is where the ordering §0.2 fixes lives, and there is
+// no caller left that writes truth any other way. There was one — `config set`
+// wrote its config.toml directly — and since Phase 8 it goes through Apply like
+// everything else, because the file, the event, and the level's ACTIVITY.md are
+// one mutation.
+//
+// See durability for why a rebuild that skips the fsync is not a rebuild that
+// skips a guarantee.
+func WriteProjection(path string, data []byte) error {
+	return writeAtomic(path, data, rederivable)
 }
 
 // writeAtomic replaces path's contents in one step: write a temp file in the
-// same directory so the rename cannot cross a filesystem boundary, fsync it so
-// the bytes are durable before anything points at them, rename it into place,
-// then fsync the directory so the rename itself is durable. A reader either
-// sees the whole old file or the whole new one.
-func writeAtomic(path string, data []byte) error {
+// same directory so the rename cannot cross a filesystem boundary, optionally
+// fsync it so the bytes are durable before anything points at them, rename it
+// into place, then optionally fsync the directory so the rename itself is
+// durable. A reader either sees the whole old file or the whole new one, either
+// way.
+func writeAtomic(path string, data []byte, d durability) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", dir))
@@ -443,9 +550,11 @@ func writeAtomic(path string, data []byte) error {
 		tmp.Close()
 		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: writing %s", path))
 	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: syncing %s", path))
+	if d == durable {
+		if err := tmp.Sync(); err != nil {
+			tmp.Close()
+			return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: syncing %s", path))
+		}
 	}
 	if err := tmp.Close(); err != nil {
 		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: closing the temp file for %s", path))
@@ -457,6 +566,9 @@ func writeAtomic(path string, data []byte) error {
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: renaming into %s", path))
+	}
+	if d != durable {
+		return nil
 	}
 	return syncDir(dir)
 }

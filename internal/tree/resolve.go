@@ -68,14 +68,23 @@ func Exists(root string, loc locator.Locator) (bool, error) {
 // containers all the way up, never content.
 //
 // skills.<id> is the one exception (§1.4): its "parent" is .agents/skills/,
-// which is shared with non-para content and so never carries its own
-// .para/state.toml. Existence of the directory itself is the whole check.
+// which is shared with non-para content, never carries its own
+// .para/state.toml — and is not a precondition at all.
+//
+// It used to be one, and that was a bug with no repair. The directory is created
+// empty by `init` and git does not carry an empty directory (§18.1), so every
+// fresh clone of a tree with no skills in it arrives without one — a tree
+// `doctor` calls clean and `rebuild` finds nothing to do, on which `para add
+// skills.x` failed with ".agents/skills/ does not exist — create it first" and
+// no command that would create it. The directory is para's own and the write
+// path makes it on the way past, so its absence is not a question about
+// placement legality (§1.5), which is what this function answers.
 func ParentExists(root string, loc locator.Locator) (bool, error) {
 	if len(loc) == 0 {
 		return false, paraerr.New(paraerr.KindValidation, "empty locator has no parent")
 	}
 	if loc.Bucket() == "skills" {
-		return dirExists(filepath.Join(root, ".agents", "skills")), nil
+		return true, nil
 	}
 
 	parentRel, err := loc[:len(loc)-1].Path()

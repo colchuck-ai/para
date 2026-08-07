@@ -266,13 +266,18 @@ func TestApplyWritesEveryTruthFileBeforeAnyProjection(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 
+	// Truth first, then the empty scaffolding directory, then the projections.
+	// logs/ comes after state.toml rather than before it because a directory is
+	// not truth: created first, it would be the one thing a crash at the very
+	// first write could leave behind, and an empty directory in a bucket is
+	// `untracked` — a finding `rebuild` cannot clear (§0.2, §21.2).
 	want := []string{
-		truth.LogsDir(project),
 		truth.StatePath(project),
 		truth.ConfigPath(project),
-		truth.LogsDir(container),
+		truth.LogsDir(project),
 		truth.StatePath(container),
 		truth.ConfigPath(container),
+		truth.LogsDir(container),
 		filepath.Join(project, "README.md"),
 		filepath.Join(container, "README.md"),
 	}

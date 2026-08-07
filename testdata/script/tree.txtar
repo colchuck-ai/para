@@ -1,33 +1,40 @@
 # Root discovery, the walk, and `para path` against a hand-planted tree
-# (§8.1, §8.5, §14). The tree is planted directly by this script rather than
-# via `para init`, since init's full file set (README, AGENTS.md, ACTIVITY.md,
-# rendering) is a later phase's job (§0.2, §26).
+# (§8.1, §8.5, §14). The tree is planted directly by this script rather than by
+# `para init`, so that root discovery is tested against the marker file alone —
+# a tree with no README.md, no AGENTS.md and no ACTIVITY.md anywhere in it is
+# still a tree, and `para path` must find it (§8.1). init.txtar covers the
+# rendered shape.
 
 # para path resolves a locator from inside the tree, discovering the root by
 # walking up from the working directory.
-[para:phase4] cd brain/projects/acme-migration
-[para:phase4] exec para path areas.health
-[para:phase4] stdout 'brain[/\\]areas[/\\]health\n$'
+cd brain/projects/acme-migration
+exec para path areas.health
+stdout 'brain[/\\]areas[/\\]health\n$'
+
+# §26's own line: one bare path, already shaped for $(…) (§23).
+exec para path areas.health.training
+stdout '^\S*brain[/\\]areas[/\\]health[/\\]training\n$'
+! stderr .
 
 # ... and from content nested arbitrarily deep inside an entity.
-[para:phase4] cd $WORK/brain/areas/health/training/notes
-[para:phase4] exec para path projects.acme-migration
-[para:phase4] stdout 'brain[/\\]projects[/\\]acme-migration\n$'
+cd $WORK/brain/areas/health/training/notes
+exec para path projects.acme-migration
+stdout 'brain[/\\]projects[/\\]acme-migration\n$'
 
 # "." resolves to the entity or container containing the working directory.
-[para:phase4] cd $WORK/brain/areas/health/training
-[para:phase4] exec para path .
-[para:phase4] stdout 'brain[/\\]areas[/\\]health[/\\]training\n$'
+cd $WORK/brain/areas/health/training
+exec para path .
+stdout 'brain[/\\]areas[/\\]health[/\\]training\n$'
 
 # ... including from inside a skill, crossing the .agents/ break (§8.1).
-[para:phase4] cd $WORK/brain/.agents/skills/para-signups-report/scripts
-[para:phase4] exec para path .
-[para:phase4] stdout 'para-signups-report\n$'
+cd $WORK/brain/.agents/skills/para-signups-report/scripts
+exec para path .
+stdout 'para-signups-report\n$'
 
 # Root discovery fails outside any tree.
-[para:phase4] cd $WORK/outside
-[para:phase4] ! exec para path areas.health
-[para:phase4] stderr 'no para tree found'
+cd $WORK/outside
+! exec para path areas.health
+stderr 'no para tree found'
 
 -- brain/.para/tree.toml --
 schema = 1

@@ -127,7 +127,7 @@ func Children(root string, loc locator.Locator) ([]Node, error) {
 // an enumerated locator list.
 func Skills(root string) ([]Node, error) {
 	var out []Node
-	err := walkAgentsSkills(filepath.Join(root, ".agents", "skills"), func(n Node) error {
+	err := walkAgentsSkills(filepath.Join(root, filepath.FromSlash(skillsDir)), func(n Node) error {
 		out = append(out, n)
 		return nil
 	})

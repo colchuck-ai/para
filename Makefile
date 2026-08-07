@@ -8,6 +8,10 @@ test:
 
 lint:
 	go vet ./...
+	# The test-hook build is a second compilation of every test file, and the
+	# one the suite actually runs under (§0.2). Vetting only the untagged build
+	# leaves the harness's own code unchecked.
+	go vet -tags para_testhooks ./...
 	@out="$$(go run mvdan.cc/gofumpt@$(GOFUMPT_VERSION) -l .)"; \
 	if [ -n "$$out" ]; then \
 		echo "gofumpt -l found unformatted files:"; \

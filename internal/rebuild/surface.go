@@ -23,15 +23,29 @@ import (
 // contents; `emit.claude` decides whether eight files and a directory exist at
 // all, so this file carries the only two removals in the package.
 
-// residue is what a subject has on disk that nothing generates any more.
+// residue is what a subject has on disk that truth no longer justifies: a file
+// nothing generates any more, or a file para wrote part of and no longer would.
 //
-// Today there is exactly one: a CLAUDE.md at one of the eight locations with
-// `emit.claude` off (§6.1). `.gitattributes` is deliberately not a second — it
-// is *partly* generated, a block inside a file whose other lines are the
-// repository's (§9), so turning `emit.gitattributes` off leaves a block to
-// remove rather than a file, and removing the file would take lines para never
-// wrote.
+// There are two, and the difference between them is the whole of why this is
+// not one rule. A CLAUDE.md with `emit.claude` off is a file para owns end to
+// end, so it goes (§6.1). A .gitattributes with `emit.gitattributes` off is a
+// file para owns a *block* inside (§2.2, §9), so the block goes and the file
+// stays — shorter, and carrying every line the repository put there.
 func (e *Env) residue(in render.In) ([]Artifact, error) {
+	claude, err := e.claudeResidue(in)
+	if err != nil {
+		return nil, err
+	}
+	git, err := e.gitAttributesResidue(in)
+	if err != nil {
+		return nil, err
+	}
+	return append(claude, git...), nil
+}
+
+// claudeResidue is a CLAUDE.md left at one of the eight locations by turning
+// `emit.claude` off: a whole file nothing generates any more (§6.1).
+func (e *Env) claudeResidue(in render.In) ([]Artifact, error) {
 	if !render.HasAgents(in.Locator) || render.HasClaude(in.Locator, in.Config) {
 		return nil, nil
 	}
@@ -47,6 +61,81 @@ func (e *Env) residue(in render.In) ([]Artifact, error) {
 		return nil, nil
 	}
 	return []Artifact{{Path: path, Existing: data, Present: true}}, nil
+}
+
+// gitAttributesResidue is para's block sitting in a .gitattributes with
+// `emit.gitattributes` off — the file as it should be once the block comes out.
+//
+// It is an artifact whose Wanted is true and whose bytes are *shorter*, not a
+// removal, and only render decides what those bytes are. The off case lives
+// here rather than in render.For because For runs before anything has been read
+// from disk, and whether there is a block to remove is a question about the
+// file: with the key off and no file there, para has nothing to shorten and no
+// reason to create one.
+func (e *Env) gitAttributesResidue(in render.In) ([]Artifact, error) {
+	if len(in.Locator) != 0 || in.Config.EmitGitattributes {
+		// Not the root, or the key is on — in which case render.For already
+		// has this file and deriving it twice would be two opinions about it.
+		return nil, nil
+	}
+	path, err := render.GitAttributes.Path(render.In{})
+	if err != nil {
+		return nil, err
+	}
+	data, err := e.read(path)
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return nil, nil
+	}
+	shortened, found, err := render.WithoutGitAttributesBlock(data)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		// Somebody else's .gitattributes, or one para has already shortened.
+		return nil, nil
+	}
+	return []Artifact{{Path: path, Derived: shortened, Existing: data, Present: true, Wanted: true}}, nil
+}
+
+// WriteGitAttributes brings the root's .gitattributes into line with
+// `emit.gitattributes` and reports whether it wrote it.
+//
+// It is the write path's half of the same rule gitAttributesResidue is
+// rebuild's half of, and it is one file at one known location — so a `config
+// set` of the key can finish the job rather than leaving a tree that needs a
+// rebuild, which is what every other config key that decides a file's contents
+// already does (§6.1's precedent, §2.3's cost test).
+func (e *Env) WriteGitAttributes() (wrote []string, err error) {
+	cfg, err := e.Resolver.RenderConfig(nil)
+	if err != nil {
+		return nil, err
+	}
+	path, err := render.GitAttributes.Path(render.In{})
+	if err != nil {
+		return nil, err
+	}
+	data, err := e.read(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var artifacts []Artifact
+	if cfg.EmitGitattributes {
+		in := render.In{Config: cfg, Existing: map[string][]byte{path: data}}
+		derived, err := render.GitAttributes.Render(in)
+		if err != nil {
+			return nil, err
+		}
+		artifacts = []Artifact{{Path: path, Derived: derived, Existing: data, Present: data != nil, Wanted: true}}
+	} else if artifacts, err = e.gitAttributesResidue(render.In{Config: cfg}); err != nil {
+		return nil, err
+	}
+
+	wrote, _, err = e.apply(artifacts, false)
+	return wrote, err
 }
 
 // ClaudeSurface derives the CLAUDE.md at every one of the eight locations that

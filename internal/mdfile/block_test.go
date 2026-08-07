@@ -217,3 +217,183 @@ func TestExtractDelimited_HashMarkers(t *testing.T) {
 		t.Errorf("ExtractDelimited() = %q, want %q", got, "a\nb\n")
 	}
 }
+
+func TestRemoveDelimited(t *testing.T) {
+	const begin = "# para:begin — generated, do not edit; run `para rebuild`"
+	const end = "# para:end"
+
+	tests := []struct {
+		name  string
+		data  string
+		want  string
+		found bool
+	}{
+		{
+			// The whole file is para's block — a .gitattributes `init` wrote
+			// into a repository that had none. What is left is what was there
+			// before para: nothing.
+			name:  "block is the whole file",
+			data:  begin + "\nx merge=ours\n" + end + "\n",
+			want:  "",
+			found: true,
+		},
+		{
+			name:  "keeps the repository's own lines",
+			data:  "*.png binary\n" + begin + "\nx merge=ours\n" + end + "\n*.md text\n",
+			want:  "*.png binary\n*.md text\n",
+			found: true,
+		},
+		{
+			name:  "no block is nothing to remove",
+			data:  "*.png binary\n",
+			want:  "*.png binary\n",
+			found: false,
+		},
+		{
+			name:  "empty file",
+			data:  "",
+			want:  "",
+			found: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, found, err := RemoveDelimited(HashMarkers, []byte(tt.data))
+			if err != nil {
+				t.Fatalf("RemoveDelimited: %v", err)
+			}
+			if found != tt.found {
+				t.Errorf("RemoveDelimited() found = %v, want %v", found, tt.found)
+			}
+			if string(got) != tt.want {
+				t.Errorf("RemoveDelimited() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRemoveDelimited_IsReplaceDelimitedReversed(t *testing.T) {
+	// The two together are a round trip: rewriting a file's block and then
+	// taking the block out returns every line that was not para's. That is the
+	// property `emit.gitattributes = false` rests on — §9's block is removable
+	// precisely because it is delimited.
+	block := HashMarkers.Begin + "\nold\n" + HashMarkers.End + "\n"
+	for _, own := range []struct{ prefix, suffix string }{
+		{"", ""},
+		{"*.png binary\n", ""},
+		{"", "*.md text\n"},
+		{"# a comment\n\n", "\n*.md text\n"},
+	} {
+		original := own.prefix + own.suffix
+		with, err := ReplaceDelimited(HashMarkers, []byte(own.prefix+block+own.suffix), []byte("x merge=ours\n"))
+		if err != nil {
+			t.Fatalf("ReplaceDelimited(%q): %v", original, err)
+		}
+		got, found, err := RemoveDelimited(HashMarkers, with)
+		if err != nil {
+			t.Fatalf("RemoveDelimited(%q): %v", with, err)
+		}
+		if !found {
+			t.Errorf("RemoveDelimited(%q) found no block", with)
+		}
+		if string(got) != original {
+			t.Errorf("round trip over %q = %q, want %q", original, got, original)
+		}
+	}
+}
+
+func TestAppendDelimited(t *testing.T) {
+	begin, end := HashMarkers.Begin, HashMarkers.End
+
+	tests := []struct {
+		name string
+		data string
+		want string
+	}{
+		{
+			name: "no file yet",
+			data: "",
+			want: begin + "\nx merge=ours\n" + end + "\n",
+		},
+		{
+			// §2.2's "append-only to an existing file": a repository that
+			// already has a .gitattributes keeps every line and gains the block.
+			name: "a file para has never touched",
+			data: "*.png binary\n",
+			want: "*.png binary\n" + begin + "\nx merge=ours\n" + end + "\n",
+		},
+		{
+			name: "a file with no final newline",
+			data: "*.png binary",
+			want: "*.png binary\n" + begin + "\nx merge=ours\n" + end + "\n",
+		},
+		{
+			name: "a block already there is replaced, not doubled",
+			data: "*.png binary\n" + begin + "\nold\n" + end + "\n*.md text\n",
+			want: "*.png binary\n" + begin + "\nx merge=ours\n" + end + "\n*.md text\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := AppendDelimited(HashMarkers, []byte(tt.data), []byte("x merge=ours\n"))
+			if err != nil {
+				t.Fatalf("AppendDelimited: %v", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("AppendDelimited() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAppendDelimitedIsUndoneByRemoveDelimited(t *testing.T) {
+	// The pair is what `emit.gitattributes` toggles between, so appending the
+	// block and taking it out again has to give back the repository's file.
+	for _, original := range []string{"", "*.png binary\n", "# a comment\n\n*.png binary\n"} {
+		with, err := AppendDelimited(HashMarkers, []byte(original), []byte("x merge=ours\n"))
+		if err != nil {
+			t.Fatalf("AppendDelimited(%q): %v", original, err)
+		}
+		got, found, err := RemoveDelimited(HashMarkers, with)
+		if err != nil {
+			t.Fatalf("RemoveDelimited(%q): %v", with, err)
+		}
+		if !found {
+			t.Errorf("RemoveDelimited(%q) found no block", with)
+		}
+		if string(got) != original {
+			t.Errorf("round trip over %q = %q", original, got)
+		}
+	}
+}
+
+// TestDamagedBlockIsAnErrorInEveryDirection: a begin marker whose end marker was
+// edited away is damage, and all three of the block operations have to say so.
+//
+// They did not, and the disagreement was the bug: AppendDelimited refused such a
+// file — so `para init` in a repository holding one failed with no path in the
+// message — while RemoveDelimited called it "no block", so `para config set
+// emit.gitattributes false` reported success and left every one of para's lines
+// in place. One rule, three functions, and the two that disagreed were the two
+// that turn a config key on and off.
+func TestDamagedBlockIsAnErrorInEveryDirection(t *testing.T) {
+	damaged := [][]byte{
+		[]byte(HashMarkers.Begin + "\nx merge=ours\n"),
+		[]byte("*.png binary\n" + HashMarkers.Begin + "\nx merge=ours\n"),
+		[]byte(HashMarkers.Begin),
+		[]byte(HashMarkers.Begin + " trailing text on the marker's line\nx\n" + HashMarkers.End + "\n"),
+	}
+	for _, data := range damaged {
+		if _, err := ReplaceDelimited(HashMarkers, data, []byte("y\n")); err == nil {
+			t.Errorf("ReplaceDelimited(%q) accepted a damaged block", data)
+		}
+		if _, err := AppendDelimited(HashMarkers, data, []byte("y\n")); err == nil {
+			t.Errorf("AppendDelimited(%q) accepted a damaged block", data)
+		}
+		if _, found, err := RemoveDelimited(HashMarkers, data); err == nil {
+			t.Errorf("RemoveDelimited(%q) reported found=%v and no error over a damaged block", data, found)
+		}
+	}
+}

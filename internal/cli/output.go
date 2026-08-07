@@ -34,19 +34,26 @@ func printEach(out io.Writer, label string, items []string) {
 
 // printWrote is that list for the files a mutation wrote.
 func printWrote(out io.Writer, paths []string) {
+	printLabelled(out, "wrote", uniquePaths(paths))
+}
+
+// uniquePaths is a write record read as a list of files rather than of
+// operations, keeping the order the first mention gave.
+//
+// A multi-field `set` appends several lines to one journal file, and `init`
+// appends four to the root's, so the same path can appear more than once in the
+// record. The record is about operations; every list para prints is about files.
+func uniquePaths(paths []string) []string {
 	seen := map[string]bool{}
-	uniq := make([]string, 0, len(paths))
+	out := make([]string, 0, len(paths))
 	for _, path := range paths {
-		// A multi-field `set` appends several lines to one journal file, so the
-		// same path can appear more than once in the write record. The record
-		// is about operations; this list is about files.
 		if seen[path] {
 			continue
 		}
 		seen[path] = true
-		uniq = append(uniq, path)
+		out = append(out, path)
 	}
-	printLabelled(out, "wrote", uniq)
+	return out
 }
 
 // printEffects prints everything a mutation did to files: what it wrote, what

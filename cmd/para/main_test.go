@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
@@ -19,32 +17,18 @@ func TestMain(m *testing.M) {
 	})
 }
 
-// implementedPhases gates §26 conformance commands behind a [para:phaseN]
-// testscript condition, flipped on as each phase lands, per the
-// implementation plan's ground rules (§0.1).
-var implementedPhases = map[int]bool{
-	0:  true,
-	4:  true,
-	7:  true,
-	8:  true,
-	9:  true,
-	10: true,
-	11: true,
-	12: true,
-	13: true,
-}
-
-const phaseConditionPrefix = "para:phase"
-
-func phaseCondition(cond string) (bool, error) {
-	if !strings.HasPrefix(cond, phaseConditionPrefix) {
-		return false, fmt.Errorf("unknown testscript condition %q", cond)
-	}
-	n, err := strconv.Atoi(strings.TrimPrefix(cond, phaseConditionPrefix))
-	if err != nil {
-		return false, fmt.Errorf("invalid phase condition %q: %w", cond, err)
-	}
-	return implementedPhases[n], nil
+// noConditions refuses every testscript condition, which is what the scripts
+// are now entitled to expect.
+//
+// Until Phase 14 every §26 command sat behind a `[para:phaseN]` gate, flipped on
+// as its phase landed (§0.1). The ground rules say what the end of that is:
+// "when every gate is on, the CLI is spec-complete by construction". Every gate
+// is on, so the gates are gone and the scripts are plain conformance scripts —
+// and a `[para:phaseN]` reappearing in one is now an error rather than a stanza
+// that quietly does not run, which is the failure mode a gate that outlived its
+// phase would have.
+func noConditions(cond string) (bool, error) {
+	return false, fmt.Errorf("unknown testscript condition %q: the phase gates were removed in Phase 14", cond)
 }
 
 func TestScripts(t *testing.T) {
@@ -59,6 +43,6 @@ func TestScripts(t *testing.T) {
 	}
 	testscript.Run(t, testscript.Params{
 		Dir:       "../../testdata/script",
-		Condition: phaseCondition,
+		Condition: noConditions,
 	})
 }

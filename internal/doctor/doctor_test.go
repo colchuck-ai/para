@@ -846,3 +846,36 @@ func TestDoctorAtAnArchiveStub(t *testing.T) {
 		t.Fatalf("doctor at a stub is not clean: %v", lines(rep))
 	}
 }
+
+// TestDoctorReportsTheBlockLeftByTurningTheKeyOff is the reporting half of
+// Phase 13's carried-forward debt. `emit.gitattributes = false` used to leave
+// para's block in a file doctor said nothing about, so the tree was clean by
+// doctor's account and wrong by §9's.
+func TestDoctorReportsTheBlockLeftByTurningTheKeyOff(t *testing.T) {
+	root := cleanTree(t)
+	write(t, root, ".para/config.toml", "emit.gitattributes = false\n")
+
+	rep := run(t, root, doctor.Options{})
+
+	got := findings(rep, doctor.KindStaleProjection)
+	want := ".gitattributes: still holds para's block; emit.gitattributes is off"
+	if !slices.Contains(got, want) {
+		t.Errorf("stale-projection findings = %v, want one of them to be %q", got, want)
+	}
+}
+
+// TestDoctorIsCleanOnceTheBlockIsGone closes the loop §2.4 asks for: doctor
+// reports it, rebuild repairs it, doctor is clean.
+func TestDoctorIsCleanOnceTheBlockIsGone(t *testing.T) {
+	root := cleanTree(t)
+	write(t, root, ".para/config.toml", "emit.gitattributes = false\n")
+
+	if _, err := rebuild.Run(rebuild.NewEnv(root), rebuild.Options{}); err != nil {
+		t.Fatalf("rebuild.Run: %v", err)
+	}
+
+	rep := run(t, root, doctor.Options{})
+	if len(rep.Findings) != 0 {
+		t.Errorf("doctor after rebuild = %v, want clean", rep.Findings)
+	}
+}

@@ -25,14 +25,18 @@ import (
 // Only ACTIVITY.md is re-rendered at the level itself. A config change alters
 // no state, so no other projection of this level can have changed.
 //
-// The two `emit.claude` keys are the exception, and it is one §26 spells out:
-// `config set emit.claude true` prints the config file, eight CLAUDE.md files,
-// and a link per skill. That is legal here and not a §2.3 violation, because
-// the Claude surface is a fixed set of locations rather than a walk — see
-// claude.go. `emit.gitattributes` is deliberately *not* a second exception: it
-// governs a delimited block inside a file whose other lines belong to the
-// repository (§9), so turning it off leaves a block to remove rather than a
-// file, and that is `rebuild`'s to do.
+// The keys that decide whether a generated file exists are the exception, and
+// §26 spells the first of them out: `config set emit.claude true` prints the
+// config file, eight CLAUDE.md files, and a link per skill. That is legal here
+// and not a §2.3 violation, because the Claude surface is a fixed set of
+// locations rather than a walk — see claude.go.
+//
+// `emit.gitattributes` is the same kind of key with a smaller reach: one file
+// at the root, whose block goes in or comes out here (§9). It was left to
+// `rebuild` until Phase 14, on the reasoning that removing a block is not
+// removing a file — true, and not a reason to leave the tree stale. A command
+// that succeeds and leaves `doctor` red is the failure Phase 13's review named
+// twice, and the cost of not having it is one write at a fixed path.
 func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byte) (Result, error) {
 	subj, err := e.open(loc)
 	if err != nil {
@@ -51,11 +55,21 @@ func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byt
 	if err == nil && config.AffectsClaudeSurface(key) {
 		return e.refreshSurface(res)
 	}
-	// Otherwise the ordinary rule, unchanged: a config change on a *skill* has
-	// rewritten that skill's ACTIVITY.md, which a copy-mode mirror holds. Going
-	// through syncSurface rather than re-testing the kind here is what keeps
-	// "any mutation whose subject is a skill" one rule with one gate — written
-	// twice, it would be two gates that eventually disagree, and this is the
-	// verb they disagreed on.
+	if err == nil && key == config.KeyEmitGitattributes {
+		res, err = e.refreshGitAttributes(res)
+	}
+	// And then the ordinary rule, which every path falls through to: a config
+	// change on a *skill* has rewritten that skill's ACTIVITY.md, which a
+	// copy-mode mirror holds. Going through syncSurface rather than re-testing
+	// the kind here is what keeps "any mutation whose subject is a skill" one
+	// rule with one gate.
+	//
+	// The `emit.gitattributes` branch above *falls through* rather than
+	// returning, and that is not an accident of style — it is this exact bug
+	// found twice. Phase 13's review caught `ConfigChange` gating on the key
+	// while every other verb gated on the kind, so a `config set --at skills.x`
+	// skipped the mirror; a returning branch here would have reintroduced it for
+	// one more key. `refreshSurface` returns directly because it has already
+	// synced the mirror itself.
 	return e.syncSurface(res, err)
 }

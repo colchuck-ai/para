@@ -21,6 +21,34 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - run: make test
 
+  # Windows is a separate job rather than a third row of the matrix above,
+  # because it runs a different command and runs it for a different reason.
+  #
+  # What it is for (implementation plan, Phase 14): `emit.claude-skills` is the
+  # one setting in the design with a platform-sensitive mode (§6.1). Every other
+  # platform proves `copy` mode by choice; Windows is where a checkout may
+  # genuinely refuse to materialise a symlink, so it is the only runner on which
+  # `copy` is the answer rather than an option, and the only one where §10's
+  # `broken-link` is a thing that happens rather than a thing simulated.
+  #
+  # Two departures from `make test`, both deliberate:
+  #
+  #   - the recipe is spelled out rather than invoked through make, which the
+  #     Windows image does not carry;
+  #   - no `-race`, which needs a C toolchain on windows/amd64. The race
+  #     detector is not what this job is for — para is one command, one
+  #     goroutine — and the two Unix rows above run it on every commit.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go test (no -race; see the comment above this job)
+        shell: bash
+        run: go test ./... -count=1 -tags para_testhooks
+
   lint:
     runs-on: ubuntu-latest
     steps:

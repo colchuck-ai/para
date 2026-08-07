@@ -40,6 +40,11 @@ const (
 	// to recognise a write to either of them and refresh the surface.
 	KeyEmitClaude       = "emit.claude"
 	KeyEmitClaudeSkills = "emit.claude-skills"
+	// KeyEmitGitattributes decides whether §9's block sits in .gitattributes.
+	// Named for the same reason: a `config set` of it has to put the block in
+	// or take it out in the same command, or the command leaves a tree doctor
+	// calls stale.
+	KeyEmitGitattributes = "emit.gitattributes"
 )
 
 // AffectsClaudeSurface reports whether writing key changes what the Claude Code
@@ -47,6 +52,26 @@ const (
 // deciding whether one file changed or eight did (§6.1).
 func AffectsClaudeSurface(key string) bool {
 	return key == KeyEmitClaude || key == KeyEmitClaudeSkills
+}
+
+// RootOnly reports whether key is read at the tree root whatever locator it is
+// asked about — the three keys in §7's table whose "where it usefully lives"
+// column says `root` and means it.
+//
+// It is a rule rather than advice for all three, and for one reason: each
+// decides whether a file at a *fixed* location exists or what it holds. The two
+// `emit.claude` keys govern eight CLAUDE.md files and one `.claude/skills/`,
+// which sit at different depths, so a chained answer cannot be one answer (§6.1).
+// `emit.gitattributes` governs a single file at the root (§9), so a value set
+// anywhere else is read by nothing at all — a knob the user believes in and para
+// never consults, which is precisely what this package's closed key set exists
+// to prevent.
+//
+// Two things follow from it and neither may drift from the other: Resolver
+// resolves these keys at the root whatever it is asked, and `config set --at`
+// refuses them, naming the root.
+func RootOnly(key string) bool {
+	return AffectsClaudeSurface(key) || key == KeyEmitGitattributes
 }
 
 // Type is a config key's declared value type. It decides how a command-line
@@ -126,7 +151,7 @@ func buildSpecs() []Spec {
 			Doc: "how skills are mirrored into .claude/skills when emit.claude is on",
 		},
 		{
-			Key: "emit.gitattributes", Type: TypeBool,
+			Key: KeyEmitGitattributes, Type: TypeBool,
 			def: ptoml.Bool(true), hasDef: true,
 			Doc: "write the merge-attribute block in .gitattributes",
 		},

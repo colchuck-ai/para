@@ -15,83 +15,83 @@ env PARA_NOW=2026-03-05T17:00:00Z
 env PARA_TZ=America/Los_Angeles
 
 # The chain is built deliberately, one level at a time (§22).
-[para:phase7] cd brain
-[para:phase7] exec para config set --at projects project.stale-after 30
-[para:phase7] cmp stdout $WORK/want-set-projects.txt
+cd brain
+exec para config set --at projects project.stale-after 30
+cmp stdout $WORK/want-set-projects.txt
 
 # The change is recorded where it happened (§3.2, §8.1), and reads as a
 # sentence in that level's own digest.
-[para:phase7] grep '"kind":"change","field":"project.stale-after","to":"30"' projects/.para/logs/20260305T170000Z.jsonl
-[para:phase7] grep 'Set \*\*project\.stale-after\*\* to 30' projects/ACTIVITY.md
+grep '"kind":"change","field":"project.stale-after","to":"30"' projects/.para/logs/20260305T170000Z.jsonl
+grep 'Set \*\*project\.stale-after\*\* to 30' projects/ACTIVITY.md
 
 # §22's worked example, byte for byte: the resolved value, then every level
 # consulted, nearest first, with the winner marked.
-[para:phase7] exec para config show project.stale-after projects.acme-migration
-[para:phase7] cmp stdout $WORK/want-chain.txt
+exec para config show project.stale-after projects.acme-migration
+cmp stdout $WORK/want-chain.txt
 
 # The written file holds exactly the key that was set.
-[para:phase7] cmp projects/.para/config.toml $WORK/want-projects-config.txt
+cmp projects/.para/config.toml $WORK/want-projects-config.txt
 
 # Resolution is nearest-wins, so the same key at the root is a different answer
 # for anything outside projects/ (§7).
-[para:phase7] exec para config show project.stale-after
-[para:phase7] stdout '^14\n'
+exec para config show project.stale-after
+stdout '^14\n'
 
 # A value set at a level, from inside that level's subtree, using "." (§14).
-[para:phase7] cd projects/acme-migration
-[para:phase7] exec para config set --at . project.stale-after 3
-[para:phase7] stdout '^ +projects/acme-migration/\.para/config\.toml\n'
-[para:phase7] exec para config show project.stale-after .
-[para:phase7] stdout '^3\n'
-[para:phase7] cd $WORK/brain
+cd projects/acme-migration
+exec para config set --at . project.stale-after 3
+stdout '^ +projects/acme-migration/\.para/config\.toml\n'
+exec para config show project.stale-after .
+stdout '^3\n'
+cd $WORK/brain
 
 # emit.claude is the root's knob (§6.1), and what this section asserts is the
 # config write alone. Its consequences — eight CLAUDE.md files and the
 # .claude/skills mirror — land in the same command and are claude.txtar's, which
 # is why this tree has no skills and so has no mirror to write.
-[para:phase7] exec para config set emit.claude true
-[para:phase7] stdout '^ +\.para/config\.toml\n'
-[para:phase7] grep '^emit\.claude = true$' .para/config.toml
+exec para config set emit.claude true
+stdout '^ +\.para/config\.toml\n'
+grep '^emit\.claude = true$' .para/config.toml
 
 # Setting a key to the value it already holds writes nothing and says so (§23).
-[para:phase7] exec para config set emit.claude true
-[para:phase7] stdout '^no change\n$'
+exec para config set emit.claude true
+stdout '^no change\n$'
 
 # unset removes the value and resolution continues up the chain (§7).
-[para:phase7] exec para config unset --at projects project.stale-after
-[para:phase7] stdout '^ +projects/\.para/config\.toml\n'
-[para:phase7] grep 'Unset \*\*project\.stale-after\*\* \(was 30\)' projects/ACTIVITY.md
-[para:phase7] exec para config show project.stale-after projects.other-project
-[para:phase7] stdout '^14\n'
+exec para config unset --at projects project.stale-after
+stdout '^ +projects/\.para/config\.toml\n'
+grep 'Unset \*\*project\.stale-after\*\* \(was 30\)' projects/ACTIVITY.md
+exec para config show project.stale-after projects.other-project
+stdout '^14\n'
 
 # A skill's chain is its own config.toml and then the root, with nothing in
 # between, because .agents/ is not in the PARA tree (§7).
-[para:phase7] exec para config set --at skills.signups-report review.cadence 90
-[para:phase7] stdout '^ +\.agents/skills/para-signups-report/\.para/config\.toml\n'
-[para:phase7] exec para config show review.cadence skills.signups-report
-[para:phase7] cmp stdout $WORK/want-skill-chain.txt
+exec para config set --at skills.signups-report review.cadence 90
+stdout '^ +\.agents/skills/para-signups-report/\.para/config\.toml\n'
+exec para config show review.cadence skills.signups-report
+cmp stdout $WORK/want-skill-chain.txt
 
 # `config list` names every knob para reads and where each value came from.
-[para:phase7] exec para config list --prefix emit
-[para:phase7] stdout 'emit\.claude +true +<root>'
-[para:phase7] stdout 'emit\.claude-skills +symlink +\(default\)'
-[para:phase7] ! stdout 'stale-after'
+exec para config list --prefix emit
+stdout 'emit\.claude +true +<root>'
+stdout 'emit\.claude-skills +symlink +\(default\)'
+! stdout 'stale-after'
 
 # Refusals. A key para does not read is a knob the user would believe in
 # forever, so a typo is refused rather than written.
-[para:phase7] ! exec para config set project.stale-aftr 30
-[para:phase7] stderr 'unknown config key'
-[para:phase7] ! exec para config set project.stale-after soon
-[para:phase7] stderr 'whole number'
-[para:phase7] ! exec para config set emit.claude-skills hardlink
-[para:phase7] stderr 'symlink, copy'
-[para:phase7] ! exec para config set --at projects.nope project.stale-after 30
-[para:phase7] stderr 'projects.nope does not exist'
+! exec para config set project.stale-aftr 30
+stderr 'unknown config key'
+! exec para config set project.stale-after soon
+stderr 'whole number'
+! exec para config set emit.claude-skills hardlink
+stderr 'symlink, copy'
+! exec para config set --at projects.nope project.stale-after 30
+stderr 'projects.nope does not exist'
 
 # Config is a property of a tree, so every config command needs one.
-[para:phase7] cd $WORK/outside
-[para:phase7] ! exec para config list
-[para:phase7] stderr 'no para tree found'
+cd $WORK/outside
+! exec para config list
+stderr 'no para tree found'
 
 -- brain/.para/tree.toml --
 schema = 1

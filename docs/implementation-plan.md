@@ -1400,6 +1400,10 @@ the mirror; a scope holding only entities still does not.
 
 ## Phase 14 — Crash consistency, properties, conformance sweep
 
+**Status: done** (branch `impl`). The crash matrix, the four properties, the §26 coverage test, three
+new fuzz targets, and the scale check all land — and the sweep turned up a command the plan never
+assigned, `para init`, which lands with them.
+
 **Tasks**
 
 1. Crash-injection harness: kill the process between each write in a `writeset` and assert the tree is
@@ -1422,6 +1426,246 @@ the mirror; a scope holding only entities still does not.
 
 **Done when** the crash matrix is green, all four properties hold, no phase gates remain, and the scale
 numbers are recorded in the README.
+
+### What the sweep found: `para init` was never assigned to a phase
+
+§26's first worked example is `para init brain` and §13 lists `init` first among the eighteen commands.
+No phase in this plan built it. Phase 4 mentions it in passing ("`init` refuses inside an existing
+tree") and Phase 15 owns its *templates*, which reads as though the command existed by then; every
+script test in `testdata/script` plants its tree by hand with a comment saying init "is a later phase's
+job". This was that phase, and the §26 coverage test is what made it impossible to keep deferring: a
+test that enumerates §26's fenced blocks cannot be satisfied by a command that does not exist.
+
+It lands as one mutate verb and one CLI command, on top of everything Phases 5–13 already built, and
+two decisions in it are worth recording:
+
+- **The root is `init`'s last subject, so `.para/tree.toml` is the last truth byte to land.** writeset
+  writes every subject's truth before any subject's projections (§0.2), so ordering the root last makes
+  the marker a commit point. Before it, the directory is not a tree — `para` finds no root above it and
+  `init` can simply be run again. After it, every bucket's truth is already there and only projections
+  can be missing, which is the one degraded state §2.4 defines a repair for. The alternative orderings
+  both have a stuck state: marker first leaves a tree with no buckets that `init` then refuses to
+  complete and `rebuild` cannot create.
+
+  One qualification the review earned, because the first version of this paragraph did not have it:
+  "`init` can simply be run again" is a claim about the command, not about the truth it leaves. The
+  root's four `child` events and the archive's three are written *before* `tree.toml`, so a crash in
+  that window and a re-run record them twice. The tree that results is complete and `doctor` calls it
+  clean — the events are truth and both really happened — but the buckets appear twice in the root's
+  `ACTIVITY.md` and every later `rebuild` reproduces them faithfully. The repair is to edit the journal
+  and rebuild. Narrowing the window would mean making `init` partially idempotent, which is more
+  machinery than a crash inside a twenty-op window is worth.
+- **There is no `init` event, and no kind that could be one.** §8.1 says the root's journal records
+  "init, config changes, and child events for the four buckets", but §3.1 fixes four kinds and says
+  outright that "`created` is a field in the truth file, not an event". So what §8.1 calls the record of
+  `init` is `tree.toml`'s `created`, which is where the root's ACTIVITY.md renders its "Created." line
+  from — the same rule every entity already follows, and the one Phase 6 recorded for `created` in
+  `ACTIVITY.md`. The four `child` events are real and are the root's; the archive's own three are the
+  archive's, because a `child` event belongs to the parent that changed (§3.3).
+
+`init` takes optional `--name` and `--description` beyond §13's `para init [path]`. The name defaults
+to the directory's, which is the only thing `para init brain` says about the tree; the flags exist
+because the root has no locator (§14), so `para set` can never reach it and `init` is the only chance.
+
+### The crash matrix, and the one clause §0.2 is missing
+
+`PARA_CRASH_AFTER=n` — honoured only under `para_testhooks`, like `PARA_NOW` — kills the process after
+the nth filesystem operation in a writeset. The harness sweeps n from 1 upward over eleven commands
+covering every write-set shape the design has, and after each kill asks §2.4's two questions.
+
+It found the clause §0.2 does not have. A relocation must create the archive stub directories before it
+can rename into them (§1.6, §18.5), so a crash between the mkdir and the rename leaves an empty
+directory in a bucket — `untracked`, §21.2's advisory "loose filing". It is never an error, never truth
+lost, and `rebuild` will not remove it, because para does not delete a directory it cannot prove it
+created. Re-running the command completes it. So the exact claim is: **no error-severity finding but
+`stale-projection`, ever; none at all after a `rebuild`; and the only advisory a crash can leave is an
+`untracked` directory the crashed command itself created.**
+
+One ordering changed as a result. A subject's empty `logs/` directory is now created *after* its truth
+rather than before, because a directory is not truth: created first, it was the first thing a crash at
+the very first write could leave behind, and that turned `para add` into a verb whose first crash point
+produced an advisory nothing could clear. Created last, the first thing a crash leaves is a
+`state.toml` — an entity with stale projections, which is the defined state.
+
+### Truth is fsynced; projections are not
+
+The scale check's first run said a whole-tree rebuild over 2,480 entities took **over a minute**, and
+the cause was not algorithmic: `writeAtomic` fsynced every file, and an fsync on macOS is
+`F_FULLFSYNC`, measured at 9.8 ms against 0.25 ms without. Two syncs a file (the file and its
+directory) is the whole of the cost.
+
+The fix falls out of §0.2 rather than out of tuning. Truth is the only thing para cannot re-derive, so
+it keeps its fsync. A projection is a function of truth (§2.2), so a projection lost to a power failure
+leaves *precisely* the degraded state §0.2 defines and §2.4 repairs. Paying ten milliseconds a file to
+avoid a state with a one-command repair is paying for nothing. Both are equally safe against the crash
+the design actually models and the crash matrix actually exercises — a process that stops — because a
+rename is visible to every later reader whether or not anything reached the platter.
+
+`writeset.WriteProjection` is the new primitive and `rebuild` is its caller. Cold rebuild went from
+over a minute to 1.4 s, and the curve is linear in the entity count.
+
+### The properties, and what each one is actually watching
+
+All four are driven through the real binary rather than the library, because "any sequence of legal
+commands" is a claim about the command surface. A generator emits only commands it believes are legal
+and every one is asserted to succeed — a refusal fails the run rather than being skipped, since
+silently dropping refusals would let a bug that broke a legal command hide as a generator that stopped
+generating it.
+
+The surface axis Phase 13 asked for is there: every sequence runs four times — surface off, on in
+symlink mode, on in copy mode, and with `emit.gitattributes` off, which is Phase 14's own new write
+path. Twenty sequences of about thirty commands each.
+
+`rebuild; rebuild` needed one extra assertion to be a test at all: the projections are wiped first and
+the first rebuild is asserted to have had work to do. Without that, "the second rebuild wrote nothing"
+passes on a rebuild that never had anything to write, which is how a test of idempotence quietly stops
+testing anything.
+
+### The §26 coverage test is a table, not a heuristic
+
+`TestSpec26IsCovered` parses §26's fenced blocks out of the design document and checks every `para …`
+line against a table naming the script that runs it and a line of that script proving it. Three checks,
+not one: a §26 line with no entry fails, an entry for a line §26 no longer has fails, and an entry whose
+proof is not in the script it names fails.
+
+A heuristic — "some script mentions this verb" — was considered and rejected, because it passes for a
+`list` line nobody transcribed as long as some other `list` is covered, and that is exactly the case
+worth catching. Writing the table found three §26 lines genuinely uncovered: `list --status blocked
+--all`, `path areas.health.training`, and `log … --kind change --limit 3`. All three now have script
+tests.
+
+With every phase landed, the `[para:phaseN]` gates are gone from the scripts and the condition function
+now *rejects* every condition — a gate reappearing is an error rather than a stanza that quietly does
+not run.
+
+### Two spec slips this phase exposed
+
+- **§2.2 says `.gitattributes` is "append-only to an existing file"; para refused one.**
+  `ReplaceDelimited` errors when a file has no markers, which is right for `AGENTS.md` — para wrote that
+  file, so missing markers means markers edited out, and guessing where they were would eat the prose §6
+  promises to leave alone. It is wrong for `.gitattributes`: almost every repository para runs in
+  already has one, and refusing to write into it made `para init` fail there. `mdfile.AppendDelimited`
+  is the fix, and it is the exact inverse of the `RemoveDelimited` the residue repair needed.
+- **§26's `init` block compacts its file list with brace notation.** §23's "one line per file" wins, as
+  it has since Phase 8. Directories are not in the list at all — `wrote` is about files, and git does
+  not carry an empty one anyway — so `.agents/{rules, skills}` and `logs/` do not appear even though
+  §26 shows them.
+
+### What the review found, and the shape of it
+
+Fourteen findings across the two agents, and the pattern is different from Phase 13's. There, three of
+four defects were one rule written twice. Here, **most of the real defects were in code the phase
+merely touched or newly exercised, not in code it wrote** — which is the Phase 11 lesson arriving at
+full strength.
+
+The two that were this phase's own, both the same mistake:
+
+- **`config set --at skills.x emit.gitattributes` skipped the mirror sync.** The new
+  `emit.gitattributes` branch in `ConfigChange` *returned* rather than falling through to
+  `syncSurface`, so "any mutation whose subject is a skill" stopped being one gate again — the exact
+  regression Phase 13's review found and fixed for the `emit.claude` keys, reintroduced for one more
+  key by a `return` where the surrounding code has a fall-through. The branch now falls through, and
+  the comment says why in those words.
+- **A `.gitattributes` with a begin marker and no end marker wedged three commands and made a
+  fourth lie.** `AppendDelimited` inherited `ReplaceDelimited`'s refusal, so `init`, `rebuild`, and
+  `config set … true` all failed on such a file — with no path in the message. `RemoveDelimited` took
+  the *opposite* view of the same bytes, treating damage as "no block", so `config set
+  emit.gitattributes false` exited 0 saying it had written the file and left every one of para's lines
+  in it. One rule about what a damaged block means, three functions, and the two that disagreed were
+  the two that turn the key on and off. All three now refuse, and the refusal names the file and the
+  repair.
+
+The three that were older code this phase newly reached:
+
+- **A reinstated ancestor's `ACTIVITY.md` lost a line, and `doctor` was red after a successful
+  `unarchive`.** Adding `unarchive` to the crash matrix found it in its very first uncrashed setup
+  step. `unarchive archive.areas.health.training` makes `areas.health` both a *subject* of the
+  relocation (its own locator changed) and a *parent* of it (the child moved in), so two plans rendered
+  one directory's `ACTIVITY.md` from the same pre-mutation bytes and the second overwrote the first.
+  `Relocation.parentPlans` already carried a comment describing this failure exactly — it deduplicates
+  among *parents*, and the case it cannot see is a directory that is a subject and a parent at once.
+  `mutate.apply` now folds them, which makes the rule "one directory, one plan" hold for any verb that
+  grows the same shape.
+- **`remove --keep-files` could leave an `orphan` — an error finding with no repair.** It pruned
+  para's footprint shallow-first, so a crash between two prunes left an entity's `.para/` gone and its
+  descendants' still there: a `state.toml` the walk cannot descend to, which is §10's `orphan`, which
+  `rebuild` cannot fix and which `remove` cannot be re-run against because the locator no longer
+  resolves. Prunes are now ordered deepest first, and the worst a crash leaves is content inside an
+  entity (never reported) or one `untracked` directory at the end.
+- **`para add skills.x` failed on a fresh clone, with no command that would fix it.**
+  `Subject.Dirs`' own doc says nothing may depend on the empty directories it creates, because git does
+  not carry one — and `tree.ParentExists` depended on `.agents/skills/` exactly. `doctor` called such a
+  tree clean and `rebuild` found nothing to do, so the promised repair did not repair. A skill's parent
+  is not a placement question (§1.4); it is now not a precondition either.
+
+Three smaller ones, each a claim that was wider than the code:
+
+- **`emit.gitattributes` was writable at any `--at` level**, journalled there, and reported by `config
+  list` as effective there, while only the root's value was ever read. `config.RootOnly` now names all
+  three keys with that property, `config set --at` refuses them, and `RenderConfig` resolves them at
+  the root — one predicate, two consequences, and neither may drift from the other.
+- **`journal.Append` fsynced the file and not the directory**, so the first event into a new or
+  rotated journal was the one truth write in the design a power failure could lose while the
+  `state.toml` written after it survived. It now syncs the directory when it creates the file, which is
+  what makes "truth is fsynced" true rather than nearly true.
+- **`record`'s doc claimed the crash matrix was exhaustive.** Three `MkdirAll` calls and the inside of
+  `writeAtomic` do not go through it. The residue each leaves has been checked by hand and neither can
+  lose truth; the comment now says which points are unreachable instead of claiming there are none.
+
+And two findings about the tests themselves, both of which mattered:
+
+- **The property generator could emit commands para correctly refuses**, in two ways. It did not model
+  §1.6's unarchive cascade, so it believed in archived descendants that a parent's `unarchive` had
+  already brought back; and it renamed entities that had archived descendants recorded under the old
+  name. Neither fired at five seeds — the review had to widen the matrix to reach either — so the
+  standing matrix is now twelve seeds of forty commands. *A rare draw the generator gets wrong looks
+  exactly like a rare draw it never makes.*
+- **The §26 proof table was matching substrings.** `exec para review --stale --behind` is a substring
+  of `… --stale --behind --skills`, `exec para archive areas.health` of `… areas.health.training`, and
+  every `exec para X` of `! exec para X` — so a script that flipped a success to an asserted refusal
+  would still have passed. Worse, §26 runs `para doctor` twice with two different outcomes and the map
+  keyed on command text, so the clean-doctor line had no coverage requirement at all. Proofs are now
+  whole lines matched between newlines, carry the assertion line where §26 states an outcome, and a
+  second occurrence of a command gets its own key.
+
+The second generator bug is worth one more sentence, because para is right and the *design* has the
+rough edge: archive `resources.a.b`, then rename `resources.a` to `resources.c`, and
+`archive/resources/a/b` records an ancestry that no longer exists. §18.3's relocation rewrites a moved
+entity's descendants and a skill's scope entries; it does not follow the entity's archived shadow. Para
+refuses the later `unarchive` and names the ancestor it cannot reinstate, which is the right answer to
+a state it cannot repair — but it is a refusal a sequence of otherwise legal commands can reach.
+
+### The Windows job is added and unverified
+
+`impl` is local-only — there is no `origin` — so the `windows-latest` job in `.github/workflows/ci.yml`
+has never run. It is written to run the suite without `-race` (which needs a C toolchain on
+windows/amd64) and without `make` (which the image does not carry), and its reason for existing is
+`emit.claude-skills`: every other runner proves `copy` mode by choice, and Windows is the only one where
+a checkout may genuinely refuse a symlink, so §10's `broken-link` is a thing that happens rather than a
+thing simulated. **First push is where that job is actually tested**, and a failure there is a Phase 15
+finding rather than a Phase 14 regression.
+
+### Carry-forward obligations from Phase 14
+
+- **Phase 15 owns `para init`'s `--help` and its `AGENTS.md` prose**, which was already its task 2; what
+  changed is that there is now a real command and a real tree to draft against, and `init.txtar` is the
+  transcript to check the wording produces.
+- **Phase 15 owns the first CI run on Windows.**
+- **The fuzz targets are not in CI.** They run their seed corpora in `make test`, which is what catches a
+  regression; extending CI with a short `-fuzztime` on each is a cheap addition nobody has made.
+- **`para init` cannot set the tree's `para-version` on any later write.** §8.1 calls the field "the
+  version that last wrote here" and only `init` writes it. Nothing reads it yet, so nothing is wrong
+  today; a schema migration is the first thing that would want it maintained.
+- **A relocation does not follow an entity's archived shadow (§18.3, §1.6).** Rename a live entity that
+  has an archived descendant and the archived copy keeps recording an ancestry that no longer exists;
+  the later `unarchive` is refused, naming an ancestor para cannot reinstate. The refusal is correct
+  and legible, and the repair — a `move` inside `archive/` — is available, so this is a design question
+  rather than a bug. It wants a sentence in §18.3 either way.
+- **`para activity` cannot produce the root's digest.** It requires a locator (§13 says `[<locator>]`),
+  and `.` from the tree root fails because the root is neither an entity nor a container. That was
+  invisible until this phase, because until `init` existed nothing created a root `ACTIVITY.md` in a
+  tree anybody read. §16.4's "the two agree by construction" now has an exception at exactly one
+  location. Phase 9's code; Phase 15's to decide.
 
 ---
 

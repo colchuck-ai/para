@@ -87,7 +87,7 @@ func newScan(env *view.Env, opts Options) (*scan, error) {
 		scope:      opts.Scope,
 		rb:         &rebuild.Env{Root: env.Root, Resolver: env.Resolver},
 		scanRoot:   env.Root,
-		skillsRoot: filepath.Join(env.Root, ".agents", "skills"),
+		skillsRoot: filepath.Join(env.Root, filepath.FromSlash(tree.SkillsDir())),
 		byPath:     map[string]tree.Node{},
 	}
 

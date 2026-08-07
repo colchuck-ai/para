@@ -127,3 +127,41 @@ func TestFindParaHomeMissingMarkerErrors(t *testing.T) {
 		t.Errorf("Find error = %v, want KindNotFound", err)
 	}
 }
+
+func TestEnclosingFindsTheTreeAPathSitsIn(t *testing.T) {
+	root := t.TempDir()
+	writeTreeMarker(t, root)
+
+	// A path that does not exist yet, which is the case `init` asks about: the
+	// directory it is being told to create.
+	got, ok, err := tree.Enclosing(filepath.Join(root, "projects", "not-there-yet"))
+	if err != nil {
+		t.Fatalf("Enclosing: %v", err)
+	}
+	if !ok || got != root {
+		t.Errorf("Enclosing() = %q, %v; want %q, true", got, ok, root)
+	}
+}
+
+func TestEnclosingReportsNoTree(t *testing.T) {
+	_, ok, err := tree.Enclosing(t.TempDir())
+	if err != nil {
+		t.Fatalf("Enclosing: %v", err)
+	}
+	if ok {
+		t.Error("Enclosing found a tree above a bare temp directory")
+	}
+}
+
+// TestEnclosingIgnoresParaHome: $PARA_HOME says where para commands operate,
+// not whether a path is inside a tree — so `init` asking about the directory it
+// was handed must not be answered with somebody else's root (§1.1).
+func TestEnclosingIgnoresParaHome(t *testing.T) {
+	home := t.TempDir()
+	writeTreeMarker(t, home)
+	t.Setenv("PARA_HOME", home)
+
+	if _, ok, err := tree.Enclosing(t.TempDir()); err != nil || ok {
+		t.Errorf("Enclosing() = _, %v, %v; want false, nil", ok, err)
+	}
+}

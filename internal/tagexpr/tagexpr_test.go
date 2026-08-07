@@ -1,6 +1,10 @@
 package tagexpr
 
-import "testing"
+import (
+	"slices"
+	"strings"
+	"testing"
+)
 
 func has(tags ...string) func(string) bool {
 	set := make(map[string]bool, len(tags))
@@ -163,4 +167,64 @@ func TestValidTag(t *testing.T) {
 			t.Errorf("ValidTag(%q) = true, want false", s)
 		}
 	}
+}
+
+// FuzzParseNeverPanics is the least a parser owes its caller. `--tags` takes a
+// string straight off the command line (§17), so every byte sequence a shell can
+// produce reaches Parse, and the only two acceptable outcomes are an expression
+// and an error.
+func FuzzParseNeverPanics(f *testing.F) {
+	for _, seed := range []string{
+		"", "kafka", "kafka,consumer", "kafka|consumer", "!kafka",
+		"kafka,!consumer|urgent", "(", ")", "!", ",", "|", "!!kafka",
+		"a,,b", "  ", "!(kafka)", "kafka|", "|kafka",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		expr, err := Parse(s)
+		if err != nil {
+			if expr != nil {
+				t.Errorf("Parse(%q) returned both an expression and an error", s)
+			}
+			return
+		}
+		if expr == nil {
+			t.Fatalf("Parse(%q) returned neither an expression nor an error", s)
+		}
+		// A parsed expression must be evaluable against any tag set, which is
+		// where a half-built node would surface as a nil dereference.
+		for _, has := range []func(string) bool{
+			func(string) bool { return true },
+			func(string) bool { return false },
+			func(tag string) bool { return strings.HasPrefix(tag, "k") },
+		} {
+			expr.Match(has)
+		}
+	})
+}
+
+// FuzzParseIsStableUnderRepetition: parsing is a pure function of the string, so
+// two parses of the same input must agree on every tag set. A parser that
+// consumed shared state would answer differently the second time.
+func FuzzParseIsStableUnderRepetition(f *testing.F) {
+	for _, seed := range []string{"kafka", "kafka,!consumer|urgent", "!a|!b", "a,b,c"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		first, err1 := Parse(s)
+		second, err2 := Parse(s)
+		if (err1 == nil) != (err2 == nil) {
+			t.Fatalf("Parse(%q) succeeded once and failed once", s)
+		}
+		if err1 != nil {
+			return
+		}
+		for _, tags := range [][]string{{}, {"kafka"}, {"consumer"}, {"kafka", "consumer", "urgent"}} {
+			has := func(tag string) bool { return slices.Contains(tags, tag) }
+			if first.Match(has) != second.Match(has) {
+				t.Fatalf("Parse(%q) matched %v differently on two parses", s, tags)
+			}
+		}
+	})
 }

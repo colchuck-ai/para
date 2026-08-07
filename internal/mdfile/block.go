@@ -70,6 +70,83 @@ func ReplaceDelimited(m Markers, data []byte, block []byte) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+// AppendDelimited rewrites data's para-owned block to block, or — when there is
+// no block — puts one at the end and leaves every existing byte where it was.
+//
+// It is ReplaceDelimited for the one file §2.2 calls "append-only to an
+// existing file": `.gitattributes` belongs to the repository, and para's block
+// is something it gains rather than something it is (§9). ReplaceDelimited
+// refuses a file with no markers, which is right for AGENTS.md — para wrote that
+// file, so markers missing from it means markers edited out, and guessing where
+// they were would eat the prose §6 promises to leave alone. It is wrong here:
+// almost every repository para is run in already has a .gitattributes, and
+// refusing to write into one would make `para init` fail on it.
+//
+// A file with no final newline gains one, because a marker cannot share a line
+// with somebody else's rule. That is the one byte the RemoveDelimited round trip
+// does not give back. (The round trip is also lossy for two shapes para cannot
+// produce and does not accept: a marker sitting mid-line, and a block whose own
+// content contains the end marker. Marker matching is a substring search rather
+// than a line-anchored one, which is what makes both possible to write by hand
+// and impossible to write with para.)
+func AppendDelimited(m Markers, data []byte, block []byte) ([]byte, error) {
+	if len(data) == 0 || bytes.Contains(data, []byte(m.Begin)) {
+		return ReplaceDelimited(m, data, block)
+	}
+
+	var b bytes.Buffer
+	b.Write(data)
+	if !bytes.HasSuffix(data, []byte("\n")) {
+		b.WriteString("\n")
+	}
+	b.WriteString(m.Begin)
+	b.WriteString("\n")
+	b.Write(normalizeBlock(block))
+	b.WriteString(m.End)
+	b.WriteString("\n")
+	return b.Bytes(), nil
+}
+
+// RemoveDelimited returns data with the para-owned block taken out and every
+// other byte left exactly where it was, and reports whether there was a block
+// to take.
+//
+// It is what turning a delimited block's config key off means. The block is
+// removable rather than the *file* being removable, because para owns what is
+// between its markers and the rest of the lines are the repository's (§2.2,
+// §9) — so a `.gitattributes` that held nothing but para's block comes back as
+// an empty file, which is precisely the file para was handed.
+//
+// A file with no begin marker at all is not damage — para simply has no block in
+// it — and comes back unchanged with found false. A file whose begin marker has
+// lost its end marker *is* damage, and is an error rather than a third quiet
+// answer: guessing where the block ended would take lines para never wrote, and
+// reporting "no block to remove" would leave the markers and the rules sitting
+// in a file para had just been asked to take them out of, while saying it had.
+//
+// That is the same answer ReplaceDelimited and AppendDelimited give the same
+// bytes. The three must agree: they are one rule about what a damaged block
+// means, and a version of this function that shrugged at damage would make
+// `emit.gitattributes = false` a command that succeeds and changes nothing.
+func RemoveDelimited(m Markers, data []byte) ([]byte, bool, error) {
+	if !bytes.Contains(data, []byte(m.Begin)) {
+		return data, false, nil
+	}
+	prefix, _, suffix, err := splitBlock(m, data)
+	if err != nil {
+		return nil, false, err
+	}
+	// The newline after the end marker closes the block's last line, so it goes
+	// with the block. Without this, removing a block from the middle of a file
+	// would leave a blank line where it had been.
+	suffix = bytes.TrimPrefix(suffix, []byte("\n"))
+
+	out := make([]byte, 0, len(prefix)+len(suffix))
+	out = append(out, prefix...)
+	out = append(out, suffix...)
+	return out, true, nil
+}
+
 // ExtractBlock returns the current content of data's para-owned block
 // (between the markers, exclusive), for a rebuild that wants to compare
 // what's on disk against what it would regenerate.

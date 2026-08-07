@@ -14,16 +14,16 @@
 
 env PARA_NOW=2026-03-05T17:00:00Z
 env PARA_TZ=America/Los_Angeles
-[para:phase13] cd brain
-[para:phase13] exec para rebuild
-[para:phase13] exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number'
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
+cd brain
+exec para rebuild
+exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number'
+exec para doctor
+stdout '^clean$'
 
 # Off by default, and that is the whole shape of a tree that never asked for it
 # (§26's `init`: "no CLAUDE.md, no .claude/").
-[para:phase13] ! exists CLAUDE.md
-[para:phase13] ! exists .claude
+! exists CLAUDE.md
+! exists .claude
 
 # --- turning it on -----------------------------------------------------------
 #
@@ -31,165 +31,165 @@ env PARA_TZ=America/Los_Angeles
 # files, and a link per skill. The eight locations are a fixed set rather than a
 # walk, so this is a constant number of writes and not the subtree walk §2.3
 # forbids of a mutation.
-[para:phase13] exec para config set emit.claude true
-[para:phase13] stdout '^ +\.para/config\.toml$'
-[para:phase13] stdout '^ +CLAUDE\.md$'
-[para:phase13] stdout '^ +projects/CLAUDE\.md$'
-[para:phase13] stdout '^ +areas/CLAUDE\.md$'
-[para:phase13] stdout '^ +resources/CLAUDE\.md$'
-[para:phase13] stdout '^ +archive/CLAUDE\.md$'
-[para:phase13] stdout '^ +archive/projects/CLAUDE\.md$'
-[para:phase13] stdout '^ +archive/areas/CLAUDE\.md$'
-[para:phase13] stdout '^ +archive/resources/CLAUDE\.md$'
-[para:phase13] stdout '^linked  \.claude/skills/para-signups-report → \.\./\.\./\.agents/skills/para-signups-report$'
+exec para config set emit.claude true
+stdout '^ +\.para/config\.toml$'
+stdout '^ +CLAUDE\.md$'
+stdout '^ +projects/CLAUDE\.md$'
+stdout '^ +areas/CLAUDE\.md$'
+stdout '^ +resources/CLAUDE\.md$'
+stdout '^ +archive/CLAUDE\.md$'
+stdout '^ +archive/projects/CLAUDE\.md$'
+stdout '^ +archive/areas/CLAUDE\.md$'
+stdout '^ +archive/resources/CLAUDE\.md$'
+stdout '^linked  \.claude/skills/para-signups-report → \.\./\.\./\.agents/skills/para-signups-report$'
 
 # CLAUDE.md is a pointer file and nothing else: @AGENTS.md plus one @ import per
 # derived rule. The AGENTS.md is the one beside it — every location that gets a
 # CLAUDE.md gets an AGENTS.md too (§6) — while a rule needs the prefix that
 # reaches the root, because Claude Code resolves an import relative to the file
 # carrying it.
-[para:phase13] cmp CLAUDE.md $WORK/want-root-claude.md
-[para:phase13] cmp projects/CLAUDE.md $WORK/want-bucket-claude.md
+cmp CLAUDE.md $WORK/want-root-claude.md
+cmp projects/CLAUDE.md $WORK/want-bucket-claude.md
 
 # Nothing is left for a rebuild to do, which is the property every write path in
 # para has to keep (§2.3, §2.4).
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
-[para:phase13] exec para rebuild
-[para:phase13] stdout '^nothing to rewrite'
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
 
 # The surface turns on and off as one thing (§6.1), so its two keys are read at
 # the root and nowhere else — the one pair in §7's table that is a rule rather
 # than advice about where a knob usefully lives. Setting one at a level would
 # write half a surface: a bucket's CLAUDE.md with no mirror, since there is only
 # one .claude/ and it is at the root.
-[para:phase13] ! exec para config set --at projects emit.claude false
-[para:phase13] stderr 'read at the root only'
-[para:phase13] ! exec para config unset --at projects emit.claude-skills
-[para:phase13] stderr 'read at the root only'
-[para:phase13] exists projects/CLAUDE.md
+! exec para config set --at projects emit.claude false
+stderr 'read at the root only'
+! exec para config unset --at projects emit.claude-skills
+stderr 'read at the root only'
+exists projects/CLAUDE.md
 
 # --- a skill mutation keeps every CLAUDE.md correct --------------------------
 #
 # The debt Phase 12 recorded: adding a skill changes the set of derived rules and
 # therefore every import list. §6.1 says the list regenerates "with no separate
 # bookkeeping", and eight known locations are what makes that affordable.
-[para:phase13] exec para add skills.commit-style --name 'Commit style' --description 'when writing a commit message'
-[para:phase13] stdout '^ +CLAUDE\.md$'
-[para:phase13] stdout '^linked  \.claude/skills/para-commit-style → \.\./\.\./\.agents/skills/para-commit-style$'
-[para:phase13] grep '^@\.agents/rules/para-commit-style\.md$' CLAUDE.md
-[para:phase13] grep '^@\.\./\.agents/rules/para-commit-style\.md$' archive/CLAUDE.md
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
+exec para add skills.commit-style --name 'Commit style' --description 'when writing a commit message'
+stdout '^ +CLAUDE\.md$'
+stdout '^linked  \.claude/skills/para-commit-style → \.\./\.\./\.agents/skills/para-commit-style$'
+grep '^@\.agents/rules/para-commit-style\.md$' CLAUDE.md
+grep '^@\.\./\.agents/rules/para-commit-style\.md$' archive/CLAUDE.md
+exec para doctor
+stdout '^clean$'
 
 # And removing one takes its rule and its mirror with it (§18.2, §6.1).
-[para:phase13] exec para remove skills.commit-style --force
-[para:phase13] ! exists .agents/rules/para-commit-style.md
-[para:phase13] ! exists .claude/skills/para-commit-style
-[para:phase13] ! grep 'para-commit-style' CLAUDE.md
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
+exec para remove skills.commit-style --force
+! exists .agents/rules/para-commit-style.md
+! exists .claude/skills/para-commit-style
+! grep 'para-commit-style' CLAUDE.md
+exec para doctor
+stdout '^clean$'
 
 # --- copy mode ---------------------------------------------------------------
 #
 # Switching modes removes the old shape and writes the new one, leaving no
 # residue (§6.1).
-[para:phase13] exec para config set emit.claude-skills copy
-[para:phase13] stdout '^copied  \.claude/skills/para-signups-report$'
-[para:phase13] exists .claude/skills/para-signups-report/SKILL.md
-[para:phase13] exists .claude/skills/para-signups-report/ACTIVITY.md
+exec para config set emit.claude-skills copy
+stdout '^copied  \.claude/skills/para-signups-report$'
+exists .claude/skills/para-signups-report/SKILL.md
+exists .claude/skills/para-signups-report/ACTIVITY.md
 
 # .para/ is never mirrored, in either mode. A reachable
 # .claude/skills/para-X/.para/state.toml would satisfy §1.2's entity test and
 # doctor's deep scan would report a phantom orphan living outside the tree.
-[para:phase13] ! exists .claude/skills/para-signups-report/.para
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
-[para:phase13] exec para rebuild
-[para:phase13] stdout '^nothing to rewrite'
+! exists .claude/skills/para-signups-report/.para
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
 
 # A copy is a projection and nothing reads it back as truth: editing it is not an
 # error, just pointless. doctor reports the divergence and rebuild overwrites it.
-[para:phase13] cp $WORK/hand-edited.md .claude/skills/para-signups-report/SKILL.md
-[para:phase13] ! exec para doctor
-[para:phase13] stdout '^error +stale-projection +\.claude/skills/para-signups-report differs from the skill it mirrors$'
-[para:phase13] exec para rebuild
-[para:phase13] stdout '^copied  \.claude/skills/para-signups-report$'
-[para:phase13] ! grep 'hand-edited' .claude/skills/para-signups-report/SKILL.md
+cp $WORK/hand-edited.md .claude/skills/para-signups-report/SKILL.md
+! exec para doctor
+stdout '^error +stale-projection +\.claude/skills/para-signups-report differs from the skill it mirrors$'
+exec para rebuild
+stdout '^copied  \.claude/skills/para-signups-report$'
+! grep 'hand-edited' .claude/skills/para-signups-report/SKILL.md
 
 # An edit to the skill itself reaches the copy in the same command, because in
 # copy mode the mirror holds the skill's own files.
-[para:phase13] exec para set skills.signups-report --description 'when asked for the weekly number'
-[para:phase13] grep 'weekly number' .claude/skills/para-signups-report/SKILL.md
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
+exec para set skills.signups-report --description 'when asked for the weekly number'
+grep 'weekly number' .claude/skills/para-signups-report/SKILL.md
+exec para doctor
+stdout '^clean$'
 
 # --- back to symlink, and the hostile checkout -------------------------------
 
-[para:phase13] exec para config set emit.claude-skills symlink
-[para:phase13] stdout '^linked  \.claude/skills/para-signups-report → \.\./\.\./\.agents/skills/para-signups-report$'
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
+exec para config set emit.claude-skills symlink
+stdout '^linked  \.claude/skills/para-signups-report → \.\./\.\./\.agents/skills/para-signups-report$'
+exec para doctor
+stdout '^clean$'
 
 # A core.symlinks=false checkout — the Windows default — materialises each link
 # as a plain file holding its target path, which reads as a corrupt skill to
 # anything that opens it. The failure is loud rather than silent: doctor names it
 # and rebuild repairs it (§6.1, §10).
-[para:phase13] rm .claude/skills/para-signups-report
-[para:phase13] cp $WORK/materialised-link .claude/skills/para-signups-report
-[para:phase13] ! exec para doctor
-[para:phase13] stdout '^error +broken-link +\.claude/skills/para-signups-report is a plain file where a mirror belongs — a checkout with core\.symlinks=false$'
-[para:phase13] exec para rebuild
-[para:phase13] stdout '^linked  \.claude/skills/para-signups-report'
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
+rm .claude/skills/para-signups-report
+cp $WORK/materialised-link .claude/skills/para-signups-report
+! exec para doctor
+stdout '^error +broken-link +\.claude/skills/para-signups-report is a plain file where a mirror belongs — a checkout with core\.symlinks=false$'
+exec para rebuild
+stdout '^linked  \.claude/skills/para-signups-report'
+exec para doctor
+stdout '^clean$'
 
 # orphan-mirror: a para- prefixed entry whose skill is gone. With the surface on,
 # that is what the entry is — the answer differs from repair.txtar's, where the
 # surface is off and the same directory is residue instead.
-[para:phase13] mkdir .claude/skills/para-gone
-[para:phase13] ! exec para doctor
-[para:phase13] stdout '^error +orphan-mirror +\.claude/skills/para-gone mirrors skills\.gone, which is gone$'
-[para:phase13] exec para rebuild
-[para:phase13] stdout '^removed  \.claude/skills/para-gone$'
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
+mkdir .claude/skills/para-gone
+! exec para doctor
+stdout '^error +orphan-mirror +\.claude/skills/para-gone mirrors skills\.gone, which is gone$'
+exec para rebuild
+stdout '^removed  \.claude/skills/para-gone$'
+exec para doctor
+stdout '^clean$'
 
 # Something without the para- prefix is not para's, and para neither reads nor
 # removes it (§6.1).
-[para:phase13] mkdir .claude/skills/my-own
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
-[para:phase13] exec para rebuild
-[para:phase13] stdout '^nothing to rewrite'
-[para:phase13] exists .claude/skills/my-own
+mkdir .claude/skills/my-own
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
+exists .claude/skills/my-own
 
 # --- turning it off ----------------------------------------------------------
 #
 # The mirror image of turning it on: the eight files and the mirror go, and
 # .claude/skills/ goes with them once it holds nothing of para's. The directory
 # somebody else made stays, and its presence is what keeps .claude/ itself.
-[para:phase13] exec para config set emit.claude false
-[para:phase13] stdout '^removed  CLAUDE\.md$'
-[para:phase13] stdout '^ +archive/resources/CLAUDE\.md$'
-[para:phase13] stdout '^removed  \.claude/skills/para-signups-report$'
-[para:phase13] ! exists CLAUDE.md
-[para:phase13] ! exists archive/areas/CLAUDE.md
-[para:phase13] ! exists .claude/skills/para-signups-report
-[para:phase13] exists .claude/skills/my-own
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
-[para:phase13] exec para rebuild
-[para:phase13] stdout '^nothing to rewrite'
+exec para config set emit.claude false
+stdout '^removed  CLAUDE\.md$'
+stdout '^ +archive/resources/CLAUDE\.md$'
+stdout '^removed  \.claude/skills/para-signups-report$'
+! exists CLAUDE.md
+! exists archive/areas/CLAUDE.md
+! exists .claude/skills/para-signups-report
+exists .claude/skills/my-own
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
 
 # With nothing of anybody's left, the sweep takes the directories too, so a tree
 # that turned the surface off is back to the shape `init` describes.
-[para:phase13] rm .claude/skills/my-own
-[para:phase13] exec para config set emit.claude true
-[para:phase13] exec para config set emit.claude false
-[para:phase13] ! exists .claude
-[para:phase13] exec para doctor
-[para:phase13] stdout '^clean$'
+rm .claude/skills/my-own
+exec para config set emit.claude true
+exec para config set emit.claude false
+! exists .claude
+exec para doctor
+stdout '^clean$'
 
 -- brain/.para/tree.toml --
 schema = 1

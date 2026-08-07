@@ -208,7 +208,10 @@ func (e *Env) apply(artifacts []Artifact, dryRun bool) (wrote, removed []string,
 		if dryRun {
 			continue
 		}
-		if err := writeset.WriteFile(abs, a.Derived); err != nil {
+		// A projection, so not fsynced: it is a function of truth, and the
+		// state a power failure between here and the platter would leave is the
+		// one this command exists to repair (see writeset's durability).
+		if err := writeset.WriteProjection(abs, a.Derived); err != nil {
 			return wrote, removed, err
 		}
 	}

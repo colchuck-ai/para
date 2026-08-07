@@ -409,6 +409,17 @@ func staleDetail(a rebuild.Artifact) string {
 		return "differs from state.toml"
 	case "CLAUDE.md":
 		return "differs from the derived rules"
+	case ".gitattributes":
+		// Which of the two ways this file can drift is visible in the bytes
+		// themselves: with `emit.gitattributes` off, what para would write no
+		// longer has a block in it. Saying so is the same courtesy the residue
+		// line pays — the repair is `rebuild` either way, but the cause is a
+		// config key rather than a hand edit, and the reader should not have to
+		// go and check which.
+		if _, found, err := render.WithoutGitAttributesBlock(a.Derived); err == nil && !found {
+			return "still holds para's block; emit.gitattributes is off"
+		}
+		return "differs from what para would write"
 	default:
 		if strings.HasPrefix(a.Path, tree.RulesDir()+"/") {
 			return "differs from the skill it is generated from"

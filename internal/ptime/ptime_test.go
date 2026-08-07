@@ -2,6 +2,7 @@ package ptime
 
 import (
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -207,4 +208,70 @@ func TestJournalFilenameOrderSurvivesAZoneChange(t *testing.T) {
 			}
 		})
 	}
+}
+
+// FuzzParseAtNeverPanics: `--at` and `--created` take a string straight off the
+// command line (§15.1), so ParseAt is a parser at the edge of the program and
+// owes its caller a value or an error and nothing else.
+func FuzzParseAtNeverPanics(f *testing.F) {
+	for _, seed := range []string{
+		"", "2026-01-03", "2026-01-03T09", "2026-01-03T09:02", "2026-01-03T09:02:11",
+		"2026-01-03T09:02:11Z", "2026-01-03T09:02:11-08:00", "2026-13-45",
+		"0000-00-00", "2026-01-03T", "T09:02", "9999999999-01-01", "-1",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		for _, loc := range []*time.Location{time.UTC, time.FixedZone("PST", -8*3600)} {
+			at, err := ParseAt(s, loc)
+			if err != nil {
+				if !at.IsZero() {
+					t.Errorf("ParseAt(%q) returned both a time and an error", s)
+				}
+				continue
+			}
+			// Everything downstream formats it, compares it, and names a
+			// journal file after it (§3.4), so each of those must survive
+			// whatever the grammar accepted — and a filename that is not
+			// lexically orderable would break §3.4's whole claim.
+			if formatted := at.Format(time.RFC3339); formatted == "" {
+				t.Errorf("ParseAt(%q) produced a time that formats to nothing", s)
+			}
+			if name := JournalFilename(at); !strings.HasSuffix(name, "Z.jsonl") {
+				t.Errorf("ParseAt(%q) produced the journal filename %q, which is not the UTC form §3.4 fixes", s, name)
+			}
+			if !Equal(at, at) {
+				t.Errorf("ParseAt(%q) produced a time that does not equal itself", s)
+			}
+		}
+	})
+}
+
+// FuzzParseAtIsZoneSensitiveButNotZoneDependent is §15.1's rule stated as a
+// property: what you type is local, what is stored is UTC. A form that carries
+// no offset must land at a different instant in two zones — the whole reason the
+// zone is an argument — and a form that carries one must land at the same
+// instant in both, because the offset in the text is the answer.
+func FuzzParseAtIsZoneSensitiveButNotZoneDependent(f *testing.F) {
+	for _, seed := range []string{"2026-01-03", "2026-01-03T09:02", "2026-01-03T09:02:11Z", "2026-06-30T12:00:00+05:30"} {
+		f.Add(seed)
+	}
+	east := time.FixedZone("IST", 5*3600+1800)
+	f.Fuzz(func(t *testing.T, s string) {
+		utc, err1 := ParseAt(s, time.UTC)
+		other, err2 := ParseAt(s, east)
+		if (err1 == nil) != (err2 == nil) {
+			t.Fatalf("ParseAt(%q) parsed in one zone and not the other", s)
+		}
+		if err1 != nil {
+			return
+		}
+		// The wall-clock reading is the same in both; only the instant moves.
+		if utc.Format("2006-01-02T15:04:05") != other.Format("2006-01-02T15:04:05") {
+			t.Fatalf("ParseAt(%q) read a different wall clock in two zones: %s vs %s", s, utc, other)
+		}
+		if _, offset := other.Zone(); offset == 0 && !utc.Equal(other) {
+			t.Fatalf("ParseAt(%q) moved an instant that carries its own offset", s)
+		}
+	})
 }

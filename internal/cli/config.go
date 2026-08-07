@@ -166,14 +166,14 @@ func newConfigUnsetCmd() *cobra.Command {
 // config.toml, the event, and that level's ACTIVITY.md are one mutation, and a
 // crash between them would leave the file changed with nothing to say so.
 func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (bool, error)) error {
-	if len(s.locator) > 0 && config.AffectsClaudeSurface(key) {
-		// The one pair of keys that is not chain-resolved (see
-		// Resolver.RenderConfig). Writing one at a level nothing reads would be
-		// exactly the silent misconfiguration the closed key set exists to
-		// prevent — worse, in fact, since the key is real and the file is where
-		// the user put it.
+	if len(s.locator) > 0 && config.RootOnly(key) {
+		// The keys that are not chain-resolved (see Resolver.RenderConfig and
+		// config.RootOnly). Writing one at a level nothing reads would be exactly
+		// the silent misconfiguration the closed key set exists to prevent —
+		// worse, in fact, since the key is real and the file is where the user
+		// put it, and `config list` would go on reporting it as effective there.
 		return paraerr.Newf(paraerr.KindValidation,
-			"%s turns the whole Claude surface on or off and is read at the root only — set it without --at", key)
+			"%s decides a file at a fixed place in the tree and is read at the root only — set it without --at", key)
 	}
 	_, abs, err := s.file()
 	if err != nil {

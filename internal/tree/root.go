@@ -30,19 +30,42 @@ func Find(startDir string) (string, error) {
 		return home, nil
 	}
 
-	dir, err := filepath.Abs(startDir)
+	root, ok, err := Enclosing(startDir)
 	if err != nil {
-		return "", paraerr.Wrap(paraerr.KindInternal, err, "resolving start directory")
+		return "", err
+	}
+	if !ok {
+		return "", paraerr.Newf(paraerr.KindNotFound, "no para tree found above %q (looked for .para/tree.toml)", startDir)
+	}
+	return root, nil
+}
+
+// Enclosing is Find's walk without $PARA_HOME and without the error: the tree
+// root at or above dir, and whether there is one.
+//
+// It exists because `init` asks a different question from every other command.
+// Find answers "where do I operate", for which $PARA_HOME is an override and
+// finding nothing is a failure; Enclosing answers "is this path already inside
+// a tree", for which the override is beside the point — a `para init foo` run
+// with $PARA_HOME pointing somewhere else is not creating a tree inside that
+// one — and finding nothing is the answer that lets the command proceed (§1.1).
+//
+// dir need not exist. The walk is over path components, so `init` can ask about
+// the directory it is about to create.
+func Enclosing(dir string) (string, bool, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false, paraerr.Wrap(paraerr.KindInternal, err, "resolving start directory")
 	}
 	for {
-		if hasTreeMarker(dir) {
-			return dir, nil
+		if hasTreeMarker(abs) {
+			return abs, true, nil
 		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", paraerr.Newf(paraerr.KindNotFound, "no para tree found above %q (looked for .para/tree.toml)", startDir)
+		parent := filepath.Dir(abs)
+		if parent == abs {
+			return "", false, nil
 		}
-		dir = parent
+		abs = parent
 	}
 }
 

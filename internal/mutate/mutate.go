@@ -207,6 +207,17 @@ type plan struct {
 	// change the journal without changing what the thing is.
 	writeState bool
 
+	// writeTree re-encodes tree.toml, which is the root's state.toml by
+	// another name (§8.1). Only `init` sets it, and only on the root — no
+	// subject ever has both.
+	writeTree bool
+
+	// dirs are directories that must exist even while empty, beyond the
+	// .para/logs/ that `creating` implies. There are two, both `init`'s:
+	// .agents/rules/ and .agents/skills/, which exist so a fresh tree has the
+	// shape §5 describes rather than growing them when the first skill lands.
+	dirs []string
+
 	// config is a new config.toml, or nil to leave it alone. `add` writes an
 	// empty one so every .para/ has the same shape (§5.1, §8.4); `config set`
 	// writes the only one that ever has content at write time.
@@ -231,6 +242,8 @@ type plan struct {
 
 // apply renders and writes one mutation: subjects first, the parents last.
 func apply(env *Env, subjects []*plan, parents []*plan) ([]string, error) {
+	subjects, parents = foldSameDirectory(subjects, parents)
+
 	var m writeset.Mutation
 	for _, p := range subjects {
 		built, err := p.build()
@@ -255,6 +268,44 @@ func apply(env *Env, subjects []*plan, parents []*plan) ([]string, error) {
 
 	ops, err := writeset.Apply(m)
 	return env.wrote(ops), err
+}
+
+// foldSameDirectory merges any parent plan that names a directory already among
+// the subjects into that subject's plan, so one directory is rendered once.
+//
+// One directory, one plan, for the reason Relocation.parentPlans already gives
+// about two parents: every plan renders its ACTIVITY.md from the bytes on disk
+// *before* the mutation, because rendering happens in full before writeset
+// applies anything. Two plans over one directory therefore start from the same
+// bytes, each adds only its own events, and the second write overwrites the
+// first — one line lost, and `doctor` red after a command that succeeded.
+//
+// parentPlans deduplicates among parents. The case it cannot see is a directory
+// that is a subject *and* a parent of the same mutation, and `unarchive` makes
+// one every time it reinstates an ancestor: the ancestor's own locator changed,
+// so it is a subject, and the child moved into it, so it is a parent (§1.6,
+// §18.5). Folding here rather than in the verb is what makes the rule hold for
+// any verb that grows the same shape.
+//
+// The subject's plan wins on everything but events: it writes state, and its
+// empty onlyProjections means "every file this subject owns", which is a
+// superset of the parent's ACTIVITY.md.
+func foldSameDirectory(subjects, parents []*plan) ([]*plan, []*plan) {
+	byDir := make(map[string]*plan, len(subjects))
+	for _, p := range subjects {
+		byDir[p.subj.dir] = p
+	}
+
+	kept := parents[:0:0]
+	for _, p := range parents {
+		subject, ok := byDir[p.subj.dir]
+		if !ok {
+			kept = append(kept, p)
+			continue
+		}
+		subject.events = append(subject.events, p.events...)
+	}
+	return subjects, kept
 }
 
 // wrote converts the write record into the root-relative paths §23 prints,
@@ -297,12 +348,20 @@ func (p *plan) build() (writeset.Subject, error) {
 		// The journal starts empty (§18.1), so nothing else would create it.
 		out.Dirs = []string{truth.LogsDir(p.subj.dir)}
 	}
+	out.Dirs = append(out.Dirs, p.dirs...)
 	if p.writeState {
 		state, encodeErr := truth.EncodeState(p.subj.state)
 		if encodeErr != nil {
 			return out, encodeErr
 		}
 		out.State = state
+	}
+	if p.writeTree {
+		tree, encodeErr := truth.EncodeTree(p.subj.tree)
+		if encodeErr != nil {
+			return out, encodeErr
+		}
+		out.Tree = tree
 	}
 
 	projections, err := p.render()

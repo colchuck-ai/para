@@ -73,3 +73,13 @@ func RuleSkillID(basename string) (string, bool) {
 // RulesDir is .agents/rules/ relative to the tree root, slash-separated — the
 // form every reported path takes.
 func RulesDir() string { return rulesDir }
+
+// skillsDir is the other half of .agents/: where a skill's directory lives,
+// relative to the tree root (§1.4, §5.1).
+const skillsDir = ".agents/skills"
+
+// SkillsDir is .agents/skills/ in the same form, for the callers that need the
+// directory itself rather than a skill inside it: the walk that scans it, the
+// deep scan that starts from it, and `init`, which creates it empty so a fresh
+// tree has the shape §5 describes.
+func SkillsDir() string { return skillsDir }

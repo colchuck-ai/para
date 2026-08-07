@@ -123,31 +123,30 @@ func TestParentExistsForNestedArea(t *testing.T) {
 	}
 }
 
+// TestParentExistsForSkill: a skill's parent is never a precondition.
+//
+// .agents/skills/ has no .para/ of its own, so the general "parent holds a
+// state.toml" rule does not apply (§1.4's exception) — and neither does the
+// directory's own existence. It used to: this returned false until the directory
+// was there, which made `para add skills.x` refuse on any fresh clone of a tree
+// with no skills in it, since git does not carry an empty directory (§18.1) and
+// nothing else would create one. The directory is para's own and the write path
+// makes it on the way past.
 func TestParentExistsForSkill(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, map[string]string{
 		".para/tree.toml": "schema = 1\n",
 	})
 
-	// .agents/skills/ has no .para/ of its own — the general "parent holds
-	// state.toml" rule does not apply to skills (§1.4's exception).
-	got, err := tree.ParentExists(root, mustParse(t, "skills.signups-report"))
-	if err != nil {
-		t.Fatalf("ParentExists: %v", err)
-	}
-	if got {
-		t.Error("ParentExists(skills.signups-report) = true before .agents/skills/ exists, want false")
-	}
-
-	writeFixture(t, root, map[string]string{
-		".agents/skills/.keep": "",
-	})
-	got, err = tree.ParentExists(root, mustParse(t, "skills.signups-report"))
-	if err != nil {
-		t.Fatalf("ParentExists: %v", err)
-	}
-	if !got {
-		t.Error("ParentExists(skills.signups-report) = false once .agents/skills/ exists, want true")
+	for _, when := range []string{"before .agents/skills/ exists", "once it does"} {
+		got, err := tree.ParentExists(root, mustParse(t, "skills.signups-report"))
+		if err != nil {
+			t.Fatalf("ParentExists %s: %v", when, err)
+		}
+		if !got {
+			t.Errorf("ParentExists(skills.signups-report) = false %s, want true", when)
+		}
+		writeFixture(t, root, map[string]string{".agents/skills/.keep": ""})
 	}
 }
 

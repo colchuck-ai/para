@@ -7,8 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/colchuck-ai/para/internal/clock"
+	"github.com/colchuck-ai/para/internal/doctor"
 	"github.com/colchuck-ai/para/internal/mutate"
 	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/view"
 )
 
 // addArea creates an area at the given locator, creating nothing else.
@@ -887,5 +890,73 @@ func TestArchiveAndUnarchiveAnObjectiveThroughATwoLevelStubChain(t *testing.T) {
 	// The live container never left, so it was adopted rather than reinstated.
 	if len(back.Reinstated) != 0 {
 		t.Errorf("reinstated: got %v, want none", back.Reinstated)
+	}
+}
+
+// TestUnarchiveReinstatingAnAncestorLeavesACleanTree is the regression test for
+// a defect Phase 14's crash matrix surfaced by adding `unarchive` to it.
+//
+// A reinstated ancestor is both a *subject* of the relocation — its own locator
+// changed — and a *parent* of it, since the child moved into it. Both plans
+// rendered its ACTIVITY.md from the bytes on disk before the mutation, so the
+// parent's write overwrote the subject's and the `locator` change line vanished:
+// a command that succeeded, and `doctor` red immediately afterwards.
+func TestUnarchiveReinstatingAnAncestorLeavesACleanTree(t *testing.T) {
+	// A real tree rather than a planted one, so the only thing a whole-tree
+	// `doctor` can find at the end is what these mutations did.
+	root, _ := initAt(t, t.TempDir(), "brain")
+	e := env(t, root)
+
+	mustAdd(t, e, "areas.health", "Health", "Staying in one piece.")
+	mustAdd(t, e, "areas.health.training", "Training", "The weekly plan.")
+	archivePlan, err := env(t, root).PlanArchive(loc(t, "areas.health.training"))
+	mustRelocate(t, archivePlan, err)
+	archivePlan, err = env(t, root).PlanArchive(loc(t, "areas.health"))
+	mustRelocate(t, archivePlan, err)
+
+	unarchivePlan, err := env(t, root).PlanUnarchive(loc(t, "archive.areas.health.training"))
+	mustRelocate(t, unarchivePlan, err)
+
+	// The reinstated ancestor's own ACTIVITY.md must carry both of the things
+	// that happened to it: its locator changed, and it gained a child back.
+	got := read(t, root, "areas/health/ACTIVITY.md")
+	for _, want := range []string{
+		"Changed **locator** from archive.areas.health to areas.health.",
+		"Unarchived area **training**.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("areas/health/ACTIVITY.md =\n%s\nwant it to contain %q", got, want)
+		}
+	}
+
+	// And the whole tree agrees with its journals, which is the property the
+	// missing line broke.
+	rep, err := doctor.Run(view.NewEnv(root, clock.Fixed{At: now()}), doctor.Options{})
+	if err != nil {
+		t.Fatalf("doctor.Run: %v", err)
+	}
+	if !rep.Clean() {
+		var lines []string
+		for _, f := range rep.Findings {
+			lines = append(lines, string(f.Kind)+" "+f.Path+" — "+f.Detail)
+		}
+		t.Errorf("the tree is not clean after unarchive:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+func mustAdd(t *testing.T, e *mutate.Env, locStr, name, description string) {
+	t.Helper()
+	if _, err := e.Add(loc(t, locStr), fields("name", name, "description", description)); err != nil {
+		t.Fatalf("Add(%s): %v", locStr, err)
+	}
+}
+
+func mustRelocate(t *testing.T, plan *mutate.Relocation, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("planning a relocation: %v", err)
+	}
+	if _, err := plan.Apply(); err != nil {
+		t.Fatalf("applying a relocation: %v", err)
 	}
 }

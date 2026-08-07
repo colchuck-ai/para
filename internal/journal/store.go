@@ -35,6 +35,17 @@ func Append(dir string, e Event, rotateBytes int64) (string, error) {
 		return "", err
 	}
 
+	// Whether the file is about to be created decides whether the *directory*
+	// needs syncing as well: an fsync of the file makes its bytes durable, and
+	// only an fsync of the directory makes the entry naming them durable. Every
+	// other truth file para writes does both (writeset.writeAtomic), and a
+	// journal line is the most primitive form truth takes (§3.1) — so the first
+	// event into a new or rotated file must not be the one write in the design
+	// that a power failure can lose while the state.toml written after it
+	// survives.
+	_, statErr := os.Stat(path)
+	fresh := os.IsNotExist(statErr)
+
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return "", paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("journal: opening %s", path))
@@ -47,7 +58,26 @@ func Append(dir string, e Event, rotateBytes int64) (string, error) {
 	if err := f.Sync(); err != nil {
 		return "", paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("journal: syncing %s", path))
 	}
+	if fresh {
+		syncDir(dir)
+	}
 	return path, nil
+}
+
+// syncDir makes a newly created file's directory entry durable.
+//
+// Failures are ignored, exactly as writeset.syncDir ignores them and for the
+// same reason: syncing a directory is unsupported on some platforms and
+// filesystems — Windows cannot sync a directory handle at all — the line is
+// already written and visible to every reader, and what is at stake is
+// durability across a power loss rather than the correctness of this append.
+func syncDir(dir string) {
+	f, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_ = f.Sync()
 }
 
 // targetFile decides which file e's line lands in: the current newest file
