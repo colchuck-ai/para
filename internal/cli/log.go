@@ -91,12 +91,8 @@ func filterKind(events []journal.Event, kind string) ([]journal.Event, error) {
 		return events, nil
 	}
 	if !slices.Contains(eventKinds, journal.Kind(kind)) {
-		names := make([]string, len(eventKinds))
-		for i, k := range eventKinds {
-			names[i] = string(k)
-		}
 		return nil, paraerr.Newf(paraerr.KindValidation,
-			"%q is not an event kind (one of %s)", kind, strings.Join(names, ", "))
+			"%q is not an event kind (one of %s)", kind, strings.Join(eventKindNames(), ", "))
 	}
 	var out []journal.Event
 	for _, e := range events {

@@ -32,7 +32,15 @@ func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "read and write the tree's configuration",
-		Args:  cobra.NoArgs,
+		Long: "Read and write the knobs: staleness thresholds, the at-risk pace, the review\n" +
+			"cadence, journal rotation, and what gets emitted.\n\n" +
+			"A value is resolved by walking from the thing being asked about up to the\n" +
+			"root and taking the nearest level that sets it, so a threshold can be set once\n" +
+			"for the tree and overridden for one project. `config show` prints that chain\n" +
+			"with the level that won, because resolution you cannot see is resolution you\n" +
+			"cannot argue with.\n\n" +
+			"`set` and `unset` write the root unless --at names a level.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},

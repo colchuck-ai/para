@@ -135,3 +135,78 @@ func TestUnknownKindHasNoFields(t *testing.T) {
 		}
 	}
 }
+
+// TestUnsettable walks §15's table for the three refusals `unset` makes: a
+// field the kind requires, `type` (fixed at creation), and `created` (which
+// everything has). Everything else the kind has, it can lose.
+//
+// This is the rule the shell completion shares with `mutate.Unset`, which is
+// why it is a table here rather than an assertion at either call site.
+func TestUnsettable(t *testing.T) {
+	cases := []struct {
+		kind  Kind
+		field Field
+		want  bool
+	}{
+		{KindProject, FieldName, false},        // required
+		{KindProject, FieldDescription, false}, // required
+		{KindProject, FieldCreated, false},     // everything has a creation time
+		{KindProject, FieldStatus, true},
+		{KindProject, FieldPriority, true},
+		{KindProject, FieldDue, true},
+		{KindProject, FieldTags, true},
+		{KindProject, FieldScope, false}, // a project has no scope at all
+		{KindKeyResult, FieldType, false},
+		{KindKeyResult, FieldTarget, false}, // required
+		{KindKeyResult, FieldStart, true},
+		{KindKeyResult, FieldDescription, true}, // optional here, unlike a project's
+		{KindKeyResult, FieldStatus, true},      // derived, and derived is not required
+		{KindSkill, FieldScope, true},           // absence is what widens a skill (§5.2)
+		{KindSkill, FieldName, false},
+		{KindArea, FieldStatus, false}, // an area has no status
+		{KindUnknown, FieldName, false},
+	}
+	for _, c := range cases {
+		if got := Unsettable(c.kind, c.field); got != c.want {
+			t.Errorf("Unsettable(%v, %q) = %v, want %v", c.kind, c.field, got, c.want)
+		}
+	}
+}
+
+// TestUnsettableFields is the same rule as a set, in AllFields order — no map
+// iteration reaches it, so two calls list the same fields the same way (§0.2).
+func TestUnsettableFields(t *testing.T) {
+	cases := []struct {
+		kind Kind
+		want []Field
+	}{
+		{KindProject, []Field{FieldStatus, FieldPriority, FieldDue, FieldTags}},
+		{KindArea, []Field{FieldPriority, FieldTags}},
+		{KindResource, []Field{FieldTags}},
+		{KindObjective, []Field{FieldStatus, FieldPriority, FieldDue, FieldTags}},
+		{KindKeyResult, []Field{FieldDescription, FieldStatus, FieldDue, FieldTags, FieldStart}},
+		{KindSkill, []Field{FieldTags, FieldScope}},
+		{KindContainer, nil},
+		{KindUnknown, nil},
+	}
+	for _, c := range cases {
+		got := UnsettableFields(c.kind)
+		if len(got) != len(c.want) {
+			t.Fatalf("UnsettableFields(%v) = %v, want %v", c.kind, got, c.want)
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Fatalf("UnsettableFields(%v) = %v, want %v", c.kind, got, c.want)
+			}
+		}
+	}
+	// Every field it offers, Unsettable agrees to — the two must not be able to
+	// disagree, since one is the list and the other is the gate.
+	for _, kind := range []Kind{KindProject, KindArea, KindResource, KindObjective, KindKeyResult, KindSkill, KindContainer} {
+		for _, f := range UnsettableFields(kind) {
+			if !Unsettable(kind, f) {
+				t.Errorf("UnsettableFields(%v) offers %q, which Unsettable refuses", kind, f)
+			}
+		}
+	}
+}

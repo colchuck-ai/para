@@ -1517,6 +1517,16 @@ locator or anything beneath it** (§5.4).
   earns the exception: a journal is a record of what happened, not a copy of current state, and the
   entity's own history is the one place a move must remain visible after the fact. Like every
   `change`, it does not move the clock (§3.6).
+- **A move does not follow the entity's archived shadow**, and that is a limit rather than an
+  oversight. Archive `resources.a.b`, then rename `resources.a` to `resources.c`, and
+  `archive/resources/a/b` still records an ancestry no live entity has. Rewriting it would mean a
+  move reaching into `archive/` — the boundary the bullet above refuses to cross in either
+  direction — so para leaves it alone and refuses the later `unarchive`, naming the ancestor it
+  cannot reinstate. The repair is to recreate that ancestor under its old id, `unarchive` into it,
+  `move` the reinstated entity where it belongs, and remove the placeholder — every step a verb
+  already has, and no step reaching into `archive/` to rewrite an ancestry there. A refusal a
+  sequence of otherwise legal commands can reach is worth writing down; a silent rewrite across the
+  boundary would be worse.
 
 ### 18.4 `remove`
 

@@ -1,0 +1,206 @@
+# Shell completions (implementation plan, Phase 15).
+#
+# §26 has no completion block, and §13 has no completion verb — this is the one
+# command in the tree that is about typing rather than about the model. It earns
+# its place on the locator: six segments (§1.4), every one of which para already
+# knows, and a mistyped one is an error rather than a near miss.
+#
+# What is asserted here is the *candidate sets*, not the shell scripts, because
+# the candidate sets are para's and the scripts are cobra's. The rule each set
+# follows is §14's table of what each verb accepts, which is the same table
+# every command validates its argument against — so a completion that offered
+# something the verb refuses would be para disagreeing with itself.
+
+env PARA_NOW=2026-03-05T17:00:00Z
+env PARA_TZ=America/Los_Angeles
+
+exec para init brain
+cd brain
+exec para add projects.acme --name Acme --description 'Rebuild the consumer.'
+exec para add projects.acme.objectives.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.'
+exec para add projects.acme.objectives.q1-growth.key-results.signups --name 'Weekly signups' --description 'Per week.' --type number --target 2000
+exec para add areas.health --name Health --description 'Staying in one piece.'
+exec para add skills.commit-style --name 'Commit style' --description 'when writing a commit message'
+
+# --- the three shells the plan names ----------------------------------------
+
+exec para completion bash
+stdout '__start_para'
+exec para completion zsh
+stdout '#compdef para'
+exec para completion fish
+stdout '__para_perform_completion'
+
+# --- what each verb accepts (§14) -------------------------------------------
+
+# `show` takes an entity or a container, so both are offered — including the
+# containers `list` refuses to print as rows (§16.2), because `show objectives`
+# is a legal thing to ask for and `list` never showing them is about rows.
+exec para __complete show ''
+stdout '^projects.acme$'
+stdout '^projects.acme.objectives$'
+stdout '^skills.commit-style$'
+stdout '^areas.health$'
+
+# A partial locator narrows to its own subtree, which is the whole reason six
+# segments are typeable at all.
+exec para __complete show projects.acme.objectives.
+stdout '^projects.acme.objectives.q1-growth$'
+! stdout '^areas.health$'
+
+# `note` takes an entity, so a container is not offered — naming one is the
+# error §14 spells out.
+exec para __complete note ''
+stdout '^projects.acme$'
+! stdout '^projects.acme.objectives$'
+
+# Its second argument is prose, and prose has no candidates and no filenames.
+# The trailing `:N` is cobra's directive bitmask, which every __complete run
+# ends with: 4 is NoFileComp, and 4|2 = 6 adds NoSpace.
+exec para __complete note projects.acme ''
+! stdout '^projects'
+stdout '^:4$'
+
+# `measure` takes a key-result only (§14's last row).
+exec para __complete measure ''
+stdout '^projects.acme.objectives.q1-growth.key-results.signups$'
+! stdout '^projects.acme$'
+
+# `list` looks *inside* something, so it takes a container, a bucket, or the
+# root — and an entity is a legal thing to look inside of.
+exec para __complete list ''
+stdout '^projects$'
+stdout '^archive$'
+stdout '^projects.acme.objectives$'
+
+# `skills` is the one place that is a bucket without being a directory the walk
+# finds (§1.4), so it has to be offered deliberately — by the four verbs that
+# take a place to look, and by none of the four that take a thing to print.
+stdout '^skills$'
+exec para __complete review ''
+stdout '^skills$'
+exec para __complete doctor ''
+stdout '^skills$'
+exec para __complete rebuild ''
+stdout '^skills$'
+exec para __complete show ''
+! stdout '^skills$'
+! exec para show skills
+
+# `add` is the one verb whose argument does not exist yet, so it completes the
+# places a new thing can go rather than the things that are there. Trailing dot,
+# and no space after it, because the id is still to be typed.
+exec para __complete add ''
+stdout '^projects\.$'
+stdout '^areas\.$'
+stdout '^skills\.$'
+stdout '^projects.acme.objectives\.$'
+! stdout '^projects.acme$'
+# NoSpace|NoFileComp, so the shell leaves the cursor against the dot.
+stdout '^:6$'
+
+# Nothing can be added under the archive: things arrive there by `archive`
+# (§1.6), which is a verb rather than a place to create in.
+! stdout '^archive\.$'
+
+# `move`'s second argument is a destination, not a thing: §18.3's target must
+# not exist yet, must keep the entity's kind, and must stay on its own side of
+# the archive boundary. So it offers prefixes the way `add` does, narrowed to
+# the parents that would preserve the kind — and never an entity that is
+# already there, which is every locator `move` is about to refuse.
+exec para __complete move areas.health ''
+stdout '^areas\.$'
+! stdout '^areas.health$'
+! stdout '^projects\.$'
+! stdout '^archive'
+
+# Nor its own subtree: "areas.health.inner is inside areas.health" is the
+# refusal, so the place it already occupies is not a destination.
+! stdout '^areas.health\.$'
+! exec para move areas.health areas.health.inner
+stderr 'is inside'
+
+# An objective can only move under some project's objectives/, which is the
+# only position that derives its kind (§1.3).
+exec para __complete move projects.acme.objectives.q1-growth ''
+stdout '^projects.acme.objectives\.$'
+! stdout '^projects\.$'
+
+# An archived thing moves within the archive, because that is the only move
+# that does not cross the boundary.
+exec para archive areas.health
+exec para __complete move archive.areas.health ''
+stdout '^archive.areas\.$'
+! stdout '^areas\.$'
+exec para unarchive archive.areas.health
+
+# `unset` completes the kind's own fields after the locator, and only the ones
+# §15 lets go: not `name`, which the kind requires, and never `created`.
+exec para __complete unset projects.acme ''
+stdout '^status$'
+stdout '^due$'
+stdout '^tags$'
+! stdout '^name$'
+! stdout '^created$'
+
+# A key-result's `type` is fixed at creation, so it is not offered either.
+exec para __complete unset projects.acme.objectives.q1-growth.key-results.signups ''
+stdout '^start$'
+! stdout '^type$'
+! stdout '^target$'
+
+# --- flag values ------------------------------------------------------------
+
+# The §15 vocabularies, each from the same table the flag validates against.
+exec para __complete set projects.acme --status ''
+stdout '^in-progress$'
+stdout '^blocked$'
+exec para __complete set projects.acme --priority ''
+stdout '^high$'
+exec para __complete list --sort ''
+stdout '^attention$'
+stdout '^progress$'
+exec para __complete log projects.acme --kind ''
+stdout '^measurement$'
+exec para __complete add projects.new --type ''
+stdout '^ratio$'
+
+# Config keys are a fixed vocabulary too (§7), and there are enough of them to
+# be worth not memorising.
+exec para __complete config set ''
+stdout '^project.stale-after$'
+stdout '^emit.claude$'
+exec para __complete config show ''
+stdout '^review.cadence$'
+
+# §22's four shapes take four different second arguments, and the completion
+# follows each rather than assuming a locator. `set <key> <value>` offers the
+# values the key takes — an enum's members, a boolean's two spellings, and
+# nothing for a number nobody can enumerate.
+exec para __complete config set emit.claude-skills ''
+stdout '^symlink$'
+stdout '^copy$'
+exec para __complete config set emit.claude ''
+stdout '^true$'
+exec para __complete config set project.stale-after ''
+! stdout '^projects'
+! stdout '^true$'
+
+# `show <key> [<locator>]` takes a locator second; `unset <key>` takes nothing.
+exec para __complete config show project.stale-after ''
+stdout '^projects.acme$'
+exec para __complete config unset project.stale-after ''
+! stdout '^projects'
+
+# --at names the level to write at, which is a locator wherever it appears.
+exec para __complete config set project.stale-after 30 --at ''
+stdout '^projects.acme$'
+
+# --- outside a tree ---------------------------------------------------------
+
+# No tree, no locators, and no error either: a completion that printed a
+# diagnostic would print it into the middle of the user's command line.
+cd $WORK
+exec para __complete show ''
+! stdout '^projects'
+! stderr 'error:'

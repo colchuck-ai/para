@@ -26,23 +26,30 @@ func newActivityCmd() *cobra.Command {
 	var since string
 
 	cmd := &cobra.Command{
-		Use:   "activity <locator>",
+		Use:   "activity [<locator>]",
 		Short: "print the digest — the same fold ACTIVITY.md contains",
-		Long: "Print the digest for an entity or container. Without --recursive it is the\n" +
-			"same fold ACTIVITY.md contains, which is the point: the two agree by\n" +
-			"construction. --recursive merges the digests of everything beneath into one\n" +
-			"chronology, each line labelled with the locator it came from. That is the only\n" +
-			"rollup in the system, it is computed on demand, and nothing about it is\n" +
-			"written to disk.",
-		Args: cobra.ExactArgs(1),
+		Long: "Print the digest for an entity, a container, or — naming nothing — the tree\n" +
+			"root, which has an ACTIVITY.md like every other tracked directory and no\n" +
+			"locator to address it by.\n\n" +
+			"Without --recursive it is the same fold ACTIVITY.md contains, which is the\n" +
+			"point: the two agree by construction. --recursive merges the digests of\n" +
+			"everything beneath into one chronology, each line labelled with the locator it\n" +
+			"came from. That is the only rollup in the system, it is computed on demand, and\n" +
+			"nothing about it is written to disk.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openRead(cmd)
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
-			if err != nil {
-				return err
+			// No locator is the root, the same way it is for `list`, `rebuild`,
+			// and `doctor`: absent means the whole tree, never the working
+			// directory. `.` is the spelling for that (§14).
+			var loc locator.Locator
+			if len(args) == 1 {
+				if loc, err = resolveLocatorArg(env.Root, cwd, args[0]); err != nil {
+					return err
+				}
 			}
 			from, err := parseSince(since)
 			if err != nil {
@@ -97,19 +104,47 @@ func parseSince(since string) (string, error) {
 	return t.UTC().Format("2006-01-02"), nil
 }
 
-// activitySubjects is the entity named, or it and everything beneath it.
+// digestSubject is one thing whose digest is being read: an entity, a
+// container, or the tree root.
+//
+// It exists rather than a view.Entity because the root is not one. The root has
+// no locator (§1.4), no state.toml, and its identity lives in tree.toml
+// instead (§8.1) — which is the same shape difference render.In already carries
+// as the empty locator, so this type is exactly the fields the digest needs and
+// nothing else.
+type digestSubject struct {
+	Locator locator.Locator
+	Kind    kindmeta.Kind
+	State   truth.State
+	Tree    truth.Tree
+	Dir     string
+}
+
+// in is the digest's view of the subject. The empty locator selects render's
+// root shape, which reads Tree where every other shape reads State.
+func (s digestSubject) in(events []journal.Event) render.In {
+	return render.In{
+		Locator: s.Locator,
+		Kind:    s.Kind,
+		State:   s.State,
+		Tree:    s.Tree,
+		Events:  events,
+	}
+}
+
+// activitySubjects is the thing named, or it and everything beneath it.
 //
 // Containers are included in the recursive case and excluded from being rows in
 // `list`, and that is not an inconsistency: a container has a journal of its own
 // (§8.2) and §3.3's `child` events land in it, so "added objective q1-growth" —
 // §26's own first line — is a container's event and would be missing otherwise.
-func activitySubjects(env *view.Env, loc locator.Locator, recursive bool) ([]view.Entity, error) {
-	self, err := env.Load(loc)
+func activitySubjects(env *view.Env, loc locator.Locator, recursive bool) ([]digestSubject, error) {
+	self, err := loadSubject(env, loc)
 	if err != nil {
 		return nil, err
 	}
 	if !recursive {
-		return []view.Entity{self}, nil
+		return []digestSubject{self}, nil
 	}
 	res, err := query.List(env, query.Options{
 		Scope:  loc,
@@ -118,7 +153,10 @@ func activitySubjects(env *view.Env, loc locator.Locator, recursive bool) ([]vie
 	if err != nil {
 		return nil, err
 	}
-	subjects := append([]view.Entity{self}, res.Entities...)
+	subjects := []digestSubject{self}
+	for _, e := range res.Entities {
+		subjects = append(subjects, entitySubject(e))
+	}
 
 	// query.List drops containers, which are exactly the subjects whose
 	// journals hold the containment events, so they are collected separately.
@@ -129,14 +167,43 @@ func activitySubjects(env *view.Env, loc locator.Locator, recursive bool) ([]vie
 	return append(subjects, containers...), nil
 }
 
-func activityContainers(env *view.Env, loc locator.Locator) ([]view.Entity, error) {
-	nodes, err := tree.Subtree(env.Root, loc)
+// loadSubject reads the named thing, or the root when nothing is named.
+func loadSubject(env *view.Env, loc locator.Locator) (digestSubject, error) {
+	if len(loc) == 0 {
+		tr, err := truth.ReadTree(env.Root)
+		if err != nil {
+			return digestSubject{}, err
+		}
+		return digestSubject{Tree: tr, Dir: env.Root}, nil
+	}
+	ent, err := env.Load(loc)
+	if err != nil {
+		return digestSubject{}, err
+	}
+	return entitySubject(ent), nil
+}
+
+func entitySubject(e view.Entity) digestSubject {
+	return digestSubject{Locator: e.Locator, Kind: e.Kind, State: e.State, Dir: e.Dir}
+}
+
+// activityContainers collects the containers beneath loc, whose journals hold
+// the containment events no entity's journal carries.
+//
+// The archive rule is `list`'s, deliberately: a rollup that traversed archive/
+// while the entity rows beside it did not would report a container's events
+// from a place the same command refuses to list entities from (§16.2).
+func activityContainers(env *view.Env, loc locator.Locator) ([]digestSubject, error) {
+	nodes, err := containerNodes(env.Root, loc)
 	if err != nil {
 		return nil, err
 	}
-	var out []view.Entity
+	var out []digestSubject
 	for _, n := range nodes {
 		if !n.IsContainer || len(n.Locator) == len(loc) {
+			continue
+		}
+		if n.Archived && !loc.IsArchived() {
 			continue
 		}
 		state, err := truth.ReadState(n.Path)
@@ -147,9 +214,24 @@ func activityContainers(env *view.Env, loc locator.Locator) ([]view.Entity, erro
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, ent)
+		out = append(out, entitySubject(ent))
 	}
 	return out, nil
+}
+
+// containerNodes is the walk beneath loc — the whole tree when loc is the root,
+// which tree.Subtree refuses by definition since the root is not a subtree of
+// itself.
+func containerNodes(root string, loc locator.Locator) ([]tree.Node, error) {
+	if len(loc) > 0 {
+		return tree.Subtree(root, loc)
+	}
+	var nodes []tree.Node
+	err := tree.Walk(root, func(n tree.Node) error {
+		nodes = append(nodes, n)
+		return nil
+	})
+	return nodes, err
 }
 
 // digestLine is one line of the rollup: when, where, and what.
@@ -167,19 +249,14 @@ type digestLine struct {
 // nothing about it is written to disk (§16.4, §3.2). The lines come from
 // render.Digest, so they are the same lines ACTIVITY.md carries — which is what
 // makes §16.4's "they agree by construction" a fact rather than a claim.
-func rollup(env *view.Env, subjects []view.Entity, since string) ([]digestLine, error) {
+func rollup(env *view.Env, subjects []digestSubject, since string) ([]digestLine, error) {
 	var out []digestLine
 	for _, subject := range subjects {
 		events, err := journal.ReadAll(truth.LogsDir(subject.Dir))
 		if err != nil {
 			return nil, err
 		}
-		days, err := render.Digest(render.In{
-			Locator: subject.Locator,
-			Kind:    subject.Kind,
-			State:   subject.State,
-			Events:  events,
-		})
+		days, err := render.Digest(subject.in(events))
 		if err != nil {
 			return nil, err
 		}
@@ -208,19 +285,14 @@ func rollup(env *view.Env, subjects []view.Entity, since string) ([]digestLine, 
 
 // printActivityFile prints the digest exactly as ACTIVITY.md holds it, which is
 // §16.4's whole claim about the unfiltered case.
-func printActivityFile(out io.Writer, subject view.Entity, since string) error {
+func printActivityFile(out io.Writer, subject digestSubject, since string) error {
 	events, err := journal.ReadAll(truth.LogsDir(subject.Dir))
 	if err != nil {
 		return err
 	}
 	// Full mode: Days empty re-derives every section from the whole history,
 	// which is what rebuild writes and doctor compares against (§10, §21.1).
-	data, err := render.ActivityRenderer{Since: since}.Render(render.In{
-		Locator: subject.Locator,
-		Kind:    subject.Kind,
-		State:   subject.State,
-		Events:  events,
-	})
+	data, err := render.ActivityRenderer{Since: since}.Render(subject.in(events))
 	if err != nil {
 		return err
 	}
@@ -234,7 +306,15 @@ func printActivityFile(out io.Writer, subject view.Entity, since string) error {
 func printRollup(out io.Writer, lines []digestLine) {
 	var t table
 	for _, line := range lines {
-		t.add(line.Day, line.Locator, line.Text)
+		// The root's lines have no locator to label them with (§1.4), so they
+		// print the dash every absent value prints as. `.` would be a spelling
+		// that only pastes back from one directory, which is the opposite of
+		// what §14 promises about what para prints.
+		where := line.Locator
+		if where == "" {
+			where = dash
+		}
+		t.add(line.Day, where, line.Text)
 	}
 	t.write(out)
 	if len(lines) == 0 {

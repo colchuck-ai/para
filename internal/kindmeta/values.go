@@ -42,6 +42,19 @@ func SettableStatuses(kind Kind) []string {
 	}
 }
 
+// AllStatuses is every status some kind accepts, in §1.7's order and without
+// repetition — the vocabulary to offer when nothing has said which kind is
+// being addressed yet.
+func AllStatuses() []string {
+	out := slices.Clone(plannableStatuses)
+	for _, s := range keyResultStatuses {
+		if !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // IsStatus reports whether s is a status kind will accept.
 func IsStatus(kind Kind, s string) bool {
 	return slices.Contains(SettableStatuses(kind), s)

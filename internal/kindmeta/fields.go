@@ -93,6 +93,40 @@ func Has(kind Kind, field Field) bool {
 	return Requirement(kind, field) != NotApplicable
 }
 
+// Unsettable reports whether `unset` may remove field from kind (§18.2).
+//
+// Three cells of §15 refuse: a field the kind requires, because unsetting
+// `name` would leave an entity that cannot render its own README; `type`,
+// which is fixed at creation; and `created`, because everything has a creation
+// time. A field the kind does not have at all is not unsettable either — it is
+// a different error, and the caller distinguishes them.
+//
+// It is one function because it has two callers who must agree: `unset` itself,
+// and the shell completion that offers the fields. A completion offering a
+// field the verb refuses would be para disagreeing with itself.
+func Unsettable(kind Kind, field Field) bool {
+	if !Has(kind, field) || field == FieldCreated {
+		return false
+	}
+	switch Requirement(kind, field) {
+	case Required, RequiredFixed:
+		return false
+	}
+	return true
+}
+
+// UnsettableFields returns the fields `unset` accepts for kind, in AllFields
+// order.
+func UnsettableFields(kind Kind) []Field {
+	var out []Field
+	for _, f := range allFields {
+		if Unsettable(kind, f) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // AllFields returns every field name in the §15 table, in the table's fixed
 // row order.
 func AllFields() []Field {

@@ -49,15 +49,19 @@ type fieldFlags struct {
 var fieldHelp = map[kindmeta.Field]string{
 	kindmeta.FieldName:        "the thing's name",
 	kindmeta.FieldDescription: "one line: what it is, or when to use it",
-	kindmeta.FieldStatus:      "one of " + strings.Join(kindmeta.SettableStatuses(kindmeta.KindProject), ", "),
-	kindmeta.FieldPriority:    "one of " + strings.Join(kindmeta.Priorities(), ", "),
-	kindmeta.FieldDue:         "a deadline, in progressive precision",
-	kindmeta.FieldTags:        "a comma-separated list, replacing whatever is there",
-	kindmeta.FieldCreated:     "the creation time; defaults to now, never in the future",
-	kindmeta.FieldType:        "a key-result's measurement grammar: number, ratio, or boolean",
-	kindmeta.FieldStart:       "a key-result's baseline; defaults to its first measurement",
-	kindmeta.FieldTarget:      "a key-result's target",
-	kindmeta.FieldScope:       "a skill's scope: a comma-separated locator list, or omit for the whole tree",
+	// The vocabulary is a kind's, not the tree's (§1.7): a key-result's status
+	// is derived, with exactly one value carved out as settable. Naming that
+	// exception here is cheaper than a reader discovering it as a refusal.
+	kindmeta.FieldStatus: "one of " + strings.Join(kindmeta.AllStatuses(), ", ") +
+		"; a key-result takes only " + strings.Join(kindmeta.SettableStatuses(kindmeta.KindKeyResult), ", "),
+	kindmeta.FieldPriority: "one of " + strings.Join(kindmeta.Priorities(), ", "),
+	kindmeta.FieldDue:      "a deadline, in progressive precision",
+	kindmeta.FieldTags:     "a comma-separated list, replacing whatever is there",
+	kindmeta.FieldCreated:  "the creation time; defaults to now, never in the future",
+	kindmeta.FieldType:     "a key-result's measurement grammar: " + strings.Join(krvalue.TypeNames(), ", "),
+	kindmeta.FieldStart:    "a key-result's baseline; defaults to its first measurement",
+	kindmeta.FieldTarget:   "a key-result's target",
+	kindmeta.FieldScope:    "a skill's scope: a comma-separated locator list, or omit for the whole tree",
 }
 
 func (f *fieldFlags) register(cmd *cobra.Command) {
@@ -240,7 +244,7 @@ func newNoteCmd() *cobra.Command {
 func newMeasureCmd() *cobra.Command {
 	var at, note string
 	cmd := &cobra.Command{
-		Use:   "measure <locator> <value>",
+		Use:   "measure <kr-locator> <value>",
 		Short: "log a reading against a key-result",
 		Long: "Log a reading against a key-result.\n\n" +
 			"The value follows the key-result's own type, and two readings may not\n" +

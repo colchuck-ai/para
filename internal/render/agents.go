@@ -42,8 +42,20 @@ func (agentsRenderer) Render(in In) ([]byte, error) {
 
 // agentsBlocks is the generated prose, keyed by the locator of the place it
 // describes — the eight of them agentsLocations lists. §27 defers the exact
-// wording out of the spec because it wants drafting against a real tree; these
-// are that draft, and Phase 15 revises them against a tree in use.
+// wording out of the spec because it wants drafting against a real tree, and
+// these were drafted and then revised against one: a tree `para init` made,
+// read as a reader of the committed tree sees it rather than as the author of
+// the sentence does.
+//
+// Two things that revision changed, both of them gaps rather than wording:
+//
+//   - The root said nothing about skills, and §6's claim that "the root plus
+//     the buckets cover every concept there is" is only true if it does —
+//     nothing else in the tree emits an AGENTS.md, so a reader who found
+//     `.agents/rules/` had nowhere to learn what it was.
+//   - Two of the three archive mirrors omitted the stub sentence the third
+//     carried. A stub happens under all three, and a reader standing in one
+//     directory does not read another's block.
 var agentsBlocks = map[string]string{
 	"": `This tree is organised by the PARA method: four places, each answering a different question
 about the thing you are filing.
@@ -56,14 +68,24 @@ about the thing you are filing.
 
 Each of those directories explains itself in its own AGENTS.md.
 
-Inside any tracked directory: ` + "`README.md`" + ` carries generated frontmatter above a body that is
-yours; ` + "`ACTIVITY.md`" + ` is a generated digest of that directory's own history; ` + "`.para/`" + ` holds the
-machine-readable truth. Anything else in the directory is yours, and is left alone.
+A directory with a ` + "`.para/`" + ` inside it is a thing this tree tracks. Most directories without one
+are content — yours, and left alone. The two that are not are ` + "`.agents/`" + `, described below, and
+the placeholders inside the archive, which the archive explains. In a tracked directory,
+` + "`README.md`" + ` carries generated frontmatter above a body that is yours, ` + "`ACTIVITY.md`" + ` is a generated
+digest of that directory's own history, and ` + "`.para/`" + ` holds the machine-readable truth: what the
+thing is, and an append-only log of what has happened to it.
+
+` + "`.agents/`" + ` is not one of the four places and holds nothing you would file. Under
+` + "`.agents/skills/`" + `, a skill is a directory you author — ` + "`SKILL.md`" + `, plus any scripts and references
+it needs — saying how to do something and when to do it. A skill names the parts of the tree it
+applies to, or names none and applies to all of them, and that scope is rendered into a one-line
+routing file under ` + "`.agents/rules/`" + `, one per skill. Those files are generated: to change where a
+skill applies, change the skill.
 
 Two rules before you edit anything here:
 
-- The frontmatter of a ` + "`README.md`" + ` is generated and the body below it is yours. Edit the body
-  freely; edits to the frontmatter are overwritten.
+- The frontmatter of a ` + "`README.md`" + ` or a ` + "`SKILL.md`" + ` is generated and the body below it is yours.
+  Edit the body freely; edits to the frontmatter are overwritten.
 - ` + "`ACTIVITY.md`" + `, ` + "`MEASUREMENTS.csv`" + `, and everything under ` + "`.agents/rules/`" + ` are wholly generated. Do
   not hand-edit them.
 
@@ -75,8 +97,12 @@ under ` + "`.para/logs/`" + `, then run ` + "`para rebuild`" + `. Never hand-res
 you will finish it, or you will explicitly stop.
 
 Each project is a directory with its own generated ` + "`README.md`" + ` and ` + "`ACTIVITY.md`" + `, plus whatever
-content the work needs. A project may carry objectives, and an objective may carry key results:
-measurable readings with a baseline, a target, and a history.
+content the work needs. A project may carry objectives under ` + "`objectives/`" + `, and an objective may
+carry key results under ` + "`key-results/`" + `: measurable readings with a baseline, a target, and a
+history, whose readings are also written out as a ` + "`MEASUREMENTS.csv`" + ` beside them.
+
+A project has a status, and two of its values — done and dropped — mean it has finished. A finished
+project is still here and still readable; it is simply no longer work in hand.
 
 If a thing here has no finish line, it belongs in the areas directory instead. Once it is done, it
 belongs in the archive.
@@ -118,6 +144,9 @@ done. Each keeps the shape it had while it was live, including its objectives an
 
 Nothing here is deleted and nothing here is hidden. Bringing a project back means moving it, whole,
 to the live projects directory.
+
+A directory here with no ` + "`.para/`" + ` inside it is a stub: a bare placeholder recording where an
+archived objective or key result came from, kept because the project above it is still live.
 `,
 
 	"archive.areas": `This directory holds **areas** you no longer hold — responsibilities that have ended, been handed
@@ -132,5 +161,8 @@ expensive to re-find, so it is archived rather than deleted.
 
 Nothing here is deleted and nothing here is hidden. Bringing a resource back means moving it,
 whole, to the live resources directory.
+
+A directory here with no ` + "`.para/`" + ` inside it is a stub: a bare placeholder recording the ancestry
+of an archived resource whose own parent is still live.
 `,
 }

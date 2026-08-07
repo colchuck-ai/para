@@ -22,7 +22,7 @@ const dryRunLine = "dry-run: nothing was written"
 func newMoveCmd() *cobra.Command {
 	var dryRun bool
 	cmd := &cobra.Command{
-		Use:   "move <locator> <locator>",
+		Use:   "move <from> <to>",
 		Short: "move an entity, with its subtree",
 		Long: "Move an entity to another place in the tree.\n\n" +
 			"One rename, plus the work a hand-`mv` cannot do: README frontmatter\n" +

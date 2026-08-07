@@ -35,8 +35,22 @@ func Run(clk clock.Clock, args []string, stdout, stderr io.Writer) int {
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "para",
-		Short:         "para manages a PARA-method tree of projects, areas, and resources",
+		Use:   "para",
+		Short: "para manages a PARA-method tree of projects, areas, and resources",
+		Long: "para keeps a PARA-method tree — projects, areas, resources, archive — as\n" +
+			"plain directories and files: readable without this tool, editable with your\n" +
+			"editor, and safe to commit.\n\n" +
+			"Everything is addressed by a locator, which is the path with dots for\n" +
+			"slashes: `projects.acme.objectives.q1-growth.key-results.signups`. Every\n" +
+			"command takes one and every command prints them the same way, so anything you\n" +
+			"read pastes into anything you type. `.` means the thing containing the\n" +
+			"working directory.\n\n" +
+			"What para stores is `.para/state.toml` and an append-only journal beside it.\n" +
+			"Everything else — README frontmatter, ACTIVITY.md, MEASUREMENTS.csv, the\n" +
+			"rule files — is generated from those on every write, and `para doctor` says\n" +
+			"when it has drifted while `para rebuild` puts it back.\n\n" +
+			"Start with `para init`. Shell completion knows every locator in the tree:\n" +
+			"see `para completion --help`.",
 		Version:       version.String(),
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
@@ -65,5 +79,6 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newRemoveCmd())
 	root.AddCommand(newRebuildCmd())
 	root.AddCommand(newDoctorCmd())
+	registerCompletions(root)
 	return root
 }

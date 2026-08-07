@@ -242,3 +242,36 @@ func TestDerivedStatus_NonLatching(t *testing.T) {
 		t.Fatalf("after regression = %v, want on-track (no latch)", regressed)
 	}
 }
+
+// TestTypeNamesAndIsType pins §4.1's three grammars as one set: the `--type`
+// flag's help, the validation that refuses anything else, and the shell
+// completion all read it, and a fourth grammar must be one edit rather than
+// three that can disagree.
+func TestTypeNamesAndIsType(t *testing.T) {
+	want := []string{"number", "ratio", "boolean"}
+	got := TypeNames()
+	if len(got) != len(want) {
+		t.Fatalf("TypeNames() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("TypeNames() = %v, want %v (order is the order every message lists them)", got, want)
+		}
+		if !IsType(want[i]) {
+			t.Errorf("IsType(%q) = false", want[i])
+		}
+		// Every name it lists must parse as a type, or the completion offers
+		// something Parse then refuses.
+		if _, err := Parse(Type(want[i]), grammarSample[Type(want[i])]); err != nil {
+			t.Errorf("Parse(%q, %q): %v", want[i], grammarSample[Type(want[i])], err)
+		}
+	}
+	for _, raw := range []string{"", "Number", "percent", "int"} {
+		if IsType(raw) {
+			t.Errorf("IsType(%q) = true, want false", raw)
+		}
+	}
+}
+
+// grammarSample is one legal reading per grammar, for the check above.
+var grammarSample = map[Type]string{TypeNumber: "42", TypeRatio: "1/2", TypeBoolean: "true"}

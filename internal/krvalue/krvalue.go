@@ -8,6 +8,7 @@ package krvalue
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"time"
 
@@ -24,6 +25,26 @@ const (
 	TypeRatio   Type = "ratio"
 	TypeBoolean Type = "boolean"
 )
+
+// types is §4.1's three grammars, in the order every message and every
+// completion lists them. It is the one place the set is written down: the
+// `--type` flag's help, the validation that refuses anything else, and the
+// shell completion all read it, so adding a fourth grammar is one edit rather
+// than three that can disagree.
+var types = []Type{TypeNumber, TypeRatio, TypeBoolean}
+
+// TypeNames returns the three grammars as strings, in §4.1's order — for the
+// messages and the completions that print them.
+func TypeNames() []string {
+	out := make([]string, len(types))
+	for i, t := range types {
+		out[i] = string(t)
+	}
+	return out
+}
+
+// IsType reports whether raw names one of the three grammars.
+func IsType(raw string) bool { return slices.Contains(types, Type(raw)) }
 
 // Value is a start, target, or measurement reading in its type's grammar,
 // preserved exactly as entered. A ratio's denominator belongs to the

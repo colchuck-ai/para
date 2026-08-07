@@ -186,11 +186,11 @@ func (e *Env) normalise(kind kindmeta.Kind, field kindmeta.Field, raw string, st
 		return strings.TrimSpace(raw), nil
 
 	case kindmeta.FieldType:
-		switch krvalue.Type(raw) {
-		case krvalue.TypeNumber, krvalue.TypeRatio, krvalue.TypeBoolean:
+		if krvalue.IsType(raw) {
 			return raw, nil
 		}
-		return "", paraerr.Newf(paraerr.KindValidation, "%q is not a key-result type — one of number, ratio, boolean", raw)
+		return "", paraerr.Newf(paraerr.KindValidation,
+			"%q is not a key-result type — one of %s", raw, strings.Join(krvalue.TypeNames(), ", "))
 
 	case kindmeta.FieldStart, kindmeta.FieldTarget:
 		typ := krvalue.Type(st.Type)

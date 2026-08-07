@@ -86,6 +86,46 @@ exec para add projects.acme --name 'Acme' --description 'Rebuild the consumer.'
 exec para doctor
 stdout '^clean$'
 
+# --- the root's own digest (§16.4) ------------------------------------------
+#
+# §13 spells it `para activity [<locator>]`, and the root is what the optional
+# form addresses. Nothing else can: the root has no locator (§1.4), and `.`
+# resolves to the nearest entity or container (§14), which the root is neither.
+# Until `init` existed nothing wrote a root ACTIVITY.md into a tree anybody
+# read, so §16.4's "the two agree by construction" had an exception at exactly
+# one location. This is that location, and the two agree here too.
+exec para activity
+cp stdout $WORK/got-root-activity.txt
+cmp $WORK/got-root-activity.txt ACTIVITY.md
+stdout '^- Added \*\*projects\*\*\.$'
+stdout '^- Created\.$'
+
+# The rollup with nothing to scope it is the whole tree's chronology, buckets
+# included. The root's own lines carry the dash every absent value prints as
+# (§17), because the root genuinely has no locator to label them with — and
+# printing `.` instead would be a spelling that only pastes back from one
+# directory.
+exec para activity --recursive
+stdout '^2026-03-05 +projects +added project acme$'
+stdout '^2026-03-05 +— +added projects$'
+stdout '^2026-03-05 +— +created$'
+
+# And it stops at archive/ for the same reason `list` does: archived things are
+# not hidden, they are somewhere else, and you reach them by naming them
+# (§16.2). The archive's own three child events are the archive's to show.
+! stdout '^2026-03-05 +archive'
+exec para activity archive --recursive
+stdout '^2026-03-05 +archive +added resources$'
+
+# --since narrows the root's digest the same way it narrows any other.
+exec para activity --since 2026-03-06
+! stdout 'Created'
+
+# A locator that names nothing is still an error rather than a silent fallback
+# to the root.
+! exec para activity projects.nope
+stderr 'error: projects.nope does not exist'
+
 # --- emit.gitattributes, both ways ------------------------------------------
 #
 # Phase 13 left this as a debt: turning the key off wrote a config file and left

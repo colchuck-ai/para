@@ -1,0 +1,82 @@
+# Release engineering (implementation plan, Phase 15, task 1).
+#
+# What a release has to produce is fixed by scripts/install.sh, which is the
+# other half of this file: it asks for `para_<os>_<arch>.tar.gz` and a
+# `checksums.txt` beside it, under `releases/latest/download/` or
+# `releases/download/<tag>/`. Two consequences are load-bearing rather than
+# stylistic:
+#
+#   - **The archive name carries no version.** That is what lets the installer
+#     build a "latest" URL without first asking an API what the latest version
+#     is — no token, no rate limit, no JSON parser in a POSIX shell.
+#   - **checksums.txt is published.** The installer refuses an archive whose
+#     hash does not match rather than falling back, because a mismatch is a
+#     tampered or truncated download and building from source instead would
+#     hide it.
+#
+# Version stamping goes through the same variable `go install` fills in on its
+# own (internal/version), so `para --version` reads the same either way.
+version: 2
+
+project_name: para
+
+builds:
+  - id: para
+    main: ./cmd/para
+    binary: para
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/colchuck-ai/para/internal/version.ldflagsVersion={{ .Version }}
+    # A build that differs only in when it ran is a build nobody can compare.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: para
+    ids:
+      - para
+    name_template: "para_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    # Windows gets a zip because that is what a Windows machine can open
+    # without installing something first. install.sh is a POSIX shell script
+    # and never asks for it.
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+      - para-design-v4.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  # The spec is the deliverable as much as the binary is, so it ships in every
+  # archive and is named in the notes.
+  footer: |
+    ---
+
+    `para-design-v4.md` in each archive is normative; this binary is an
+    implementation of it.

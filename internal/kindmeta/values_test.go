@@ -108,3 +108,27 @@ func TestPriorities(t *testing.T) {
 		t.Error("PriorityRank admitted a value outside the set")
 	}
 }
+
+// TestAllStatuses is the union §1.7's per-kind rows add up to: every status
+// some kind accepts, in the table's order, each spelled once. It is what a
+// completion offers before a locator has said which kind is being addressed.
+func TestAllStatuses(t *testing.T) {
+	want := []string{"planned", "in-progress", "blocked", "done", "dropped"}
+	got := kindmeta.AllStatuses()
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("AllStatuses() = %v, want %v", got, want)
+	}
+
+	// The union has to cover every kind, or the completion offers a status the
+	// verb would then accept from nobody.
+	for _, kind := range []kindmeta.Kind{
+		kindmeta.KindProject, kindmeta.KindArea, kindmeta.KindResource,
+		kindmeta.KindObjective, kindmeta.KindKeyResult, kindmeta.KindSkill,
+	} {
+		for _, s := range kindmeta.SettableStatuses(kind) {
+			if !strings.Contains(","+strings.Join(got, ",")+",", ","+s+",") {
+				t.Errorf("AllStatuses() omits %q, which %v accepts", s, kind)
+			}
+		}
+	}
+}

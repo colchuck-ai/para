@@ -72,15 +72,12 @@ func (e *Env) Unset(loc locator.Locator, fields []kindmeta.Field) (Result, error
 		if !kindmeta.Has(subj.kind, field) {
 			return Result{}, unknownField(subj.kind, field)
 		}
-		switch kindmeta.Requirement(subj.kind, field) {
-		case kindmeta.Required:
-			return Result{}, paraerr.Newf(paraerr.KindValidation, "%s is required and cannot be unset", field)
-		case kindmeta.RequiredFixed:
-			return Result{}, paraerr.Newf(paraerr.KindValidation,
-				"%s is fixed at creation and cannot be unset — delete and recreate", field)
-		}
-		if field == kindmeta.FieldCreated {
-			return Result{}, paraerr.New(paraerr.KindValidation, "created cannot be unset — everything has a creation time")
+		// One rule, asked once: kindmeta decides, and the switch below only
+		// explains a refusal it has already made. Splitting the decision across
+		// both would let the completion that shares the rule drift from the
+		// verb that enforces it.
+		if !kindmeta.Unsettable(subj.kind, field) {
+			return Result{}, unsetRefused(subj.kind, field)
 		}
 		// Recorded as given so the no-op report can name it, the same way a
 		// `set` names a field already holding its value.
@@ -88,6 +85,20 @@ func (e *Env) Unset(loc locator.Locator, fields []kindmeta.Field) (Result, error
 		clearField(&next, field)
 	}
 	return e.write(subj, f, next, "")
+}
+
+// unsetRefused says which of §15's three refusals kindmeta.Unsettable made.
+// It is only ever called after that predicate has said no.
+func unsetRefused(kind kindmeta.Kind, field kindmeta.Field) error {
+	switch {
+	case field == kindmeta.FieldCreated:
+		return paraerr.New(paraerr.KindValidation, "created cannot be unset — everything has a creation time")
+	case kindmeta.Requirement(kind, field) == kindmeta.RequiredFixed:
+		return paraerr.Newf(paraerr.KindValidation,
+			"%s is fixed at creation and cannot be unset — delete and recreate", field)
+	default:
+		return paraerr.Newf(paraerr.KindValidation, "%s is required and cannot be unset", field)
+	}
 }
 
 // clearField removes a field from a state, whichever of the two shapes it has.

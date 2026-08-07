@@ -166,6 +166,12 @@ func formatFloat(f float64) string {
 	return s
 }
 
+// The two non-control characters yaml.v3's scanner reads as line breaks.
+const (
+	lineSeparator      = '\u2028'
+	paragraphSeparator = '\u2029'
+)
+
 // quoteString renders s as a YAML double-quoted scalar, escaping backslash,
 // quote, the short escapes, and every other control character via \uXXXX —
 // a stray control byte left unescaped would make the frontmatter invalid
@@ -173,6 +179,14 @@ func formatFloat(f float64) string {
 // forbids the C0 range (U+0000-U+001F), DEL (U+007F), and the C1 range
 // (U+0080-U+009F) unescaped — a fuzz run caught yaml.v3 rejecting an
 // unescaped C1 character before this covered it too.
+//
+// U+2028 and U+2029 are escaped for a different reason, and a second fuzz run
+// caught it: they are not control characters and yaml.v3 accepts them, but its
+// scanner treats them as **line breaks**, so a quoted scalar carrying one is
+// folded on the way back in: a value of space-then-U+2028 decodes as U+2028
+// alone, because folding eats the space beside the break. It survives the file
+// and does not survive the parse, which is drift `doctor` would report forever
+// on a tree nobody touched.
 func quoteString(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')
@@ -189,15 +203,48 @@ func quoteString(s string) string {
 		case '\r':
 			b.WriteString(`\r`)
 		default:
-			if r < 0x20 || (r >= 0x7F && r <= 0x9F) {
-				fmt.Fprintf(&b, `\u%04X`, r)
-			} else {
+			if plainYAML(r) {
 				b.WriteRune(r)
+			} else {
+				fmt.Fprintf(&b, `\u%04X`, r)
 			}
 		}
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+// plainYAML reports whether r may stand for itself inside a double-quoted
+// scalar. It is YAML's printable set, minus the characters the scanner reads
+// as line breaks — and it is stated as a set rather than as a list of
+// exceptions because the exceptions kept arriving one fuzz seed at a time:
+// first a C1 character, then U+2028, then U+FFFF, each of which yaml.v3
+// refuses or folds while the encoder wrote it happily.
+//
+// The set is the YAML 1.2 spec's c-printable: tab, LF, CR (handled by their
+// own escapes above), U+0020-U+007E, U+0085, U+00A0-U+D7FF, U+E000-U+FFFD, and
+// U+10000-U+10FFFF. Everything else — the C0 and C1 ranges, DEL, the
+// surrogates, and the two non-characters at the end of the BMP — is what
+// yaml.v3 rejects as "control characters are not allowed".
+//
+// U+0085, U+2028, and U+2029 are printable by that definition and excluded
+// here anyway: they are line breaks to the scanner, and a scalar that folds is
+// a value that does not survive its own file.
+func plainYAML(r rune) bool {
+	switch {
+	case r == 0x85, r == lineSeparator, r == paragraphSeparator:
+		return false
+	case r >= 0x20 && r <= 0x7E:
+		return true
+	case r >= 0xA0 && r <= 0xD7FF:
+		return true
+	case r >= 0xE000 && r <= 0xFFFD:
+		return true
+	case r >= 0x10000 && r <= 0x10FFFF:
+		return true
+	default:
+		return false
+	}
 }
 
 // Document is a parsed frontmatter block, queryable by key. It carries no

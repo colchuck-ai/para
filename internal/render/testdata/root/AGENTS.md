@@ -10,14 +10,24 @@ about the thing you are filing.
 
 Each of those directories explains itself in its own AGENTS.md.
 
-Inside any tracked directory: `README.md` carries generated frontmatter above a body that is
-yours; `ACTIVITY.md` is a generated digest of that directory's own history; `.para/` holds the
-machine-readable truth. Anything else in the directory is yours, and is left alone.
+A directory with a `.para/` inside it is a thing this tree tracks. Most directories without one
+are content — yours, and left alone. The two that are not are `.agents/`, described below, and
+the placeholders inside the archive, which the archive explains. In a tracked directory,
+`README.md` carries generated frontmatter above a body that is yours, `ACTIVITY.md` is a generated
+digest of that directory's own history, and `.para/` holds the machine-readable truth: what the
+thing is, and an append-only log of what has happened to it.
+
+`.agents/` is not one of the four places and holds nothing you would file. Under
+`.agents/skills/`, a skill is a directory you author — `SKILL.md`, plus any scripts and references
+it needs — saying how to do something and when to do it. A skill names the parts of the tree it
+applies to, or names none and applies to all of them, and that scope is rendered into a one-line
+routing file under `.agents/rules/`, one per skill. Those files are generated: to change where a
+skill applies, change the skill.
 
 Two rules before you edit anything here:
 
-- The frontmatter of a `README.md` is generated and the body below it is yours. Edit the body
-  freely; edits to the frontmatter are overwritten.
+- The frontmatter of a `README.md` or a `SKILL.md` is generated and the body below it is yours.
+  Edit the body freely; edits to the frontmatter are overwritten.
 - `ACTIVITY.md`, `MEASUREMENTS.csv`, and everything under `.agents/rules/` are wholly generated. Do
   not hand-edit them.
 

@@ -77,7 +77,10 @@ type filterFlags struct {
 }
 
 func (f *filterFlags) register(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&f.tags, "tags", "", "a boolean tag expression: `not` → `and` → `or`, comma for or")
+	// No backquotes in a usage string: pflag reads a back-quoted word as the
+	// name of the flag's value and strips it from the text, so emphasis here
+	// silently renames the flag's argument.
+	cmd.Flags().StringVar(&f.tags, "tags", "", "a boolean tag expression: not, then and, then or — comma for or")
 	cmd.Flags().StringVar(&f.match, "match", "", "text to find in a name, description, tags, or journal notes")
 	cmd.Flags().StringVar(&f.status, "status", "", "filter on effective status")
 	cmd.Flags().StringVar(&f.priority, "priority", "", "one of "+strings.Join(kindmeta.Priorities(), ", "))
@@ -90,12 +93,7 @@ func (f *filterFlags) register(cmd *cobra.Command) {
 }
 
 func sortKeyList() string {
-	keys := query.SortKeys()
-	names := make([]string, len(keys))
-	for i, k := range keys {
-		names[i] = string(k)
-	}
-	return strings.Join(names, ", ")
+	return strings.Join(sortKeyNames(), ", ")
 }
 
 // options turns the flags into a query, validating the two that have grammars

@@ -17,7 +17,12 @@ func newPathCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "path <locator>",
 		Short: "print the filesystem path a locator addresses",
-		Args:  cobra.ExactArgs(1),
+		Long: "Print the absolute path a locator addresses, as one bare line and nothing\n" +
+			"else — shaped for $(…), which is the whole reason it exists.\n\n" +
+			"It is the inverse of the one thing every other command takes, so `cd \"$(para\n" +
+			"path projects.acme)\"` and `para show .` are the two directions of the same\n" +
+			"correspondence. It prints the path whether or not anything is there yet.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {

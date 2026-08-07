@@ -1665,11 +1665,16 @@ finding rather than a Phase 14 regression.
   and `.` from the tree root fails because the root is neither an entity nor a container. That was
   invisible until this phase, because until `init` existed nothing created a root `ACTIVITY.md` in a
   tree anybody read. §16.4's "the two agree by construction" now has an exception at exactly one
-  location. Phase 9's code; Phase 15's to decide.
+  location. Phase 9's code; Phase 15's to decide. *(Decided in Phase 15: no locator means the root.)*
 
 ---
 
 ## Phase 15 — Release engineering and docs
+
+**Status: done** (branch `impl`). Tagged releases build on a tag and nothing else; `install.sh`
+prefers the matching prebuilt archive and falls back to source; completions know every locator in the
+tree; the eight `AGENTS.md` blocks were revised against a tree `para init` made; and the README is a
+transcript of that tree rather than a description of it.
 
 **Tasks**
 
@@ -1686,6 +1691,87 @@ finding rather than a Phase 14 regression.
 
 **Done when** a tagged release installs on all three platforms and `para init` produces a tree whose
 `AGENTS.md` a fresh agent can act on without further explanation.
+
+### What this phase decided
+
+- **`para activity` with no locator is the root's digest**, which is the answer Phase 14 left open.
+  §13 already spelled it `[<locator>]`; nothing else can reach the root, since it has no locator
+  (§1.4) and `.` resolves to the nearest entity or container (§14), which the root is neither. So
+  §16.4's "the two agree by construction" now holds at every location that has an `ACTIVITY.md`. The
+  rollup at the root labels the root's own lines with `—`: printing `.` would be a spelling that only
+  pastes back from one directory, which is the opposite of what §14 promises. Like `list`, it stops
+  at `archive/` unless you name it.
+- **Completions cover locators, not just verbs**, because that is the only reason they are worth
+  having: six-segment locators, every one of which para already knows. Each candidate set is derived
+  from the table the verb validates against — §14 for arguments, §15's matrix for fields and their
+  vocabularies, §7's specs for config keys — so a completion offering something the verb refuses
+  would be para disagreeing with itself. Writing the sets down is what found the two divergences
+  below: a completion has to state what a verb accepts, and stating it is where you notice that
+  nobody had.
+- **`--help` review found four things**, one of them a bug: `--tags`' usage string contained
+  back-quoted words, which pflag reads as the *name of the flag's value*, so `--tags` printed as
+  `--tags not`. It is now a test over every flag on every command. The other three were missing
+  `Long` text on the root, `config`, and `path`, and two `Use` lines that disagreed with §13.
+- **The review of this phase found one more completion bug and two overstated claims.** `move`'s
+  destination completion offered the tree's existing entities — which is every locator `move`
+  refuses: the target must not exist, must keep the kind, must stay on its side of the archive
+  boundary, and cannot be inside the thing being moved. It now offers `parent.` prefixes narrowed by
+  kind and side, the way `add`'s does. The claims were the AGENTS.md root block's "one exception"
+  (there are two, `.agents/` being the other) and the README calling its transcripts real while
+  omitting the `--created` flags that produced the ages in them.
+- **The archive-shadow limit is now written down** (§18.3): a `move` does not follow an entity's
+  archived shadow, the later `unarchive` is refused by design rather than by accident, and the repair
+  is spelled out — recreate the ancestor, unarchive into it, move, remove the placeholder. Rewriting
+  the shadow would mean a move reaching across the archive boundary it refuses to cross.
+
+### What adding fuzzing to CI found
+
+The Phase 14 carry-forward called `-fuzztime` in CI "a cheap addition nobody has made". It was cheap,
+and it found two defects in `mdfile`'s frontmatter writer within seconds — both of them breaking the
+round-trip identity §0.2 requires, and both invisible to the seed corpus:
+
+- **A scalar carrying U+2028 or U+2029 folded on the way back in.** They are printable, so the writer
+  emitted them raw; yaml.v3's scanner reads them as *line breaks*, so ` <U+2028>` decoded as
+  `<U+2028>` — the space beside the break eaten by folding. A value that survives the file and not
+  the parse is permanent `stale-projection` drift on a tree nobody touched.
+- **A scalar carrying U+FFFF would not parse at all** — "control characters are not allowed", because
+  the two non-characters at the end of the BMP are outside YAML's printable set.
+
+The fix replaced a list of exceptions with the set itself: `plainYAML` is YAML's `c-printable` minus
+the three characters the scanner treats as breaks. Both inputs are committed as seed corpus, so
+`make test` covers them from here without a fuzz run.
+
+### Two places the code and §13–§14 disagree
+
+Both were found by writing the completion's candidate sets down, both are the *code* being wider
+than the document, and neither is fixed here — a release-engineering phase is the wrong place to
+delete working behavior or to amend the normative document on its own authority. They want a
+decision.
+
+- **`skills` is accepted by four verbs §14 does not give it to.** §14's table puts `review`,
+  `rebuild`, and `doctor` in the entity-or-container row beside `show`, `log`, `activity`, and
+  `path`, and gives "container, bucket, or root" to `list` alone. In the code, `list skills`,
+  `review skills`, `rebuild skills`, and `doctor skills` all work, and the other four refuse
+  `skills` because it derives no kind (§1.3: "skills is one level only"). The split is real and
+  useful — those four take a *place to look*, the others take a *thing to print* — and the
+  completion follows the code, because a candidate the verb rejects is worse than one it never
+  offered. Either §14 gains a row or three verbs lose an argument.
+- **`config list` takes a locator §13 and §22 do not spell.** Both write it `list [--prefix …]`;
+  the code has taken `[<locator>]` since Phase 7 and its help says so, symmetrical with `config
+  show <key> [<locator>]` and with the same justification — a resolved value is only meaningful
+  somewhere. Either §22 gains four characters or the code loses a feature.
+
+### Carry-forward from Phase 15
+
+- **The first CI run on Windows is still unverified**, and so is every other job: `impl` is
+  local-only, there is no `origin`, and no workflow in `.github/` has ever executed. The
+  `release-config` and `fuzz` jobs added here join the Windows job in that category. First push is
+  where all four are actually tested.
+- **No release has been tagged.** `.goreleaser.yaml` is validated (`make release-check`) and its
+  snapshot output was installed end-to-end by `scripts/install.sh` locally, which is as far as a
+  repository with no remote can take it. `make snapshot` reproduces that check.
+- **`para init` still cannot set `para-version` on any later write** (§8.1). Unchanged from Phase 14,
+  and still nothing reads it.
 
 ---
 
