@@ -23,6 +23,8 @@
 package render
 
 import (
+	"slices"
+
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
@@ -182,9 +184,16 @@ var agentsLocations = []locator.Locator{
 
 // AgentsLocations returns those eight, in the order they are written and
 // reported. The root is the empty locator.
+//
+// Each locator is cloned, not just the slice holding them: a Locator is itself a
+// slice, so copying the outer one would hand every caller the same backing
+// arrays and a caller that wrote through one would rewrite the package's own
+// table.
 func AgentsLocations() []locator.Locator {
-	out := make([]locator.Locator, len(agentsLocations))
-	copy(out, agentsLocations)
+	out := make([]locator.Locator, 0, len(agentsLocations))
+	for _, l := range agentsLocations {
+		out = append(out, slices.Clone(l))
+	}
 	return out
 }
 

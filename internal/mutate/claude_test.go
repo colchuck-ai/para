@@ -314,6 +314,63 @@ func TestSkillMutationOnATreeWithTheSurfaceOffWritesNothingExtra(t *testing.T) {
 	}
 }
 
+// TestConfigSetOnASkillRefreshesTheMirror is the one skill-subject mutation
+// that used to slip past the refresh: `config set --at skills.x <any key>`
+// re-renders that skill's ACTIVITY.md, which in copy mode the mirror holds. The
+// key is unrelated to the surface, so only the "subject is a skill" rule
+// catches it — and that rule has to be the same one every other verb uses.
+func TestConfigSetOnASkillRefreshesTheMirror(t *testing.T) {
+	root := treeWithSkill(t)
+	setClaude(t, env(t, root), root, config.KeyEmitClaude, ptoml.Bool(true))
+	setClaude(t, env(t, root), root, config.KeyEmitClaudeSkills, ptoml.String("copy"))
+
+	e := env(t, root)
+	skill := loc(t, "skills.report")
+	path := filepath.Join(root, ".agents", "skills", "para-report", ".para", "config.toml")
+	f, err := config.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Set(config.KeyReviewCadence, ptoml.Int64(90)); err != nil {
+		t.Fatal(err)
+	}
+	data, err := f.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.ConfigChange(skill, config.KeyReviewCadence, "", "90", data)
+	if err != nil {
+		t.Fatalf("ConfigChange: %v", err)
+	}
+	if want := (mirror.Change{Verb: mirror.VerbCopied, Path: ".claude/skills/para-report"}); !slices.Contains(res.Mirror, want) {
+		t.Errorf("Mirror = %v, want %v", res.Mirror, want)
+	}
+	assertClean(t, root)
+}
+
+// TestEmitClaudeIsReadAtTheRootOnly: §6.1 opens by saying the surface is "off by
+// default and turns on together, because it is one concern", and §7's table
+// gives both keys `root`. It has to be enforced rather than advised, because the
+// surface has two halves in two places — eight CLAUDE.md files, one per
+// location, and one .claude/ at the root — so a per-location answer would write
+// half of it and call the result clean.
+func TestEmitClaudeIsReadAtTheRootOnly(t *testing.T) {
+	root := treeWithSkill(t)
+	setClaude(t, env(t, root), root, config.KeyEmitClaude, ptoml.Bool(true))
+
+	// Hand-written at a bucket, which is the one way it can get there: the CLI
+	// refuses `config set --at` for these keys.
+	writeFiles(t, root, map[string]string{"projects/.para/config.toml": "emit.claude = false\n"})
+
+	if _, err := rebuild.Run(rebuild.NewEnv(root), rebuild.Options{}); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if !lstatExists(root, "projects/CLAUDE.md") {
+		t.Error("a bucket-level emit.claude removed projects/CLAUDE.md; the root's value decides")
+	}
+	assertClean(t, root)
+}
+
 // TestSurfaceRefreshLeavesRebuildNothingToDo is the property every write-path
 // change has to keep: write-through is complete, so rebuild after it is a no-op
 // (§2.3, §2.4).

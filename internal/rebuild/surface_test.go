@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/colchuck-ai/para/internal/mirror"
@@ -224,6 +225,69 @@ func TestRebuildScopedLeavesTheMirrorAlone(t *testing.T) {
 	// scope contains rather than a tree-wide artifact.
 	if !slices.Contains(res.Changed, "projects/CLAUDE.md") {
 		t.Errorf("`rebuild projects` did not write projects/CLAUDE.md; wrote %v", res.Changed)
+	}
+}
+
+// TestDryRunPredictsTheMirrorWorkTheRealRunDoes is the property --dry-run
+// exists for, and the one copy mode nearly broke: the mirror is synced *after*
+// the subject loop, so a dry run comparing the copy against a SKILL.md it has
+// not rewritten yet finds them equal and predicts less work than the run does.
+func TestDryRunPredictsTheMirrorWorkTheRealRunDoes(t *testing.T) {
+	root := plantTree(t)
+	write(t, root, ".para/config.toml", "emit.claude = true\nemit.claude-skills = \"copy\"\n")
+	plantSkill(t, root, "signups-report", "Signups report")
+	run(t, root, rebuild.Options{})
+
+	// Truth changes, so the skill's own SKILL.md is stale — and so, in copy
+	// mode, is the mirror that holds a copy of it.
+	write(t, root, ".agents/skills/para-signups-report/.para/state.toml",
+		"name = \"Weekly signups\"\ndescription = \"when signups\"\ncreated = \"2026-01-01T00:00:00Z\"\n")
+
+	dry := run(t, root, rebuild.Options{DryRun: true})
+	real := run(t, root, rebuild.Options{})
+
+	if !slices.Equal(dry.Changed, real.Changed) {
+		t.Errorf("--dry-run would rewrite %v; the run rewrote %v", dry.Changed, real.Changed)
+	}
+	if len(dry.Mirror) != len(real.Mirror) {
+		t.Errorf("--dry-run predicted %v; the run did %v", dry.Mirror, real.Mirror)
+	}
+	for i := range dry.Mirror {
+		if dry.Mirror[i].Path != real.Mirror[i].Path {
+			t.Errorf("--dry-run predicted %v; the run did %v", dry.Mirror, real.Mirror)
+		}
+	}
+}
+
+// TestScopedRebuildAtASkillSyncsItsMirror: the mirror is not a tree-wide
+// artifact when the scope is a skill — it is that skill's own projection — and
+// skipping it left `rebuild skills.x` finishing successfully with `doctor` red.
+func TestScopedRebuildAtASkillSyncsItsMirror(t *testing.T) {
+	root := plantTree(t)
+	write(t, root, ".para/config.toml", "emit.claude = true\nemit.claude-skills = \"copy\"\n")
+	plantSkill(t, root, "signups-report", "Signups report")
+	run(t, root, rebuild.Options{})
+
+	write(t, root, ".agents/skills/para-signups-report/.para/state.toml",
+		"name = \"Weekly signups\"\ndescription = \"when signups\"\ncreated = \"2026-01-01T00:00:00Z\"\n")
+
+	res, err := rebuild.Run(env(t, root), rebuild.Options{Scope: loc(t, "skills.signups-report")})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(res.Mirror) != 1 || res.Mirror[0].Verb != mirror.VerbCopied {
+		t.Fatalf("a scoped rebuild at a skill did %v to the mirror, want one copy", res.Mirror)
+	}
+	got, err := os.ReadFile(filepath.Join(root, ".claude", "skills", "para-signups-report", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "Weekly signups") {
+		t.Errorf("the mirror still holds the old SKILL.md:\n%s", got)
+	}
+	// And an unscoped pass afterwards has nothing left to do.
+	if after := run(t, root, rebuild.Options{}); !after.Empty() {
+		t.Errorf("an unscoped rebuild after the scoped one did %v / %v / %v", after.Changed, after.Removed, after.Mirror)
 	}
 }
 

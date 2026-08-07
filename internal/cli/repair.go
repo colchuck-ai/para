@@ -9,7 +9,6 @@ import (
 
 	"github.com/colchuck-ai/para/internal/doctor"
 	"github.com/colchuck-ai/para/internal/locator"
-	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/rebuild"
 	"github.com/colchuck-ai/para/internal/tree"
@@ -94,28 +93,17 @@ func printChanged(out io.Writer, res rebuild.Result, dryRun bool) {
 	printEach(out, tense("rewrote", "would rewrite", dryRun), res.Changed)
 	printEach(out, tense("removed", "would remove", dryRun), res.Removed)
 	for _, c := range res.Mirror {
-		printEach(out, tense(string(c.Verb), wouldVerb(c.Verb), dryRun), []string{mirrorLine(c)})
+		fmt.Fprintf(out, "%s  %s\n", tense(string(c.Verb), c.Verb.Would(), dryRun), mirrorLine(c))
 	}
 }
 
+// tense picks the past tense or the conditional, so that a `--dry-run` never
+// claims to have done something it only considered.
 func tense(did, would string, dryRun bool) string {
 	if dryRun {
 		return would
 	}
 	return did
-}
-
-// wouldVerb is a mirror verb in the tense a dry run needs: a run that says
-// "linked" when it linked nothing is describing something that did not happen.
-func wouldVerb(v mirror.Verb) string {
-	switch v {
-	case mirror.VerbLinked:
-		return "would link"
-	case mirror.VerbCopied:
-		return "would copy"
-	default:
-		return "would remove"
-	}
 }
 
 // newDoctorCmd implements `para doctor [<locator>]` (§21.2).

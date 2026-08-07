@@ -50,7 +50,7 @@ func cfg(enabled bool, mode string) render.Config {
 // returns what the repair reported.
 func sync(t *testing.T, root string, c render.Config, skills ...string) []mirror.Change {
 	t.Helper()
-	issues, err := mirror.Inspect(root, c, skills)
+	issues, err := mirror.Inspect(root, c, skills, nil)
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}
@@ -80,7 +80,7 @@ func paths(changes []mirror.Change) []string {
 func TestInspectReportsNothingWhenTheSurfaceIsOffAndAbsent(t *testing.T) {
 	root := plant(t, "signups-report")
 
-	issues, err := mirror.Inspect(root, cfg(false, render.MirrorSymlink), []string{"signups-report"})
+	issues, err := mirror.Inspect(root, cfg(false, render.MirrorSymlink), []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestCopyModeReportsAnEditedCopyAsStale(t *testing.T) {
 	edited := filepath.Join(root, ".claude", "skills", "para-signups-report", "SKILL.md")
 	write(t, edited, "hand-edited\n", 0o644)
 
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"})
+	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestCopyModeReportsAnExtraFileAsStale(t *testing.T) {
 	extra := filepath.Join(root, ".claude", "skills", "para-signups-report", "notes.md")
 	write(t, extra, "mine\n", 0o644)
 
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"})
+	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestTurningTheSurfaceOffSweepsTheMirror(t *testing.T) {
 	root := plant(t, "signups-report")
 	sync(t, root, cfg(true, render.MirrorSymlink), "signups-report")
 
-	issues, err := mirror.Inspect(root, cfg(false, render.MirrorSymlink), []string{"signups-report"})
+	issues, err := mirror.Inspect(root, cfg(false, render.MirrorSymlink), []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestASkillThatIsGoneLeavesAnOrphanMirror(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(root, ".agents", "skills", "para-commit-style")); err != nil {
 		t.Fatal(err)
 	}
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"})
+	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func TestAPlainFileWhereALinkBelongsIsBroken(t *testing.T) {
 	}
 	write(t, path, "../../.agents/skills/para-signups-report", 0o644)
 
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"})
+	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +341,7 @@ func TestALinkThatDoesNotResolveIsBroken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"})
+	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestSomethingWithoutTheParaPrefixIsNeverTouched(t *testing.T) {
 	write(t, mine, "mine\n", 0o644)
 
 	// Not reported when the surface is on...
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"})
+	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +380,7 @@ func TestAMissingMirrorIsReported(t *testing.T) {
 	c := cfg(true, render.MirrorSymlink)
 	sync(t, root, c, "signups-report")
 
-	issues, err := mirror.Inspect(root, c, []string{"signups-report", "commit-style"})
+	issues, err := mirror.Inspect(root, c, []string{"signups-report", "commit-style"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

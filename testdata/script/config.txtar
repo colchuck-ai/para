@@ -45,9 +45,10 @@ env PARA_TZ=America/Los_Angeles
 [para:phase7] stdout '^3\n'
 [para:phase7] cd $WORK/brain
 
-# emit.claude is the root's knob (§6.1). Rendering its consequences — eight
-# CLAUDE.md files and the .claude/skills mirror that §26 shows next — is
-# Phase 13's; what this phase owns is the config write.
+# emit.claude is the root's knob (§6.1), and what this section asserts is the
+# config write alone. Its consequences — eight CLAUDE.md files and the
+# .claude/skills mirror — land in the same command and are claude.txtar's, which
+# is why this tree has no skills and so has no mirror to write.
 [para:phase7] exec para config set emit.claude true
 [para:phase7] stdout '^ +\.para/config\.toml\n'
 [para:phase7] grep '^emit\.claude = true$' .para/config.toml

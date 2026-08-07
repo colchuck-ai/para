@@ -11,6 +11,7 @@ import (
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/krvalue"
 	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/ptime"
 	"github.com/colchuck-ai/para/internal/ptoml"
@@ -382,10 +383,14 @@ func staleDetail(a rebuild.Artifact) string {
 		// §10 has no row for that and does not need one — "differs from what
 		// would be written now" covers it, since what would be written now is
 		// nothing, and `rebuild` is the same repair that row already promises.
-		if baseName(a.Path) == "CLAUDE.md" {
-			return "should not exist; emit.claude is off"
-		}
-		return "should not exist; nothing generates it now"
+		//
+		// The sentence is mirror's, because the mirror says it about itself in
+		// the same report and about the same cause. CLAUDE.md is the only file
+		// that can be residue today; `emit.gitattributes` looks like a second
+		// and is not, because para owns a block inside that file rather than
+		// the file (§9) — so turning it off shortens a file rather than
+		// removing one, and this branch stays the one case it names.
+		return mirror.ResidueDetail
 	}
 	if !a.Present {
 		return "is missing"

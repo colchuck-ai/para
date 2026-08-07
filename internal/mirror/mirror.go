@@ -100,6 +100,12 @@ const (
 	StateBroken State = "broken"
 )
 
+// ResidueDetail is the sentence a report prints about anything the Claude
+// surface left behind when it was turned off. It is one constant because two
+// packages print it — this one about a mirror, and doctor about a CLAUDE.md —
+// and they are saying the same thing about the same cause.
+const ResidueDetail = "should not exist; emit.claude is off"
+
 // Issue is one mirror entry that is not what §6.1 says it should be.
 type Issue struct {
 	// ID is the skill the entry names, taken from the directory name rather
@@ -122,6 +128,25 @@ const (
 	VerbRemoved Verb = "removed"
 )
 
+// Would is the verb in the tense `rebuild --dry-run` needs: a run that says
+// "linked" when it linked nothing is describing something that did not happen.
+//
+// It lives beside the enum rather than in the package that prints it, so a
+// fourth verb arrives with its own tense instead of falling into somebody
+// else's default and printing a plausible lie.
+func (v Verb) Would() string {
+	switch v {
+	case VerbLinked:
+		return "would link"
+	case VerbCopied:
+		return "would copy"
+	case VerbRemoved:
+		return "would remove"
+	default:
+		return "would " + string(v)
+	}
+}
+
 // Change is one repair, as §26's `linked …/para-signups-report → …` line
 // reports it.
 type Change struct {
@@ -139,18 +164,30 @@ type Change struct {
 // list is built from, so the two halves of the surface can never disagree about
 // which skills there are.
 //
+// pending names skills whose own files the caller has not written yet but is
+// about to. It exists for `rebuild --dry-run` and for nothing else: a copy-mode
+// mirror of a skill whose SKILL.md is about to be rewritten is stale, but on
+// disk it still matches the version it was copied from, so a dry run comparing
+// bytes would report no mirror work and the run it is predicting would do some.
+// Every other caller passes nil, because every other caller is looking at a
+// tree that has already been written.
+//
 // When `emit.claude` is off, every para- prefixed entry is residue and nothing
 // else. That is deliberate, and it answers the question Phase 12 left open:
 // naming a doomed entry `orphan-mirror` would send the reader to look at a
 // skill, and `broken-link` would tell them their checkout mangled a link that
 // is about to be deleted. Both would be true and neither would be the repair.
 // The surface is off; the entry goes.
-func Inspect(root string, cfg render.Config, skills []string) ([]Issue, error) {
+func Inspect(root string, cfg render.Config, skills, pending []string) ([]Issue, error) {
 	want := map[string]bool{}
 	if cfg.EmitClaude {
 		for _, id := range skills {
 			want[id] = true
 		}
+	}
+	stale := map[string]bool{}
+	for _, id := range pending {
+		stale[id] = true
 	}
 
 	entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(Dir)))
@@ -178,7 +215,7 @@ func Inspect(root string, cfg render.Config, skills []string) ([]Issue, error) {
 			continue
 		}
 		seen[id] = true
-		if issue, bad := classify(root, cfg, want, id, entry); bad {
+		if issue, bad := classify(root, cfg, want, stale, id, entry); bad {
 			issues = append(issues, issue)
 		}
 	}
@@ -198,11 +235,11 @@ func Inspect(root string, cfg render.Config, skills []string) ([]Issue, error) {
 }
 
 // classify decides what, if anything, is wrong with one existing entry.
-func classify(root string, cfg render.Config, want map[string]bool, id string, entry fs.DirEntry) (Issue, bool) {
+func classify(root string, cfg render.Config, want, pending map[string]bool, id string, entry fs.DirEntry) (Issue, bool) {
 	issue := Issue{ID: id, Path: Path(id)}
 	switch {
 	case !cfg.EmitClaude:
-		issue.State, issue.Detail = StateResidue, "should not exist; emit.claude is off"
+		issue.State, issue.Detail = StateResidue, ResidueDetail
 		return issue, true
 	case !want[id]:
 		issue.State, issue.Detail = StateOrphan, fmt.Sprintf("mirrors skills.%s, which is gone", id)
@@ -218,6 +255,10 @@ func classify(root string, cfg render.Config, want map[string]bool, id string, e
 			issue.State, issue.Detail = StateStale, "is a symlink where a copy belongs"
 		case !entry.IsDir():
 			issue.State, issue.Detail = StateStale, "is a plain file where a copy belongs"
+		case pending[id]:
+			// The bytes on disk still agree, and are both about to change. See
+			// Inspect's `pending`.
+			issue.State, issue.Detail = StateStale, "differs from the skill it mirrors"
 		default:
 			same, err := sameCopy(sourceDir(root, id), abs)
 			if err != nil || !same {
@@ -360,6 +401,10 @@ func pruneEmpty(root string) error {
 	return nil
 }
 
+// sourceDir is the skill a mirror mirrors, as an absolute OS path. It is the
+// §1.4 mapping `skills.<id>` ↔ `.agents/skills/para-<id>`, spelled here rather
+// than taken from locator so that this package needs no locator to answer a
+// question about a directory name it already has.
 func sourceDir(root, id string) string {
 	return filepath.Join(root, filepath.FromSlash(skillsDir), Name(id))
 }

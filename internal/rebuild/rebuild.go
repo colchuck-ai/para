@@ -38,6 +38,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/journal"
@@ -129,49 +130,130 @@ func Run(env *Env, opts Options) (Result, error) {
 	}
 
 	res := Result{Subjects: len(subjects)}
+
+	// The skills whose own files this pass rewrites. A real run does not need
+	// the list — by the time the mirror is synced the new bytes are on disk —
+	// but a dry run writes nothing, so without it a copy-mode mirror of a skill
+	// about to be rewritten reads as up to date and the dry run predicts less
+	// work than the run does. See SyncMirror.
+	var pending []string
+
 	for _, s := range subjects {
 		artifacts, err := env.Derive(s)
 		if err != nil {
 			return res, err
 		}
-		for _, a := range artifacts {
-			if !a.Stale() {
-				continue
+		if opts.DryRun {
+			id, ok := staleSkill(s, artifacts)
+			if ok {
+				pending = append(pending, id)
 			}
-			if !a.Wanted {
-				res.Removed = append(res.Removed, a.Path)
-				if opts.DryRun {
-					continue
-				}
-				if err := os.Remove(filepath.Join(env.Root, filepath.FromSlash(a.Path))); err != nil && !os.IsNotExist(err) {
-					return res, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("removing %s", a.Path))
-				}
-				continue
-			}
-			res.Changed = append(res.Changed, a.Path)
-			if opts.DryRun {
-				continue
-			}
-			if err := writeset.WriteFile(filepath.Join(env.Root, filepath.FromSlash(a.Path)), a.Derived); err != nil {
-				return res, err
-			}
+		}
+		wrote, removed, err := env.apply(artifacts, opts.DryRun)
+		res.Changed = append(res.Changed, wrote...)
+		res.Removed = append(res.Removed, removed...)
+		if err != nil {
+			return res, err
 		}
 	}
 
-	// The mirror last, and only on an unscoped run. Last because a copy-mode
-	// mirror reproduces files the subject loop has just rewritten, so syncing it
-	// first would copy the versions being replaced; unscoped because
-	// `.claude/skills/` sits in no entity's subtree, and `rebuild projects`
-	// reaching it would make a scoped repair quietly tree-wide — the same rule
-	// that keeps a scoped `doctor` off the derived rules (§5.3, §6.1).
-	if len(opts.Scope) == 0 {
-		changes, err := env.SyncMirror(opts.DryRun)
+	// The mirror last. A copy-mode mirror reproduces files the subject loop has
+	// just rewritten, so syncing it first would copy the versions being
+	// replaced.
+	//
+	// It is skipped for a scope that holds no skill, because `.claude/skills/`
+	// sits in no *entity's* subtree and `rebuild projects` reaching it would
+	// make a scoped repair quietly tree-wide — the same rule that keeps a scoped
+	// `doctor` off the derived rules (§5.3). A scope that *does* hold a skill is
+	// the other case, and skipping it there was wrong: `rebuild skills.x` in
+	// copy mode rewrites the skill's SKILL.md and left its mirror holding the
+	// old bytes, so the command you run to repair a tree finished and `doctor`
+	// stayed red.
+	if len(opts.Scope) == 0 || scopeHoldsSkill(subjects) {
+		changes, err := env.SyncMirror(opts.DryRun, pending)
 		res.Mirror = changes
 		if err != nil {
 			return res, err
 		}
 	}
 	return res, nil
+}
+
+// apply brings a set of derived artifacts to disk: the stale ones are written,
+// and the ones nothing generates any more are deleted. It reports both lists in
+// the order they were acted on, and under dryRun it reports them and does
+// nothing (§21.1).
+//
+// It is one function because there are two callers with one rule — the whole
+// tree, through Run, and the eight CLAUDE.md files, through WriteClaudeSurface.
+// Written twice, they are two places that decide whether an artifact is a write
+// or a deletion, and one of them eventually stops matching Artifact.Stale.
+func (e *Env) apply(artifacts []Artifact, dryRun bool) (wrote, removed []string, err error) {
+	for _, a := range artifacts {
+		if !a.Stale() {
+			continue
+		}
+		abs := filepath.Join(e.Root, filepath.FromSlash(a.Path))
+		if !a.Wanted {
+			removed = append(removed, a.Path)
+			if dryRun {
+				continue
+			}
+			if err := os.Remove(abs); err != nil && !os.IsNotExist(err) {
+				return wrote, removed, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("removing %s", a.Path))
+			}
+			continue
+		}
+		wrote = append(wrote, a.Path)
+		if dryRun {
+			continue
+		}
+		if err := writeset.WriteFile(abs, a.Derived); err != nil {
+			return wrote, removed, err
+		}
+	}
+	return wrote, removed, nil
+}
+
+// scopeHoldsSkill reports whether the rebuild reached a skill, which is what
+// decides whether the mirror is inside the scope or outside it.
+//
+// The sync it enables is still whole-directory: `rebuild skills.x` also sweeps
+// an orphan mirror belonging to some other skill. That is accepted rather than
+// filtered, because `.claude/skills/` is one directory that mirrors the whole of
+// `.agents/skills/`, and a user who asked para to rebuild a skill has asked
+// about the place both of them live.
+func scopeHoldsSkill(subjects []Subject) bool {
+	for _, s := range subjects {
+		if s.Kind == kindmeta.KindSkill {
+			return true
+		}
+	}
+	return false
+}
+
+// staleSkill reports the id of a skill whose files *inside its own directory*
+// are stale, which is what a copy-mode mirror reproduces.
+//
+// The skill's derived rule is deliberately not counted. It lives in
+// `.agents/rules/` (§5.3), outside the skill and outside the mirror, so a run
+// that rewrites only the rule changes nothing a copy holds — and saying it did
+// would make a dry run over-report by exactly as much as ignoring the rest made
+// it under-report.
+func staleSkill(s Subject, artifacts []Artifact) (string, bool) {
+	if s.Kind != kindmeta.KindSkill || len(s.Locator) != 2 {
+		return "", false
+	}
+	dir, err := s.Locator.Path()
+	if err != nil {
+		return "", false
+	}
+	for _, a := range artifacts {
+		if a.Stale() && strings.HasPrefix(a.Path, dir+"/") {
+			return s.Locator[1], true
+		}
+	}
+	return "", false
 }
 
 // Subjects returns everything under scope that owns generated files, in the

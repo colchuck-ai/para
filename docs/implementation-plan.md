@@ -1323,6 +1323,43 @@ a deletion.
   deletions should not have to count back to the last label to find where they start. `--dry-run` puts
   all of them in the conditional: `would rewrite`, `would remove`, `would link`.
 
+### What the review found, and the shape of the finding
+
+Four defects, and three of them are the same defect wearing different clothes: **a rule about the
+surface written in two places, where the two places disagree.** That is the failure mode this phase was
+supposed to be immune to, and it got in anyway, which is worth recording precisely.
+
+- **`rebuild --dry-run` under-reported the mirror in `copy` mode** — found independently by both review
+  agents, which per the Phase 11 note is the strongest signal a run produces. The mirror is synced
+  *after* the subject loop, so a real run compares the copy against a `SKILL.md` it has just rewritten
+  and a dry run compares it against one it has not: `would rewrite …/SKILL.md` and no mirror line, then
+  a run that copies. The fix is `mirror.Inspect`'s `pending` argument — the skills whose own files the
+  caller is about to write, non-empty only under `--dry-run` — so the two passes answer the same
+  question about the same bytes.
+- **`config set --at skills.x <any key>` was the one skill-subject mutation that skipped the refresh.**
+  `ConfigChange` gated on the key and every other verb gated on the kind, so "any mutation whose subject
+  is a skill" existed twice with two conditions. In `copy` mode a `review.cadence` write re-rendered the
+  skill's `ACTIVITY.md` and left the mirror holding the old one — `doctor` red after a successful
+  command. `ConfigChange` now adds its key test *and then falls through to `syncSurface`*, so the kind
+  rule has one gate again.
+- **`doctor` derived "which skills exist" twice in one call chain** — `checkRules` from the walk,
+  `checkMirrorEntries` from a directory listing. They agree today by construction, which is exactly how
+  this kind of thing survives review. One `tree.SkillIDs` now answers both, and it is the same list
+  `CLAUDE.md`'s imports and the mirror sync are built from.
+- **`emit.claude` was chain-resolved while the mirror was root-resolved**, so `config set --at projects
+  emit.claude true` wrote `projects/CLAUDE.md` and no mirror — half a surface, which `doctor` then
+  called clean because it was asking the same split question. §6.1's opening sentence settles it: the
+  subsection is "off by default and turns on together, because it is one concern", and §7's table gives
+  both keys `root`. `Resolver.RenderConfig` now resolves the two of them at the root whatever locator it
+  is asked about — the only keys in the design that are not chained — and `config set --at` refuses them
+  with a message naming the root, so nobody writes one at a level nothing reads.
+
+One more, which is a genuine gap rather than a duplicated rule: **a scoped `rebuild skills.x` skipped
+the mirror**, on the reasoning that `.claude/skills/` is a tree-wide artifact like `.agents/rules/`. It
+is not, when the scope is a skill — it is that skill's own projection — so in `copy` mode the command
+you run to repair a skill finished successfully and left `doctor` red. A scope holding a skill now syncs
+the mirror; a scope holding only entities still does not.
+
 ### Two spec slips this phase exposed
 
 - **§26's `config set emit.claude true` prints the eight files compacted onto two lines with
@@ -1335,6 +1372,11 @@ a deletion.
   happens to catch a copied `ACTIVITY.md` and nothing catches the rest. The quoted block is the
   normative thing and is reproduced verbatim, so no line was added. Worth a sentence in §9 rather than a
   code change.
+- **§7's "where it usefully lives" column is a rule for the two `emit.claude` keys and advice for
+  everything else.** The review made the case: chained resolution of a knob whose two halves live at
+  different depths cannot give one answer. §7 could say so in a clause; the code enforces it either way,
+  and §2.3's own text should acknowledge that the surface refresh walks a fixed set — it is legal, and
+  the contradiction currently lives only in this plan.
 
 ### Carry-forward obligations from Phase 13
 

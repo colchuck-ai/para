@@ -48,8 +48,14 @@ func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byt
 	}
 	wrote, err := apply(e, []*plan{p}, nil)
 	res := Result{Locator: loc, Kind: subj.kind, Wrote: wrote}
-	if err != nil || !config.AffectsClaudeSurface(key) {
-		return res, err
+	if err == nil && config.AffectsClaudeSurface(key) {
+		return e.refreshSurface(res)
 	}
-	return e.refreshSurface(res)
+	// Otherwise the ordinary rule, unchanged: a config change on a *skill* has
+	// rewritten that skill's ACTIVITY.md, which a copy-mode mirror holds. Going
+	// through syncSurface rather than re-testing the kind here is what keeps
+	// "any mutation whose subject is a skill" one rule with one gate — written
+	// twice, it would be two gates that eventually disagree, and this is the
+	// verb they disagreed on.
+	return e.syncSurface(res, err)
 }

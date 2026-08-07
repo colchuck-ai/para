@@ -1,16 +1,13 @@
 package rebuild
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mirror"
-	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/render"
 	"github.com/colchuck-ai/para/internal/tree"
-	"github.com/colchuck-ai/para/internal/writeset"
 )
 
 // This file is the Claude Code compatibility surface's half of rebuild (§6.1):
@@ -96,10 +93,12 @@ func (e *Env) ClaudeSurface() ([]Artifact, error) {
 // claudeArtifact is one location's CLAUDE.md: the bytes it should hold, or —
 // when the surface is off there — the fact that it should not exist.
 //
-// The config is resolved at the location rather than at the root, because
-// `emit.claude` is chain-resolved like every other key (§7). §7's table calls
-// the root where it "usefully lives", which is advice about where to put it and
-// not a restriction on where it is read.
+// The config is still asked for per location even though the two `emit.claude`
+// keys answer with the root's value wherever they are asked (see
+// config.Resolver.RenderConfig). Reaching past the resolver to the root here
+// would be this file deciding the rule a second time, and it is the resolver's;
+// asking normally is what keeps the eight files, the mirror, and `render.For`
+// unable to disagree.
 func (e *Env) claudeArtifact(loc locator.Locator, rules []string) (Artifact, error) {
 	cfg, err := e.Resolver.RenderConfig(loc)
 	if err != nil {
@@ -155,33 +154,24 @@ func (e *Env) WriteClaudeSurface() (wrote, removed []string, err error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, a := range artifacts {
-		if !a.Stale() {
-			continue
-		}
-		abs := filepath.Join(e.Root, filepath.FromSlash(a.Path))
-		if !a.Wanted {
-			if err := os.Remove(abs); err != nil && !os.IsNotExist(err) {
-				return wrote, removed, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("removing %s", a.Path))
-			}
-			removed = append(removed, a.Path)
-			continue
-		}
-		if err := writeset.WriteFile(abs, a.Derived); err != nil {
-			return wrote, removed, err
-		}
-		wrote = append(wrote, a.Path)
-	}
-	return wrote, removed, nil
+	return e.apply(artifacts, false)
 }
 
 // SyncMirror brings `.claude/skills/` into line with the skills that exist, and
 // reports what it did — or, under dryRun, what it would do.
 //
-// The config is the root's, because the mirror is one directory at the root:
-// there is no per-bucket `.claude/`, so there is no location for a nearer level
-// to answer for.
-func (e *Env) SyncMirror(dryRun bool) ([]mirror.Change, error) {
+// The config is asked for at the root, which for the two `emit.claude` keys is
+// where it is answered from anyway — but the mirror is one directory at the
+// root, so asking anywhere else would be pretending there is a level that could
+// have a different answer.
+//
+// pending is only ever non-empty under dryRun, and it is what makes a dry run's
+// list equal to what the real run does. A real run has already rewritten the
+// skills by the time it gets here, so the comparison against disk is the whole
+// truth; a dry run has written nothing, so in copy mode a mirror of a skill
+// whose SKILL.md is about to change still matches byte for byte and would be
+// reported as fine. See mirror.Inspect.
+func (e *Env) SyncMirror(dryRun bool, pending []string) ([]mirror.Change, error) {
 	cfg, err := e.Resolver.RenderConfig(nil)
 	if err != nil {
 		return nil, err
@@ -190,7 +180,7 @@ func (e *Env) SyncMirror(dryRun bool) ([]mirror.Change, error) {
 	if err != nil {
 		return nil, err
 	}
-	issues, err := mirror.Inspect(e.Root, cfg, ids)
+	issues, err := mirror.Inspect(e.Root, cfg, ids, pending)
 	if err != nil {
 		return nil, err
 	}

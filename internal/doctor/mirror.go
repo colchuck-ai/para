@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/mdfile"
 	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/tree"
@@ -26,27 +25,30 @@ const mirrorPrefix = "para-"
 // mirror in .claude/skills/, neither of which is inside any entity's subtree —
 // so `doctor projects.acme` cannot reach them, and reporting them anyway would
 // make a scoped scan quietly tree-wide.
+//
+// One list of skills answers both halves, and that is not tidiness. "A rule
+// exists" and "a mirror exists" are the same question asked about one skill, so
+// a rule judged against the walk and a mirror judged against a directory
+// listing could disagree about whether skills.x is there — and para would then
+// report an orphan rule for a skill whose mirror it called healthy.
+// tree.SkillIDs is the list, because it is also what CLAUDE.md's import list is
+// built from and what rebuild syncs the mirror against.
 func (s *scan) checkMirrors() error {
 	if len(s.scope) > 0 {
 		return nil
 	}
-	skills := s.skillIDs()
-	if err := s.checkRules(skills); err != nil {
+	ids, err := tree.SkillIDs(s.root)
+	if err != nil {
 		return err
 	}
-	return s.checkMirrorEntries()
-}
-
-// skillIDs is the set of skills that exist, taken from the walk that already
-// found them rather than from a second listing of .agents/skills/.
-func (s *scan) skillIDs() map[string]bool {
-	out := map[string]bool{}
-	for _, sub := range s.subjects {
-		if sub.Kind == kindmeta.KindSkill && len(sub.Locator) == 2 {
-			out[sub.Locator[1]] = true
-		}
+	exists := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		exists[id] = true
 	}
-	return out
+	if err := s.checkRules(exists); err != nil {
+		return err
+	}
+	return s.checkMirrorEntries(ids)
 }
 
 // checkRules reports §10's `orphan-rule`: a derived rule file whose
@@ -121,16 +123,20 @@ func (s *scan) ruleSkillID(rel, name string) (string, bool) {
 // `broken-link` even when the skill is also gone or the link also dangles:
 // those two sentences would send a reader to look at a skill or at their git
 // config, when the answer is that the surface is switched off.
-func (s *scan) checkMirrorEntries() error {
+//
+// `pending` is nil, and that is the second deliberate silence. In copy mode a
+// mirror of a skill whose own SKILL.md is stale is *going* to change under the
+// next rebuild, and doctor does not say so — because it has already said the
+// SKILL.md is stale, and naming the consequence beside the cause reports one
+// problem twice. What the omission cannot break is the invariant that matters:
+// a clean doctor means no skill artifact is stale, so no skill gets rewritten,
+// so the mirror comparison is against final bytes and `rebuild` is a no-op.
+func (s *scan) checkMirrorEntries(ids []string) error {
 	cfg, err := s.env.Resolver.RenderConfig(nil)
 	if err != nil {
 		return err
 	}
-	ids, err := tree.SkillIDs(s.root)
-	if err != nil {
-		return err
-	}
-	issues, err := mirror.Inspect(s.root, cfg, ids)
+	issues, err := mirror.Inspect(s.root, cfg, ids, nil)
 	if err != nil {
 		return err
 	}

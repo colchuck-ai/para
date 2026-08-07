@@ -58,6 +58,17 @@ env PARA_TZ=America/Los_Angeles
 [para:phase13] exec para rebuild
 [para:phase13] stdout '^nothing to rewrite'
 
+# The surface turns on and off as one thing (§6.1), so its two keys are read at
+# the root and nowhere else — the one pair in §7's table that is a rule rather
+# than advice about where a knob usefully lives. Setting one at a level would
+# write half a surface: a bucket's CLAUDE.md with no mirror, since there is only
+# one .claude/ and it is at the root.
+[para:phase13] ! exec para config set --at projects emit.claude false
+[para:phase13] stderr 'read at the root only'
+[para:phase13] ! exec para config unset --at projects emit.claude-skills
+[para:phase13] stderr 'read at the root only'
+[para:phase13] exists projects/CLAUDE.md
+
 # --- a skill mutation keeps every CLAUDE.md correct --------------------------
 #
 # The debt Phase 12 recorded: adding a skill changes the set of derived rules and

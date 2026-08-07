@@ -72,7 +72,7 @@ func (e *Env) refreshSurface(res Result) (Result, error) {
 	// The mirror after the pointer files, for the reason rebuild sequences them
 	// the same way: a copy-mode mirror reproduces files this mutation may have
 	// just rewritten.
-	changes, err := env.SyncMirror(false)
+	changes, err := env.SyncMirror(false, nil)
 	res.Mirror = append(res.Mirror, changes...)
 	return res, err
 }

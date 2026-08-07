@@ -206,10 +206,21 @@ func (r *Resolver) Resolve(loc locator.Locator, key string) (Resolution, error) 
 // render takes. Renderers never resolve anything themselves — a renderer
 // that did would be reading truth it was not given — so this is the seam
 // between §7's chain and the projection engine.
+//
+// The two `emit.claude` keys are resolved **at the root** whatever loc is, and
+// they are the only keys in the design that are. §6.1 opens by saying the whole
+// subsection is "off by default and turns on together, because it is one
+// concern", and §7's table gives both keys `root` as where they live. The reason
+// it has to be enforced rather than merely advised is that the surface has two
+// halves in different places: eight `CLAUDE.md` files, one per location, and one
+// `.claude/skills/` at the root. Resolved per location, `config set --at
+// projects emit.claude true` would write `projects/CLAUDE.md` and no mirror —
+// half a surface, which `doctor` would then call clean because it would be
+// asking the same split question.
 func (r *Resolver) RenderConfig(loc locator.Locator) (render.Config, error) {
 	out := render.DefaultConfig()
 
-	claude, err := r.Resolve(loc, "emit.claude")
+	claude, err := r.Resolve(nil, KeyEmitClaude)
 	if err != nil {
 		return render.Config{}, err
 	}
@@ -217,7 +228,7 @@ func (r *Resolver) RenderConfig(loc locator.Locator) (render.Config, error) {
 		out.EmitClaude = v
 	}
 
-	skills, err := r.Resolve(loc, "emit.claude-skills")
+	skills, err := r.Resolve(nil, KeyEmitClaudeSkills)
 	if err != nil {
 		return render.Config{}, err
 	}
