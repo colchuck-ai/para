@@ -22,6 +22,12 @@ set -eu
 MODULE="github.com/colchuck-ai/para/cmd/para"
 REPO_URL="https://github.com/colchuck-ai/para"
 REF="main"
+# REF_GIVEN tracks whether --ref was passed, which is not the same question as
+# whether REF is "main". The default is "main" because that is the source
+# fallback's ref, but an explicit `--ref main` means "build main" — and folding
+# the two made it silently install the newest release instead, which is the one
+# thing the flag's own help says it does not do.
+REF_GIVEN=0
 DIR=""
 REPO_DIR=""
 BASE_URL=""
@@ -73,6 +79,7 @@ while [ $# -gt 0 ]; do
 	--ref)
 		need_value "$1" $#
 		REF="$2"
+		REF_GIVEN=1
 		shift 2
 		;;
 	--dir)
@@ -190,8 +197,12 @@ asset_name() {
 
 # asset_base is the directory the release's files live under: the latest
 # release when no tag was asked for, and that tag's release when one was.
+#
+# "No tag was asked for" is REF_GIVEN, not REF = "main": an explicit
+# `--ref main` names a git ref to build, and answering it with the newest
+# release would install something the user did not ask for.
 asset_base() {
-	if [ "$REF" = "main" ]; then
+	if [ "$REF_GIVEN" -eq 0 ]; then
 		printf '%s/releases/latest/download' "$BASE_URL"
 	else
 		printf '%s/releases/download/%s' "$BASE_URL" "$REF"

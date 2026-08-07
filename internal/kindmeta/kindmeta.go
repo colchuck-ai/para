@@ -5,6 +5,7 @@ package kindmeta
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
@@ -26,6 +27,21 @@ const (
 	KindSkill
 	KindContainer
 )
+
+// addressableKinds is the six kinds a locator can name, in the order §1.3
+// derives them. KindContainer is not here — it is a row in the field matrix
+// (§8.2) but no locator addresses one — and neither is KindUnknown.
+var addressableKinds = []Kind{
+	KindProject, KindArea, KindResource, KindObjective, KindKeyResult, KindSkill,
+}
+
+// AllKinds returns the kinds a locator can name, in §1.3's order.
+//
+// It exists so that "every kind" is written down once. A completion that must
+// offer the union of some per-kind vocabulary, and a test that must check a
+// per-kind rule holds for all of them, are otherwise two hand-written lists
+// that a seventh kind would silently leave stale.
+func AllKinds() []Kind { return slices.Clone(addressableKinds) }
 
 func (k Kind) String() string {
 	switch k {

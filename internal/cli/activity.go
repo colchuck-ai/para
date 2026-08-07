@@ -235,6 +235,14 @@ func containerNodes(root string, loc locator.Locator) ([]tree.Node, error) {
 }
 
 // digestLine is one line of the rollup: when, where, and what.
+//
+// Locator carries no `omitempty` on purpose. The root's own lines have no
+// locator (§1.4), and the empty string is what "no locator" is in a machine
+// shape — the key stays present so a consumer can read `.locator` on every
+// line rather than branching on whether it exists. The text output prints the
+// dash instead, because a dash is a *reading* convention and `""` is not one;
+// they are the two spellings of the same absence, and §23 makes the JSON the
+// one that must not be prettied.
 type digestLine struct {
 	Day     string       `json:"day"`
 	At      string       `json:"at,omitempty"`

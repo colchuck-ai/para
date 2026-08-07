@@ -15,7 +15,14 @@
 #     hide it.
 #
 # Version stamping goes through the same variable `go install` fills in on its
-# own (internal/version), so `para --version` reads the same either way.
+# own (internal/version), so `para --version` reads the same either way — which
+# is a claim about the *spelling* as much as the value, and the spelling is why
+# this stamps `.Tag` rather than `.Version`. GoReleaser strips the leading `v`
+# for `.Version`; `debug.ReadBuildInfo` keeps it, so `go install …@v1.2.3`
+# reports `para v1.2.3`. Stamping `.Version` made the release archive report
+# `para 1.2.3` for the same commit — two install paths, two answers, and a bug
+# report that cannot say which binary it came from. A snapshot has no tag to
+# take, so it keeps the snapshot spelling.
 version: 2
 
 project_name: para
@@ -34,7 +41,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X github.com/colchuck-ai/para/internal/version.ldflagsVersion={{ .Version }}
+      - -s -w -X github.com/colchuck-ai/para/internal/version.ldflagsVersion={{ if .IsSnapshot }}{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
     # A build that differs only in when it ran is a build nobody can compare.
     mod_timestamp: "{{ .CommitTimestamp }}"
 

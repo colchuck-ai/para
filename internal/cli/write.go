@@ -73,6 +73,13 @@ func (f *fieldFlags) register(cmd *cobra.Command) {
 		var v string
 		f.values[field] = &v
 		cmd.Flags().StringVar(&v, string(field), "", fieldHelp[field])
+		// Registered here, where the role is known: these are values being
+		// stored, so the kind the locator names decides the vocabulary and
+		// whether the flag applies at all. `add` is the creation, so it alone
+		// may set a field that is fixed at creation. The error is the "already
+		// registered" one, which cannot happen on a freshly built command.
+		_ = cmd.RegisterFlagCompletionFunc(string(field),
+			completeFieldValue(field, cmd.Name() == "add"))
 	}
 }
 

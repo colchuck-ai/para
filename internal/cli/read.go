@@ -90,6 +90,15 @@ func (f *filterFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.sort, "sort", "", "sort key: "+sortKeyList())
 	cmd.Flags().BoolVar(&f.reverse, "reverse", false, "reverse the sort")
 	cmd.Flags().IntVar(&f.limit, "limit", 0, "print at most this many")
+
+	// The two filter flags with closed vocabularies, registered here for the
+	// same reason the field flags are registered in fieldFlags.register: this
+	// is where the role is known. `--status` here filters on *effective*
+	// status, which reaches a key-result's derived four as well as the settable
+	// five, and it must not be narrowed by the scope argument — the rows under
+	// a scope are generally not the scope's own kind.
+	_ = cmd.RegisterFlagCompletionFunc("status", completeFilterStatus)
+	_ = cmd.RegisterFlagCompletionFunc("priority", fixed(kindmeta.Priorities()))
 }
 
 func sortKeyList() string {

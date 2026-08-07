@@ -24,6 +24,7 @@
 package view
 
 import (
+	"slices"
 	"time"
 
 	"github.com/colchuck-ai/para/internal/clock"
@@ -265,6 +266,29 @@ func (e *Env) Derive(loc locator.Locator, kind kindmeta.Kind, dir string, state 
 		out.Terminal = true
 	}
 	return out, nil
+}
+
+// EffectiveStatuses is every value EffectiveStatus can hold, in §1.7's order —
+// the settable vocabulary every kind draws from, then the derived ones only a
+// key-result reaches (§4.3), each spelled once.
+//
+// It lives here because this is where the value is produced: the two branches
+// above are `state.Status` and `krvalue.Status`, and the cascade replaces one
+// with another of the same two. Anything filtering or completing on
+// `--status` is asking about *this* set, which is strictly wider than any one
+// kind's settable statuses — `list --status on-track` is a legal, useful
+// request that no kind's `set` would ever accept.
+func EffectiveStatuses() []string {
+	out := kindmeta.AllStatuses()
+	for _, s := range []krvalue.Status{
+		krvalue.StatusOnTrack, krvalue.StatusAtRisk,
+		krvalue.StatusMissed, krvalue.StatusAchieved, krvalue.StatusDropped,
+	} {
+		if !slices.Contains(out, string(s)) {
+			out = append(out, string(s))
+		}
+	}
+	return out
 }
 
 // terminalAncestor finds the nearest ancestor whose own status is terminal, and

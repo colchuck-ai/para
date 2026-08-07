@@ -11,6 +11,31 @@ import (
 	"testing"
 )
 
+// TestMain skips this whole package on Windows.
+//
+// install.sh is a POSIX shell script and these tests run it as one: they exec
+// `sh`, plant `#!/bin/sh` stubs on PATH, filter PATH by looking for a `go` with
+// no extension, and stat the installed binary as `para`. Every one of those is
+// a Unix assumption, and on Windows each fails as a *test* bug rather than as a
+// finding about the installer — `pathWithoutGo` does not remove a directory
+// holding `go.exe`, so "fails clearly when Go is missing" would fail with Go
+// very much present.
+//
+// It is a runtime skip rather than a `//go:build !windows` constraint because
+// every file in this package is a test file: excluding them all leaves a
+// package with no Go files, which `go test ./...` reports as an error rather
+// than passing over.
+//
+// Windows users get the prebuilt `.zip` from the release page and never run
+// install.sh, so there is nothing here to port — only the asset naming, which
+// assetName already covers on the platforms that have a `.tar.gz`.
+func TestMain(m *testing.M) {
+	if runtime.GOOS == "windows" {
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 // repoRoot returns the checkout this test file lives in, so tests can build
 // para from local source rather than reaching out to the network.
 func repoRoot(t *testing.T) string {
@@ -99,8 +124,22 @@ func runInstaller(t *testing.T, path string, extraEnv []string, args ...string) 
 // that reports the version it was given.
 func fakeRelease(t *testing.T, dir, version string, corruptChecksum bool) {
 	t.Helper()
+	fakeReleaseAt(t, dir, filepath.Join("releases", "latest", "download"), version, corruptChecksum)
+}
 
-	assets := filepath.Join(dir, "releases", "latest", "download")
+// fakeReleaseTagged writes the same release under the layout an explicit
+// `--ref v1.2.3` asks for: `releases/download/<tag>/<asset>`. It is a separate
+// helper because it is a separate URL shape, and the header's claim to exercise
+// both was untrue until something actually wrote this one.
+func fakeReleaseTagged(t *testing.T, dir, tag, version string) {
+	t.Helper()
+	fakeReleaseAt(t, dir, filepath.Join("releases", "download", tag), version, false)
+}
+
+func fakeReleaseAt(t *testing.T, dir, sub, version string, corruptChecksum bool) {
+	t.Helper()
+
+	assets := filepath.Join(dir, sub)
 	if err := os.MkdirAll(assets, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -175,6 +214,75 @@ func TestInstallPrefersThePrebuiltAssetAndNeedsNoGo(t *testing.T) {
 	}
 	if got := strings.TrimSpace(string(out)); got != "para 9.9.9-prebuilt" {
 		t.Errorf("installed binary reports %q, want the prebuilt one", got)
+	}
+}
+
+// TestInstallRefPinsTheTaggedRelease covers the second of the two URL layouts
+// the header claims: an explicit `--ref v9.9.9` asks for
+// `releases/download/v9.9.9/<asset>`, not for the latest release.
+//
+// The two are asserted apart rather than together: the tagged release is the
+// only one written, so an installer that still built a `latest` URL would 404
+// and fall back to source instead of installing 9.9.9-tagged.
+func TestInstallRefPinsTheTaggedRelease(t *testing.T) {
+	script := installScript(t)
+	dir := t.TempDir()
+	release := t.TempDir()
+	fakeReleaseTagged(t, release, "v9.9.9", "9.9.9-tagged")
+
+	stdout, stderr, code := runInstaller(t, script,
+		[]string{"PATH=" + pathWithoutGo(t)},
+		"--dir", dir, "--ref", "v9.9.9", "--base-url", "file://"+release)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+
+	out, err := exec.Command(filepath.Join(dir, "para"), "--version").CombinedOutput()
+	if err != nil {
+		t.Fatalf("running installed para --version: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "para 9.9.9-tagged" {
+		t.Errorf("installed binary reports %q, want the tagged release", got)
+	}
+}
+
+// TestInstallRefMainBuildsMainRatherThanTheLatestRelease pins the distinction
+// the flag's own help draws: `--ref` names "a release tag to install, or a git
+// ref to build from when no release matches", and `main` is the second kind.
+//
+// The default is also the string "main", and folding the two made an explicit
+// `--ref main` silently install the newest *release* — the one thing the flag
+// says it does not do. A latest-layout release is planted here precisely so
+// that taking it would be visible.
+//
+// It asserts through --dry-run rather than through an installed binary, and
+// that is not a shortcut: --repo-dir is what the other source-path tests use to
+// stay off the network, and install.sh skips the whole prebuilt branch when it
+// is set — so a test that passed --repo-dir could not reach the decision it is
+// about. --dry-run reports which branch was chosen and reaches the network no
+// more than the release directory does.
+func TestInstallRefMainBuildsMainRatherThanTheLatestRelease(t *testing.T) {
+	script := installScript(t)
+	dir := t.TempDir()
+	release := t.TempDir()
+	fakeRelease(t, release, "9.9.9-prebuilt", false)
+
+	stdout, stderr, code := runInstaller(t, script, nil,
+		"--dir", dir, "--ref", "main", "--dry-run", "--base-url", "file://"+release)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+
+	// The observable decision is which URL was built. --dry-run reports the
+	// asset it would reach for without checking that it is there, so the
+	// latest-vs-tagged choice is visible in the path and the 404-then-fall-back
+	// that follows it is not.
+	combined := stdout + stderr
+	if strings.Contains(combined, "releases/latest/download") {
+		t.Errorf("--ref main reached for the latest release:\n%s", combined)
+	}
+	if !strings.Contains(combined, "releases/download/main") {
+		t.Errorf("--ref main did not treat main as a ref of its own:\n%s", combined)
 	}
 }
 
@@ -404,9 +512,16 @@ func TestInstallFailsClearlyWhenGoMissing(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("expected non-zero exit when go is missing\nstdout: %s\nstderr: %s", stdout, stderr)
 	}
-	combined := strings.ToLower(stdout + stderr)
-	if !strings.Contains(combined, "go") {
-		t.Errorf("expected error to mention the missing Go toolchain, got:\nstdout: %s\nstderr: %s", stdout, stderr)
+	// The whole message, not the substring "go" — which every $TMPDIR path
+	// containing the letters would have satisfied, including a message about
+	// something else entirely. What the user needs is the diagnosis and where
+	// to go, so both are asserted.
+	combined := stdout + stderr
+	if !strings.Contains(combined, "Go toolchain not found on PATH") {
+		t.Errorf("expected the missing-toolchain diagnosis, got:\nstdout: %s\nstderr: %s", stdout, stderr)
+	}
+	if !strings.Contains(combined, "https://go.dev/dl/") {
+		t.Errorf("expected the message to say where to get Go, got:\nstdout: %s\nstderr: %s", stdout, stderr)
 	}
 }
 

@@ -118,6 +118,13 @@ exec para activity archive --recursive
 stdout '^2026-03-05 +archive +added resources$'
 
 # --since narrows the root's digest the same way it narrows any other.
+#
+# Both sides, because only the negative is not a test: a `--since` implemented
+# as "always empty" passes `! stdout 'Created'` on its own. The boundary is the
+# same instant in both runs, so the pair pins what the filter keeps as well as
+# what it drops.
+exec para activity --since 2026-03-05
+stdout 'Created'
 exec para activity --since 2026-03-06
 ! stdout 'Created'
 

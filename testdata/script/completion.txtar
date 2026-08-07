@@ -76,6 +76,9 @@ stdout '^projects.acme.objectives$'
 # `skills` is the one place that is a bucket without being a directory the walk
 # finds (§1.4), so it has to be offered deliberately — by the four verbs that
 # take a place to look, and by none of the four that take a thing to print.
+#
+# The `list` run above is what this first assertion reads, so nothing may be
+# inserted between them.
 stdout '^skills$'
 exec para __complete review ''
 stdout '^skills$'
@@ -86,6 +89,55 @@ stdout '^skills$'
 exec para __complete show ''
 ! stdout '^skills$'
 ! exec para show skills
+stderr 'skills'
+
+# Candidates come back sorted, not in walk order. The walk is depth-first, so a
+# sibling whose id sorts between a parent and its children comes back
+# interleaved without the sort — `-` sorts before `.`, which is what makes
+# `projects.acme-x` fall between `projects.acme` and `projects.acme.objectives`.
+# §0.2's byte-stability is about what para prints, and a menu is printed.
+exec para add projects.acme-x --name 'Acme X' --description 'A sibling that sorts in between.'
+exec para __complete show projects.acme
+cmp stdout $WORK/want-sorted.txt
+exec para remove projects.acme-x --force
+
+# --- stubs: a place, never a thing --------------------------------------------
+
+# Archiving something nested leaves stub directories above it — locator segments
+# with no entity behind them (§1.6). They split the two groups exactly the way
+# §14's place/thing distinction predicts, and nothing tested that until the
+# archived tree below existed to test it with.
+exec para archive projects.acme.objectives.q1-growth
+
+# A stub is a place: `list` prints what is beneath it, and `path` prints its
+# directory — its help says "whether or not anything is there yet".
+exec para list archive.projects.acme
+stdout 'q1-growth'
+exec para path archive.projects.acme
+exec para __complete list ''
+stdout '^archive.projects.acme$'
+exec para __complete path ''
+stdout '^archive.projects.acme$'
+
+# A stub is not a thing: the three verbs that print one refuse it by name, so
+# they must not offer it either.
+! exec para show archive.projects.acme
+stderr 'stub'
+exec para __complete show ''
+! stdout '^archive.projects.acme$'
+exec para __complete log ''
+! stdout '^archive.projects.acme$'
+exec para __complete activity ''
+! stdout '^archive.projects.acme$'
+
+# `config` resolves a level against a thing that exists, so it is in the second
+# group even though it takes a locator in the same position `list` does.
+! exec para config list archive.projects.acme
+stderr 'does not exist'
+exec para __complete config list ''
+! stdout '^archive.projects.acme$'
+
+exec para unarchive archive.projects.acme.objectives.q1-growth
 
 # `add` is the one verb whose argument does not exist yet, so it completes the
 # places a new thing can go rather than the things that are there. Trailing dot,
@@ -128,10 +180,15 @@ stdout '^projects.acme.objectives\.$'
 
 # An archived thing moves within the archive, because that is the only move
 # that does not cross the boundary.
+#
+# `cmp` rather than `stdout`, because the defect this replaced was a *duplicate*
+# and a pattern match cannot see one: the archived buckets are seeded and then
+# found again by the walk, which the live side's `len > 1` guard excludes and
+# the archived side's two-segment locators sail straight through. A menu that
+# lists the same destination twice is the shell rendering para's arithmetic.
 exec para archive areas.health
 exec para __complete move archive.areas.health ''
-stdout '^archive.areas\.$'
-! stdout '^areas\.$'
+cmp stdout $WORK/want-move-archived.txt
 exec para unarchive archive.areas.health
 
 # `unset` completes the kind's own fields after the locator, and only the ones
@@ -149,6 +206,17 @@ stdout '^start$'
 ! stdout '^type$'
 ! stdout '^target$'
 
+# `unset <locator> <field>…` takes as many fields as you name, and a field
+# already named is not offered a second time — `unset x tags tags` is the same
+# field twice, which is at best noise.
+exec para __complete unset projects.acme status ''
+stdout '^due$'
+! stdout '^status$'
+exec para __complete unset projects.acme status due ''
+stdout '^tags$'
+! stdout '^status$'
+! stdout '^due$'
+
 # --- flag values ------------------------------------------------------------
 
 # The §15 vocabularies, each from the same table the flag validates against.
@@ -162,8 +230,66 @@ stdout '^attention$'
 stdout '^progress$'
 exec para __complete log projects.acme --kind ''
 stdout '^measurement$'
-exec para __complete add projects.new --type ''
+# `--type` only where the kind has one: a key-result's position, not a project's.
+# The locator here is deliberately one that does not exist yet — `add`'s
+# argument never does — which is why the kind comes from §1.3's derivation on
+# the locator rather than from anything on disk.
+exec para __complete add projects.acme.objectives.q1-growth.key-results.new --type ''
 stdout '^ratio$'
+exec para __complete add projects.new --type ''
+! stdout '^[^:]'
+! exec para add projects.new --name N --description d --type number
+stderr 'no type field'
+
+# The locator already typed narrows the vocabulary to that kind's, which is the
+# whole reason the status completer reads it: a key-result's status is derived,
+# with exactly one value carved out as settable (§4.3). Asserting the *absence*
+# of the plannable four is what makes this a test of the narrowing rather than
+# of the union, which contains `dropped` too.
+exec para __complete set projects.acme.objectives.q1-growth.key-results.signups --status ''
+stdout '^dropped$'
+! stdout '^planned$'
+! stdout '^in-progress$'
+
+# A flag the kind does not have is offered nothing at all, because the verb
+# refuses it on the very next keystroke. A key-result has no priority, and an
+# area has no type.
+exec para __complete set projects.acme.objectives.q1-growth.key-results.signups --priority ''
+! stdout '^[^:]'
+! exec para set projects.acme.objectives.q1-growth.key-results.signups --priority high
+stderr 'no priority field'
+exec para __complete set areas.health --type ''
+! stdout '^[^:]'
+! exec para set areas.health --type number
+stderr 'no type field'
+
+# `--type` is `add`'s alone: it is fixed at creation (§15), so `set` refuses it
+# for every kind there is, and a completion that offered the three grammars
+# there would be offering three certain errors. With no locator typed yet the
+# union is taken over the kinds the verb would accept — empty for `set`.
+exec para __complete set '' --type ''
+! stdout '^[^:]'
+! exec para set projects.acme.objectives.q1-growth.key-results.signups --type ratio
+stderr 'fixed at creation'
+exec para __complete add '' --type ''
+stdout '^number$'
+
+# `--status` on a *filter* is a different flag with the same name: §17 compares
+# against effective status, so it reaches the four a key-result derives (§4.3)
+# as well as the five any kind can be set to. Narrowing it to a kind's settable
+# vocabulary would hide `on-track` — which is what the rows actually say.
+exec para measure projects.acme.objectives.q1-growth.key-results.signups 1500
+exec para list --all --status on-track
+stdout 'key-results.signups'
+exec para __complete list --status ''
+stdout '^on-track$'
+stdout '^planned$'
+
+# And the scope argument is a place to look, not the kind being filtered: the
+# rows under a project are generally not projects, so scoping must not narrow
+# the vocabulary.
+exec para __complete list projects.acme --status ''
+stdout '^on-track$'
 
 # Config keys are a fixed vocabulary too (§7), and there are enough of them to
 # be worth not memorising.
@@ -187,10 +313,17 @@ exec para __complete config set project.stale-after ''
 ! stdout '^true$'
 
 # `show <key> [<locator>]` takes a locator second; `unset <key>` takes nothing.
+#
+# "Nothing" is asserted as *nothing*, not as the absence of a locator: cobra
+# prints candidates to stdout and the trailing `:N` directive there too, sending
+# only its human-readable "Completion ended with…" line to stderr. So a stdout
+# with no line that fails to start with `:` is a stdout with no candidates —
+# which `! stdout '^projects'` was not, since it also passes for a second config
+# key offered where a key does not belong.
 exec para __complete config show project.stale-after ''
 stdout '^projects.acme$'
 exec para __complete config unset project.stale-after ''
-! stdout '^projects'
+! stdout '^[^:]'
 
 # --at names the level to write at, which is a locator wherever it appears.
 exec para __complete config set project.stale-after 30 --at ''
@@ -204,3 +337,16 @@ cd $WORK
 exec para __complete show ''
 ! stdout '^projects'
 ! stderr 'error:'
+
+-- want-sorted.txt --
+projects.acme
+projects.acme-x
+projects.acme-x.objectives
+projects.acme.objectives
+projects.acme.objectives.q1-growth
+projects.acme.objectives.q1-growth.key-results
+projects.acme.objectives.q1-growth.key-results.signups
+:4
+-- want-move-archived.txt --
+archive.areas.
+:6

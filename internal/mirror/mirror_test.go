@@ -3,6 +3,7 @@ package mirror_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -140,7 +141,12 @@ func TestCopyModeCopiesTheSkillWithoutItsPara(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scripts/run.sh was not copied: %v", err)
 	}
-	if info.Mode().Perm()&0o111 == 0 {
+	// Windows has no execute bit — os.Stat reports 0666 or 0444 for every
+	// regular file, and contents() derives Exec the same way, so the copy is
+	// written 0644 and this can never hold there. Skipping the assertion rather
+	// than the test keeps the rest of copy mode — which is the §6.1 mode
+	// Windows is in CI to exercise — covered on the platform that needs it.
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
 		t.Error("the copied script is not executable; a skill that ships scripts ships them runnable")
 	}
 

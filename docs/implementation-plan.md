@@ -1659,8 +1659,10 @@ finding rather than a Phase 14 regression.
 - **A relocation does not follow an entity's archived shadow (§18.3, §1.6).** Rename a live entity that
   has an archived descendant and the archived copy keeps recording an ancestry that no longer exists;
   the later `unarchive` is refused, naming an ancestor para cannot reinstate. The refusal is correct
-  and legible, and the repair — a `move` inside `archive/` — is available, so this is a design question
-  rather than a bug. It wants a sentence in §18.3 either way.
+  and legible, and the repair is available, so this is a design question rather than a bug. It wants a
+  sentence in §18.3 either way. *(Written into §18.3 in Phase 15. The repair named here — "a `move`
+  inside `archive/`" — is **not** the one that works: para refuses it, "archive.resources.a is a stub,
+  not an entity". The four-step repair §18.3 now spells out is what the code actually offers.)*
 - **`para activity` cannot produce the root's digest.** It requires a locator (§13 says `[<locator>]`),
   and `.` from the tree root fails because the root is neither an entity nor a container. That was
   invisible until this phase, because until `init` existed nothing created a root `ACTIVITY.md` in a
@@ -1741,7 +1743,7 @@ The fix replaced a list of exceptions with the set itself: `plainYAML` is YAML's
 the three characters the scanner treats as breaks. Both inputs are committed as seed corpus, so
 `make test` covers them from here without a fuzz run.
 
-### Two places the code and §13–§14 disagree
+### Three places the code and §13–§15 disagree
 
 Both were found by writing the completion's candidate sets down, both are the *code* being wider
 than the document, and neither is fixed here — a release-engineering phase is the wrong place to
@@ -1760,18 +1762,125 @@ decision.
   the code has taken `[<locator>]` since Phase 7 and its help says so, symmetrical with `config
   show <key> [<locator>]` and with the same justification — a resolved value is only meaningful
   somewhere. Either §22 gains four characters or the code loses a feature.
+- **`para init` takes `--name` and `--description`, which §13 does not spell and §15 does not grant.**
+  §13's row is `para init [path]` and §15's matrix has no row for the tree root — §8.1 says
+  `tree.toml` holds "schema version and tree identity" without saying who may set it. The flags exist
+  for the reason Phase 14 recorded (the root has no locator, so `para set` can never reach it, and
+  `init` is the only chance), which is an argument for amending §13 rather than for dropping them.
+  Found by the Phase 15 review, not by writing the completions, which is why it was missing from this
+  list when the list said "two".
+
+### What the review found
+
+Two agents, twenty-two findings, and the shape is Phase 11's again at full strength: **the two
+severest were both in this phase's own new code, and both were the same mistake — a rule keyed on a
+name instead of on a role.**
+
+- **Flag completions were keyed on the flag's *name*, and a name does not fix a meaning.** The
+  comment said so outright — "`--status` means the same thing on every command that has it" — and it
+  is false twice over. `--status` on `set` is a value to store, drawn from the kind's settable
+  vocabulary; `--status` on `list` filters on *effective* status (§1.7, §4.3), which reaches the four
+  a key-result derives and which no kind's `set` would ever accept. So `list --status` never offered
+  `on-track` even though `list --all --status on-track` returns rows, and it narrowed its vocabulary
+  by the *scope* argument — a place to look, whose rows are generally not its own kind. The same
+  key-on-the-name gave `--priority` and `--type` fixed lists that ignored the kind entirely:
+  `set <key-result> --priority` offered three values the verb refuses on the next keystroke, and
+  `set --type` offered three that `set` refuses for *every* kind, since `type` is `RequiredFixed`
+  where it exists and absent everywhere else. The registration now happens in the two functions that
+  already know the role — `fieldFlags.register` and `filterFlags.register` — so the question "which
+  meaning is this?" is answered where the flag is defined rather than guessed from its spelling
+  later. `view.EffectiveStatuses` is the filter vocabulary, and it lives beside the two branches that
+  produce the value.
+- **A comment claimed nothing takes a stub, and five verbs take one.** `locators` filtered stubs out
+  of every candidate set with the justification "Nothing takes one as an argument, so nothing offers
+  one" (§1.6). `show`, `log`, and `activity` do refuse a stub; `list` prints what is beneath it,
+  `rebuild` and `doctor` scan it, and `path` prints its directory — its own help says "whether or not
+  anything is there yet". This is §14's place-versus-thing split again, applied to the one kind of
+  locator with no truth of its own, and the stub rule now sits in each filter rather than once inside
+  the walk, because the verbs genuinely disagree about it.
+
+The rest, briefly:
+
+- **Archived `move` destinations were offered twice.** `nestingPlaces` seeds the buckets and then
+  walks; the `len > 1` guard excludes the live seeds from re-discovery, but the archived ones are two
+  segments deep and sailed through it. A pattern assertion cannot see a duplicate, so the test is now
+  a whole-output `cmp`.
+- **`.goreleaser.yaml` stamped `{{ .Version }}`, which strips the leading `v`.** `debug.ReadBuildInfo`
+  keeps it, so the release archive reported `para 1.2.3` and `go install …@v1.2.3` reported
+  `para v1.2.3` for the same commit — two install paths, two answers, and a bug report that cannot say
+  which binary it came from. The file's own header claimed they agreed. It stamps `.Tag` now.
+- **`--ref main` installed the newest release.** `asset_base` tested `REF = "main"`, which is also the
+  default, so it could not tell "the user said nothing" from "the user said main" — and the flag's help
+  says `main` is a ref to build. `REF_GIVEN` tracks the question the code was actually asking.
+
+**Three of the findings were the phase's prose rather than its code**, which is the fourth phase
+running that the spec agent has caught freshly-written claims being false:
+
+- The root `AGENTS.md` enumerated what para owns — "the two that are not are `.agents/` … and the
+  placeholders inside the archive" — and went false the moment `emit.claude` is on, at which point
+  `.claude/` and a wholly generated `CLAUDE.md` exist and the block still tells a fresh agent they are
+  its content to edit freely. It is the same overstated-enumeration failure this phase had already
+  fixed once (one exception → two). It also described a tracked directory as carrying a `README.md`,
+  which a skill directory does not.
+- **"`impl` is local-only, there is no `origin`" was simply untrue** — `origin` points at
+  `github.com/colchuck-ai/para` and has `main` and `rc`. The conclusion survives and the reason does
+  not: nothing has been pushed, and `origin/main` predates `cmd/`, so no workflow has executed and
+  `go install …@latest` does not work today either.
+- The README's tour claimed to be "reproducible" without naming `PARA_NOW`/`PARA_TZ` or that both are
+  compiled out of a released binary, and its `init` block elided twenty-one lines with no `…`.
+
+**And four findings were about the tests**, all of the kind that quietly weakens a suite. Both agents
+were asked to find "proofs that would still pass if the thing they prove were deleted", and they did:
+a `! stdout '^projects'` standing in for "offers nothing" (which also passes when a *config key* is
+wrongly offered); `strings.Contains(combined, "go")`, satisfied by any `$TMPDIR` path containing the
+letters; a `--since` assertion with only a negative side, which passes on a filter implemented as
+"always empty"; and a header claiming to exercise both release URL layouts when no test passed `--ref`
+at all. The `unset` field dedup, the candidate sort order, and the whole archived-stub tree had no
+coverage. All are now tested, and the `--ref main` test was itself rewritten after the first version
+proved vacuous — it passed `--repo-dir`, which makes `install.sh` skip the entire prebuilt branch, so
+it never reached the decision it was named for.
+
+**Two Windows blockers were found without a Windows machine**, which is what the first push would
+otherwise have spent its failures on: `scripts/install_test.go` is Unix-only throughout (it execs
+`sh`, plants `#!/bin/sh` stubs, filters PATH for a `go` with no `.exe`, and stats `para` rather than
+`para.exe`) and now skips as a package; and `mirror_test.go` asserted the execute bit survives a copy,
+which Windows cannot report. The second is in `copy` mode — the §6.1 mode the Windows job exists to
+exercise. **A repo `.gitattributes` landed with them**: git for Windows defaults to `core.autocrlf=true`,
+which would have rewritten every txtar golden's line endings while the program still printed LF,
+failing twenty-odd byte comparisons for reasons that say nothing about para.
 
 ### Carry-forward from Phase 15
 
-- **The first CI run on Windows is still unverified**, and so is every other job: `impl` is
-  local-only, there is no `origin`, and no workflow in `.github/` has ever executed. The
-  `release-config` and `fuzz` jobs added here join the Windows job in that category. First push is
-  where all four are actually tested.
+- **The first CI run on Windows is still unverified**, and so is every other job. There *is* an
+  `origin` — `github.com/colchuck-ai/para`, with `main` and `rc` — but nothing has been pushed to it
+  and no workflow in `.github/` has ever executed. The `release-config` and `fuzz` jobs added here
+  join the Windows job in that category. First push is where all four are actually tested, and the two
+  Windows blockers the review found are two fewer failures it will spend.
+- **`origin/main` predates the implementation.** It carries the design document and this plan, and no
+  `cmd/` — so `go install github.com/colchuck-ai/para/cmd/para@latest`, which the README's second
+  install path offers, fails today for anyone who tries it. Pushing `impl` is what fixes it; nothing
+  in the code is wrong.
 - **No release has been tagged.** `.goreleaser.yaml` is validated (`make release-check`) and its
   snapshot output was installed end-to-end by `scripts/install.sh` locally, which is as far as a
-  repository with no remote can take it. `make snapshot` reproduces that check.
+  repository with nothing pushed can take it. `make snapshot` reproduces that check.
 - **`para init` still cannot set `para-version` on any later write** (§8.1). Unchanged from Phase 14,
   and still nothing reads it.
+- **`para activity --local` is inert**, and its help promises "render timestamps in the reader's zone
+  rather than UTC". Every other read command routes the flag through `readFlags.zone`; `activity`
+  never calls it, so the rollup's `at` column and the digest's day buckets are UTC whatever is asked.
+  `review` and `doctor` face the same situation and answer it honestly — their help says "accepted for
+  consistency; prints no timestamp to convert" — but that wording would be false here, because
+  `activity --json` does print an instant. It is Phase 12's code and a Phase 15 `--help`-review miss.
+  The open question is what `--local` should *mean* for a digest: converting the instant is obvious,
+  but the day headings are what the digest is grouped by, and shifting those makes
+  `para activity` stop matching the `ACTIVITY.md` beside it — which is §16.4's "the two agree by
+  construction", the claim this phase spent its `activity` work establishing.
+- **The U+2028 fix is not byte-neutral on an existing tree.** The old encoder wrote a bare U+2028 raw
+  and it round-tripped whenever it was not beside whitespace; the new one escapes it. So a tree whose
+  name or description carries one has README bytes that change, and `doctor` reports
+  `stale-projection` until `para rebuild`. Nothing else in the predicate widened or narrowed — the
+  other two narrowings, the surrogates and U+FFFE/U+FFFF, could never have survived a parse — but this
+  one wants a line in the release notes rather than a surprise.
 
 ---
 

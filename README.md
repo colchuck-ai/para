@@ -38,8 +38,10 @@ para completion zsh > "${fpath[1]}/_para"      # bash, zsh, fish, powershell
 
 ## A five-minute tour
 
-Everything below is a real transcript, and reproducible: the clock was fixed at
-2026-03-05T17:00Z, which is what the ages and deadlines are relative to.
+Everything below is a real transcript. Your timestamps will differ and nothing else will: the clock
+here was pinned to 2026-03-05T17:00Z in America/Los_Angeles, which is what the ages and deadlines
+are relative to. Pinning it is a test-build affordance, not a flag — `PARA_NOW` and `PARA_TZ` are
+read only by a binary built with `-tags para_testhooks`, so a released para always tells the time.
 
 **Make a tree.** `init` writes the four buckets, the archive's mirror of the live three, and an
 `AGENTS.md` at each of those places explaining what belongs there:
@@ -49,6 +51,7 @@ $ para init brain
 created  brain/projects/.para/state.toml
          …
          brain/.para/tree.toml
+         …
          brain/README.md
          brain/AGENTS.md
          brain/ACTIVITY.md

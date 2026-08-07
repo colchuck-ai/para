@@ -11,11 +11,13 @@ about the thing you are filing.
 Each of those directories explains itself in its own AGENTS.md.
 
 A directory with a `.para/` inside it is a thing this tree tracks. Most directories without one
-are content — yours, and left alone. The two that are not are `.agents/`, described below, and
-the placeholders inside the archive, which the archive explains. In a tracked directory,
-`README.md` carries generated frontmatter above a body that is yours, `ACTIVITY.md` is a generated
-digest of that directory's own history, and `.para/` holds the machine-readable truth: what the
-thing is, and an append-only log of what has happened to it.
+are content — yours, and left alone. The exceptions are `.agents/`, described below; the
+placeholders inside the archive, which the archive explains; and `.claude/` with its `CLAUDE.md`,
+which para generates when the Claude Code surface is switched on and does not create otherwise.
+In a tracked directory, `ACTIVITY.md` is a generated digest of that directory's own history and
+`.para/` holds the machine-readable truth: what the thing is, and an append-only log of what
+has happened to it. Alongside them is a `README.md` — or, for a skill, a `SKILL.md` — whose
+frontmatter is generated above a body that is yours.
 
 `.agents/` is not one of the four places and holds nothing you would file. Under
 `.agents/skills/`, a skill is a directory you author — `SKILL.md`, plus any scripts and references
@@ -28,8 +30,8 @@ Two rules before you edit anything here:
 
 - The frontmatter of a `README.md` or a `SKILL.md` is generated and the body below it is yours.
   Edit the body freely; edits to the frontmatter are overwritten.
-- `ACTIVITY.md`, `MEASUREMENTS.csv`, and everything under `.agents/rules/` are wholly generated. Do
-  not hand-edit them.
+- `ACTIVITY.md`, `MEASUREMENTS.csv`, everything under `.agents/rules/`, and — where they exist —
+  `CLAUDE.md` and everything under `.claude/` are wholly generated. Do not hand-edit them.
 
 Resolving a merge conflict in this tree: resolve the truth files under `.para/` and the journals
 under `.para/logs/`, then run `para rebuild`. Never hand-resolve a generated file.
