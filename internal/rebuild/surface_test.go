@@ -61,8 +61,13 @@ func TestRebuildWritesTheWholeClaudeSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("no symlink-mode mirror after a rebuild: %v", err)
 	}
+	// ToSlash, because the link is written through filepath.FromSlash and
+	// Windows reads it back as `..\..\.agents\skills\para-signups-report` —
+	// the same link in that platform's separator. Change.Target below needs no
+	// such conversion: it carries mirror.Target's own slash-separated string,
+	// which never touches the filesystem.
 	wantTarget := "../../.agents/skills/para-signups-report"
-	if target != wantTarget {
+	if filepath.ToSlash(target) != wantTarget {
 		t.Errorf("mirror target = %q, want %q", target, wantTarget)
 	}
 	want := mirror.Change{Verb: mirror.VerbLinked, Path: ".claude/skills/para-signups-report", Target: wantTarget}

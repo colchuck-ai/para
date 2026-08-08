@@ -69,8 +69,22 @@ func fakeGoOnPath(t *testing.T, version string) string {
 	return dir + string(os.PathListSeparator) + os.Getenv("PATH")
 }
 
-// pathWithoutGo returns a PATH value with every directory containing a `go`
-// executable removed, so the installer sees no Go toolchain at all.
+// pathWithoutGo returns a PATH value with the Go toolchain removed, so the
+// installer sees no `go` at all.
+//
+// Dropping every directory that holds a `go` takes everything else in that
+// directory with it, and on the GitHub ubuntu runner that meant `uname` and
+// `tr`: install.sh died at its platform check with `uname: not found`, and five
+// tests failed for a reason with nothing to do with the Go toolchain being
+// absent. Removing the *directory* was never the goal; removing one executable
+// from it was.
+//
+// So a directory holding only the toolchain — `…/go/bin`, which is `go` and
+// `gofmt` and nothing else — is dropped outright, and a directory that holds
+// `go` beside anything else is replaced by a shim: a temporary directory of
+// symlinks to every entry except `go`. The shell keeps its utilities, the
+// installer finds no toolchain, and neither outcome depends on where the
+// machine happens to install Go.
 func pathWithoutGo(t *testing.T) string {
 	t.Helper()
 	var kept []string
@@ -78,12 +92,93 @@ func pathWithoutGo(t *testing.T) string {
 		if dir == "" {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(dir, "go")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "go")); err != nil {
+			kept = append(kept, dir)
 			continue
 		}
-		kept = append(kept, dir)
+		if shim, ok := shimWithoutGo(t, dir); ok {
+			kept = append(kept, shim)
+		}
 	}
 	return strings.Join(kept, string(os.PathListSeparator))
+}
+
+// TestPathWithoutGoKeepsTheShellsUtilities pins both halves of the helper's
+// contract, because getting one of them wrong is what turned a green suite red
+// on CI and nowhere else.
+//
+// The two directory shapes are exercised deliberately: a toolchain directory,
+// which is what a developer machine usually has and is why this was invisible
+// locally, and a shared directory holding `go` beside a utility, which is what
+// the runner had. The old helper dropped the second one whole and install.sh
+// died at `uname: not found`.
+func TestPathWithoutGoKeepsTheShellsUtilities(t *testing.T) {
+	stub := func(dir, name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shared := t.TempDir()
+	stub(shared, "go")
+	stub(shared, "uname")
+	stub(shared, "tr")
+
+	toolchain := t.TempDir()
+	stub(toolchain, "go")
+	stub(toolchain, "gofmt")
+
+	t.Setenv("PATH", shared+string(os.PathListSeparator)+toolchain)
+
+	var sawUname, sawTr bool
+	for _, dir := range strings.Split(pathWithoutGo(t), string(os.PathListSeparator)) {
+		if dir == "" {
+			continue
+		}
+		// Stat, not Lstat: a shim entry is a symlink and what matters is what
+		// the shell would find at the end of it.
+		if _, err := os.Stat(filepath.Join(dir, "go")); err == nil {
+			t.Errorf("%s still offers go", dir)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "uname")); err == nil {
+			sawUname = true
+		}
+		if _, err := os.Stat(filepath.Join(dir, "tr")); err == nil {
+			sawTr = true
+		}
+	}
+	if !sawUname || !sawTr {
+		t.Errorf("the shell's utilities did not survive: uname=%v tr=%v", sawUname, sawTr)
+	}
+}
+
+// shimWithoutGo mirrors dir into a temporary directory, leaving `go` out. It
+// reports false when there is nothing worth keeping, which is the plain
+// toolchain-directory case.
+func shimWithoutGo(t *testing.T, dir string) (string, bool) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		// Unreadable is indistinguishable from empty for this purpose, and a
+		// PATH entry that cannot be read contributes no `go` either.
+		return "", false
+	}
+	shim := t.TempDir()
+	kept := 0
+	for _, e := range entries {
+		name := e.Name()
+		// `gofmt` goes too: it is the toolchain, and leaving it behind in a
+		// directory whose whole point is "no Go here" would be confusing to
+		// anyone debugging a failure.
+		if name == "go" || name == "gofmt" {
+			continue
+		}
+		if err := os.Symlink(filepath.Join(dir, name), filepath.Join(shim, name)); err != nil {
+			continue
+		}
+		kept++
+	}
+	return shim, kept > 0
 }
 
 func runInstaller(t *testing.T, path string, extraEnv []string, args ...string) (stdout, stderr string, exitCode int) {

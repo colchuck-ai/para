@@ -1876,6 +1876,28 @@ Windows one is exactly what that job was added to find.
   stated (`-timeout 30m`, in the Makefile and repeated in the Windows job that cannot use it) rather
   than inherited. `test (macos-latest)` was cancelled by fail-fast and so is still unverified.
 
+The second run went red too, and both remaining failures were **test bugs of the same shape as the
+first two — a helper or an assertion that encoded the platform it was written on**:
+
+- **A second raw link-target assertion** (`internal/rebuild/surface_test.go`) that the first fix
+  missed, because that fix was found by reading the failure rather than by looking for every instance
+  of the pattern. `grep -rn Readlink` over the repository afterwards found the whole set and settled
+  it: two assertions needed `ToSlash`, one compares a bare `run.sh` with no separator in it, and one
+  copies a link without comparing anything.
+- **`pathWithoutGo` removed the shell's own utilities.** It dropped every PATH directory holding a
+  `go`, so where the runner keeps `go` beside `uname` and `tr`, install.sh died at its platform check
+  with `uname: not found` — five tests failing for a reason with nothing to do with the Go toolchain
+  being absent. Removing the *directory* was never the goal; removing one executable from it was. It
+  now drops a toolchain-only directory outright and replaces a shared one with a shim of symlinks to
+  everything except `go` and `gofmt`.
+
+  This one is worth the extra sentence, because it is the second CI failure caused by an **untested
+  test helper**. `pathWithoutGo` is load-bearing — it is what makes "the prebuilt path needs no Go
+  toolchain" an assertion rather than a hope — and nothing pinned its contract, so a machine whose
+  `go` lives somewhere else silently changed what five tests were testing. It has a test of its own
+  now, exercising both directory shapes: the toolchain-only one every developer machine has, which is
+  why this was invisible locally, and the shared one the runner had.
+
 ### Carry-forward from Phase 15
 - **`origin/main` predates the implementation.** It carries the design document and this plan, and no
   `cmd/` — so `go install github.com/colchuck-ai/para/cmd/para@latest`, which the README's second
