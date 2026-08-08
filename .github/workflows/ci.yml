@@ -38,6 +38,11 @@ jobs:
   #   - no `-race`, which needs a C toolchain on windows/amd64. The race
   #     detector is not what this job is for — para is one command, one
   #     goroutine — and the two Unix rows above run it on every commit.
+  #
+  # `-timeout` is repeated from the Makefile rather than shared, which is the
+  # cost of spelling the recipe out; the two must stay in step. cmd/para runs
+  # for minutes because the crash matrix and the properties drive the real
+  # binary, and go test's default is 10 minutes per package.
   windows:
     runs-on: windows-latest
     steps:
@@ -47,7 +52,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - name: go test (no -race; see the comment above this job)
         shell: bash
-        run: go test ./... -count=1 -tags para_testhooks
+        run: go test ./... -count=1 -timeout 30m -tags para_testhooks
 
   lint:
     runs-on: ubuntu-latest

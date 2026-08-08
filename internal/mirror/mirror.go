@@ -277,7 +277,15 @@ func classify(root string, cfg render.Config, want, pending map[string]bool, id 
 			issue.State, issue.Detail = StateBroken, "is a symlink that does not resolve"
 			break
 		}
-		if target, err := os.Readlink(abs); err != nil || target != Target(id) {
+		// ToSlash before comparing, because Target is slash-separated by
+		// contract and the link was written through filepath.FromSlash. On
+		// Windows os.Readlink hands back `..\..\.agents\skills\para-x`, which
+		// is the same link — so without this, doctor reported `stale-projection`
+		// on a symlink para had just created, rebuild rewrote it to the
+		// identical bytes, and doctor stayed red forever. The write converts
+		// one way and the read has to convert back; a rule applied at one end
+		// of a round trip and not the other is not a rule.
+		if target, err := os.Readlink(abs); err != nil || filepath.ToSlash(target) != Target(id) {
 			issue.State, issue.Detail = StateStale, fmt.Sprintf("points at %q, not at the skill", target)
 		}
 	case entry.IsDir():

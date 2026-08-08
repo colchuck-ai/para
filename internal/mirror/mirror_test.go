@@ -107,13 +107,23 @@ func TestSymlinkModeLinksEverySkill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the mirror is not a symlink: %v", err)
 	}
-	// Relative, so the link survives the tree being cloned or moved.
-	if want := "../../.agents/skills/para-signups-report"; target != want {
+	// Relative, so the link survives the tree being cloned or moved. Compared
+	// through ToSlash because the link is written through FromSlash: on Windows
+	// os.Readlink hands back `..\..\.agents\skills\para-signups-report`, which
+	// is the same link spelled in the separator that platform uses.
+	if want := "../../.agents/skills/para-signups-report"; filepath.ToSlash(target) != want {
 		t.Errorf("link target = %q, want %q", target, want)
 	}
 
 	// Idempotent: a second pass finds nothing to do, which is what makes
 	// `rebuild; rebuild` a no-op (§21.1).
+	//
+	// This is the assertion that catches a write and a read disagreeing about
+	// separators — Inspect saw `..\..\…` where Target says `../../…`, called a
+	// link para had just created stale, and left doctor red on every Windows
+	// tree forever. It cannot fail on Unix, where FromSlash and ToSlash are both
+	// the identity, so the Windows CI job is what actually exercises it. That is
+	// the job's whole reason for existing (§6.1).
 	if changes := sync(t, root, c, "commit-style", "signups-report"); len(changes) != 0 {
 		t.Errorf("second sync = %v, want nothing", paths(changes))
 	}

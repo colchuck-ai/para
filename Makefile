@@ -9,8 +9,17 @@ FUZZTIME ?= 20s
 
 .PHONY: test lint build install cover fuzz release-check snapshot
 
+# go test's default is 10 minutes *per package*, and cmd/para runs close to nine
+# on a fast laptop: the crash matrix and the four properties both drive the real
+# binary thousands of times, which is what makes them tests of the command
+# surface rather than of the library. The first CI run blew the default on
+# ubuntu — a slower box, not a hang — so the limit is stated rather than
+# inherited. It is a backstop against a genuine deadlock, so it is generous
+# without being absent.
+TIMEOUT ?= 30m
+
 test:
-	go test ./... -race -count=1 -tags para_testhooks
+	go test ./... -race -count=1 -timeout $(TIMEOUT) -tags para_testhooks
 
 lint:
 	go vet ./...

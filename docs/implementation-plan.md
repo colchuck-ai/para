@@ -1849,13 +1849,34 @@ exercise. **A repo `.gitattributes` landed with them**: git for Windows defaults
 which would have rewritten every txtar golden's line endings while the program still printed LF,
 failing twenty-odd byte comparisons for reasons that say nothing about para.
 
-### Carry-forward from Phase 15
+### What the first CI run found
 
-- **The first CI run on Windows is still unverified**, and so is every other job. There *is* an
-  `origin` — `github.com/colchuck-ai/para`, with `main` and `rc` — but nothing has been pushed to it
-  and no workflow in `.github/` has ever executed. The `release-config` and `fuzz` jobs added here
-  join the Windows job in that category. First push is where all four are actually tested, and the two
-  Windows blockers the review found are two fewer failures it will spend.
+`impl` was pushed and [PR #8](https://github.com/colchuck-ai/para/pull/8) opened. Four jobs —
+`lint`, `install`, `release-config`, `fuzz` — were green on the first attempt, which is the two new
+ones this phase added and the two the review had already repaired for Windows. Two failed, and the
+Windows one is exactly what that job was added to find.
+
+- **`doctor` was permanently red on Windows in symlink mode, on a link para had just written.**
+  `mirror.Target` is slash-separated by contract and `Repair` writes the link through
+  `filepath.FromSlash`; `Inspect` compared `os.Readlink`'s result against `Target` **raw**. On
+  Windows the readback is `..\..\.agents\skills\para-x`, which is the same link spelled the way that
+  platform spells it — so every mirror was reported `stale-projection`, `rebuild` rewrote it to
+  identical bytes, and `doctor` stayed red forever. One defect, twenty-odd failing subtests across
+  `TestMirrorFindings`, `TestCrashMatrix`, `TestPropertiesOfALegalSequence`, and two script tests,
+  every one of them failing in its *setup*. `filepath.ToSlash` on the read side is the fix.
+
+  It is the shared-derivation rule in its round-trip form: **a conversion applied at one end of a
+  round trip and not the other is not a rule.** It could not have been caught on Unix, where both
+  `FromSlash` and `ToSlash` are the identity — which is the whole argument for the Windows job, now
+  paid off on its first run rather than in a user's bug report.
+
+- **`cmd/para` exceeded `go test`'s ten-minute-per-package default on ubuntu.** Not a hang: the
+  package runs close to nine minutes on a fast laptop, because the crash matrix and the four
+  properties drive the real binary thousands of times, and the CI box is slower. The limit is now
+  stated (`-timeout 30m`, in the Makefile and repeated in the Windows job that cannot use it) rather
+  than inherited. `test (macos-latest)` was cancelled by fail-fast and so is still unverified.
+
+### Carry-forward from Phase 15
 - **`origin/main` predates the implementation.** It carries the design document and this plan, and no
   `cmd/` — so `go install github.com/colchuck-ai/para/cmd/para@latest`, which the README's second
   install path offers, fails today for anyone who tries it. Pushing `impl` is what fixes it; nothing
