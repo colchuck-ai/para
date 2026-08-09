@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: make test
+
+  # Windows is a separate job rather than a third row of the matrix above,
+  # because it runs a different command and runs it for a different reason.
+  #
+  # What it is for (implementation plan, Phase 14): `emit.claude-skills` is the
+  # one setting in the design with a platform-sensitive mode (§6.1). Every other
+  # platform proves `copy` mode by choice; Windows is where a checkout may
+  # genuinely refuse to materialise a symlink, so it is the only runner on which
+  # `copy` is the answer rather than an option, and the only one where §10's
+  # `broken-link` is a thing that happens rather than a thing simulated.
+  #
+  # Two departures from `make test`, both deliberate:
+  #
+  #   - the recipe is spelled out rather than invoked through make, which the
+  #     Windows image does not carry;
+  #   - no `-race`, which needs a C toolchain on windows/amd64. The race
+  #     detector is not what this job is for — para is one command, one
+  #     goroutine — and the two Unix rows above run it on every commit.
+  #
+  # `-timeout` is repeated from the Makefile rather than shared, which is the
+  # cost of spelling the recipe out; the two must stay in step. cmd/para runs
+  # for minutes because the crash matrix and the properties drive the real
+  # binary, and go test's default is 10 minutes per package.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go test (no -race; see the comment above this job)
+        shell: bash
+        run: go test ./... -count=1 -timeout 30m -tags para_testhooks
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: make lint
+
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: clean module cache
+        run: go clean -modcache
+      - name: go install ./cmd/para
+        run: go install ./cmd/para
+      - run: para --version
+
+  # The release is built by a workflow that only ever runs on a tag, so its
+  # configuration would otherwise be checked for the first time by the release
+  # it broke. `check` validates the file, and the snapshot build proves the
+  # asset names scripts/install.sh constructs are the ones that come out.
+  release-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: check
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean --skip=publish
+      - name: the installer's asset names are the ones that were built
+        run: |
+          set -eu
+          for name in para_linux_amd64.tar.gz para_linux_arm64.tar.gz \
+                      para_darwin_amd64.tar.gz para_darwin_arm64.tar.gz \
+                      para_windows_amd64.zip para_windows_arm64.zip checksums.txt; do
+            test -f "dist/$name" || { echo "missing dist/$name"; exit 1; }
+          done
+      - name: install.sh installs the archive the release produced
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/release/releases/latest/download"
+          cp dist/*.tar.gz dist/checksums.txt "$RUNNER_TEMP/release/releases/latest/download/"
+          sh scripts/install.sh --dir "$RUNNER_TEMP/bin" --base-url "file://$RUNNER_TEMP/release"
+          "$RUNNER_TEMP/bin/para" --version
+
+  # The fuzz targets run their seed corpora in `make test`, which is what
+  # catches a regression. This is the cheap extension nobody had made
+  # (implementation plan, Phase 14's carry-forward): a short live fuzz per
+  # target, on every commit, so a new input class is found by CI rather than by
+  # somebody remembering to run it.
+  #
+  # It is its own job because it is the one job that can fail on a commit that
+  # did not break anything: a search finds what it finds. A failure here is
+  # still a real finding — `go test` writes the input into testdata/fuzz/, and
+  # committing that file is what turns it into a regression test the seed-corpus
+  # run then covers forever. Adding it found two: a scalar carrying U+2028 was
+  # folded on the way back in, and one carrying U+FFFF would not parse at all.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: make fuzz

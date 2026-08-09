@@ -1,0 +1,321 @@
+package cli
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/colchuck-ai/para/internal/clock"
+	"github.com/colchuck-ai/para/internal/kindmeta"
+	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/query"
+	"github.com/colchuck-ai/para/internal/tagexpr"
+	"github.com/colchuck-ai/para/internal/tree"
+	"github.com/colchuck-ai/para/internal/view"
+)
+
+// openRead discovers the tree and builds the environment one read command runs
+// in, plus the working directory "." resolves against (§14).
+func openRead(cmd *cobra.Command) (*view.Env, string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, "", paraerr.Wrap(paraerr.KindInternal, err, "determining working directory")
+	}
+	root, err := tree.Find(cwd)
+	if err != nil {
+		return nil, "", err
+	}
+	return view.NewEnv(root, clock.FromContext(cmd.Context())), cwd, nil
+}
+
+// readFlags are the two flags every read command carries: §16.2.1's `--local`
+// and §23's `--json`.
+type readFlags struct {
+	local bool
+	json  bool
+}
+
+func (f *readFlags) register(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&f.local, "local", false, "render timestamps in the reader's zone rather than UTC")
+	cmd.Flags().BoolVar(&f.json, "json", false, "print the result as JSON")
+}
+
+// zone is the location timestamps render in.
+//
+// UTC unless asked otherwise, which is §16.2.1's rule and the same one §3.5
+// applies to every generated file — with the difference that terminal output is
+// "the one place that is negotiable, because nothing compares it and nothing
+// commits it". `$PARA_TZ` reaches this through the clock, which is where the
+// reader's zone already arrives.
+func (f readFlags) zone(env *view.Env) *time.Location {
+	if f.local {
+		return env.Local
+	}
+	return time.UTC
+}
+
+// filterFlags are §17's table as flags, shared by every command that takes any
+// of them so that `--tags` means one thing everywhere.
+type filterFlags struct {
+	tags     string
+	match    string
+	status   string
+	priority string
+	overdue  bool
+	direct   bool
+	all      bool
+
+	sort    string
+	reverse bool
+	limit   int
+}
+
+func (f *filterFlags) register(cmd *cobra.Command) {
+	// No backquotes in a usage string: pflag reads a back-quoted word as the
+	// name of the flag's value and strips it from the text, so emphasis here
+	// silently renames the flag's argument.
+	cmd.Flags().StringVar(&f.tags, "tags", "", "a boolean tag expression: not, then and, then or — comma for or")
+	cmd.Flags().StringVar(&f.match, "match", "", "text to find in a name, description, tags, or journal notes")
+	cmd.Flags().StringVar(&f.status, "status", "", "filter on effective status")
+	cmd.Flags().StringVar(&f.priority, "priority", "", "one of "+strings.Join(kindmeta.Priorities(), ", "))
+	cmd.Flags().BoolVar(&f.overdue, "overdue", false, "only what is open and past its due date")
+	cmd.Flags().BoolVar(&f.direct, "direct", false, "only immediate children, counting containers as transparent")
+	cmd.Flags().BoolVar(&f.all, "all", false, "include items whose status is terminal")
+	cmd.Flags().StringVar(&f.sort, "sort", "", "sort key: "+sortKeyList())
+	cmd.Flags().BoolVar(&f.reverse, "reverse", false, "reverse the sort")
+	cmd.Flags().IntVar(&f.limit, "limit", 0, "print at most this many")
+
+	// The two filter flags with closed vocabularies, registered here for the
+	// same reason the field flags are registered in fieldFlags.register: this
+	// is where the role is known. `--status` here filters on *effective*
+	// status, which reaches a key-result's derived four as well as the settable
+	// five, and it must not be narrowed by the scope argument — the rows under
+	// a scope are generally not the scope's own kind.
+	_ = cmd.RegisterFlagCompletionFunc("status", completeFilterStatus)
+	_ = cmd.RegisterFlagCompletionFunc("priority", fixed(kindmeta.Priorities()))
+}
+
+func sortKeyList() string {
+	return strings.Join(sortKeyNames(), ", ")
+}
+
+// options turns the flags into a query, validating the two that have grammars
+// of their own.
+func (f filterFlags) options(scope locator.Locator) (query.Options, error) {
+	opts := query.Options{
+		Scope: scope,
+		Filter: query.Filter{
+			Match:    f.match,
+			Status:   f.status,
+			Priority: f.priority,
+			Overdue:  f.overdue,
+			Direct:   f.direct,
+			All:      f.all,
+		},
+		Reverse: f.reverse,
+		Limit:   f.limit,
+	}
+	if f.tags != "" {
+		expr, err := tagexpr.Parse(f.tags)
+		if err != nil {
+			return query.Options{}, err
+		}
+		opts.Filter.Tags = expr
+	}
+	if f.sort != "" {
+		key, err := query.ParseSortKey(f.sort)
+		if err != nil {
+			return query.Options{}, err
+		}
+		opts.Sort = key
+	}
+	if err := checkLimit(f.limit); err != nil {
+		return query.Options{}, err
+	}
+	return opts, nil
+}
+
+// checkLimit refuses a negative `--limit`, which every command taking one owes
+// the same answer to. Zero is "no limit" and is how the flag is absent.
+func checkLimit(n int) error {
+	if n < 0 {
+		return paraerr.Newf(paraerr.KindValidation, "--limit cannot be negative")
+	}
+	return nil
+}
+
+// dash is what an absent value prints as. §17 fixes it for an undefined pace —
+// "prints `—` and sorts last" — and the same reading covers every other value
+// a row does not have, since *field absent on this kind* and *field present
+// with no value* are treated alike.
+const dash = "—"
+
+// table lays out rows in columns sized to the content of the rows printed.
+//
+// Output never adapts to the terminal: no width probing, no truncation, no
+// colour. The same bytes piped as interactive, which is the only way §0.2's
+// determinism argument reaches output and the only way §26's examples can be
+// golden files. The cost, stated plainly: a deep locator on an 80-column
+// terminal wraps, and para will not shorten it.
+type table struct {
+	rows [][]string
+	// indent prefixes every row, for the nested blocks `show` prints.
+	indent string
+	// notes are continuation lines, keyed by the row they follow. A note hangs
+	// under the second column and takes no part in sizing any of them, which is
+	// what keeps §16.1's long key-result numbers from widening the name column
+	// of every row above it.
+	notes map[int]string
+	// heads are headings, keyed by the row they precede. They are unindented,
+	// unpadded, and take no part in sizing, so §20's group headings can break
+	// up one table rather than starting a new one per group — which is what
+	// keeps every row's columns aligned across the whole review, as §26 shows
+	// them.
+	heads map[int]string
+}
+
+func (t *table) add(cells ...string) { t.rows = append(t.rows, cells) }
+
+// head records a heading printed above the next row added.
+func (t *table) head(text string) {
+	if t.heads == nil {
+		t.heads = map[int]string{}
+	}
+	t.heads[len(t.rows)] = text
+}
+
+// note attaches a continuation line to the row just added.
+func (t *table) note(text string) {
+	if t.notes == nil {
+		t.notes = map[int]string{}
+	}
+	t.notes[len(t.rows)-1] = text
+}
+
+// write prints the table with two spaces between columns. A trailing empty
+// cell contributes no padding, so a row that stops early leaves no trailing
+// whitespace — which matters because these are compared byte for byte.
+func (t table) write(out io.Writer) {
+	widths := make([]int, 0, 8)
+	for _, row := range t.rows {
+		for i, cell := range row {
+			for len(widths) <= i {
+				widths = append(widths, 0)
+			}
+			if w := len([]rune(cell)); w > widths[i] {
+				widths[i] = w
+			}
+		}
+	}
+
+	for n, row := range t.rows {
+		if head, ok := t.heads[n]; ok {
+			fmt.Fprintln(out, head)
+		}
+		last := lastNonEmpty(row)
+		var b strings.Builder
+		b.WriteString(t.indent)
+		for i := 0; i <= last; i++ {
+			cell := ""
+			if i < len(row) {
+				cell = row[i]
+			}
+			b.WriteString(cell)
+			if i < last {
+				b.WriteString(strings.Repeat(" ", widths[i]-len([]rune(cell))+2))
+			}
+		}
+		fmt.Fprintln(out, strings.TrimRight(b.String(), " "))
+
+		if note, ok := t.notes[n]; ok {
+			hang := len(widths)
+			if hang > 0 {
+				hang = widths[0] + 2
+			}
+			fmt.Fprintln(out, strings.TrimRight(t.indent+strings.Repeat(" ", hang)+note, " "))
+		}
+	}
+}
+
+func lastNonEmpty(row []string) int {
+	last := -1
+	for i, cell := range row {
+		if cell != "" {
+			last = i
+		}
+	}
+	return last
+}
+
+// day renders an instant as the calendar day it falls on, in loc — what §16.1
+// prints for `created`, `attention`, and `due`.
+func day(t time.Time, loc *time.Location) string {
+	if t.IsZero() {
+		return dash
+	}
+	return t.In(loc).Format("2006-01-02")
+}
+
+// instant renders an instant in full, which is what `log` prints: a journal
+// line is the record of a moment, and the time of day is the part of it a
+// digest throws away.
+func instant(t time.Time, loc *time.Location) string {
+	if t.IsZero() {
+		return dash
+	}
+	return t.In(loc).Format(time.RFC3339)
+}
+
+// span is a bare count of days — §20's "61 days", the length itself rather than
+// a reference to a point in time. It is the root of the other two spellings, so
+// the plural rule is written once.
+func span(days int) string {
+	if days == 1 || days == -1 {
+		return "1 day"
+	}
+	return strconv.Itoa(days) + " days"
+}
+
+// ago spells a day count as §16.1 does: "31 days ago", and "today" for zero,
+// because "0 days ago" is a sentence nobody writes. §20's column keeps the bare
+// `span` instead, because there the number is a magnitude being compared to a
+// threshold rather than a date being referred to.
+func ago(days int) string {
+	switch {
+	case days < 0:
+		return "in the future"
+	case days == 0:
+		return "today"
+	default:
+		return span(days) + " ago"
+	}
+}
+
+// until spells the other direction: §16.1's "in 181 days", and the overdue case
+// it turns into once the deadline passes.
+func until(days int) string {
+	switch {
+	case days < 0:
+		return span(-days) + " ago"
+	case days == 0:
+		return "today"
+	default:
+		return "in " + span(days)
+	}
+}
+
+// number renders a derived ratio to two places — enough to tell 0.24 from 0.70
+// and no more, since §4.2's quantities are estimates of a trajectory.
+func number(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
+
+// exact renders a configured value as it was written rather than to a fixed
+// precision. A `stale-after` of 14 days is a whole number of days and printing
+// it as 14.00 would suggest a precision the knob does not have — and §16.1
+// prints it back in the spelling a `config set` would take.
+func exact(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }

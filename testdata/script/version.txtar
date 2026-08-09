@@ -1,0 +1,5 @@
+# para --version reports the version and exits 0.
+
+para --version
+stdout '^para \S+\n$'
+! stderr .

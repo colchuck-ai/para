@@ -1,0 +1,16 @@
+# Byte-for-byte is this repository's whole test strategy, so git must not
+# rewrite a single byte on the way in or out.
+#
+# `doctor` compares every generated file against a fresh render byte for byte
+# (§0.2, §10), and the script tests assert program output against goldens
+# extracted from testdata/script/*.txtar with testscript's `cmp`, which is a
+# byte comparison and applies no line-ending conversion of its own. Git for
+# Windows ships `core.autocrlf=true` by default: without this file, a checkout
+# there rewrites every golden's LF to CRLF while the program still prints LF,
+# and twenty-odd `cmp` assertions fail on line endings alone — a red suite that
+# says nothing about para.
+#
+# `-text` on everything is the blunt version deliberately. Scoping it to the
+# formats that matter today means the next format added is the next Windows
+# failure, and there is no file in this repository that wants conversion.
+* -text

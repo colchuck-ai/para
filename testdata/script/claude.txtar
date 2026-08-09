@@ -1,0 +1,245 @@
+# §6.1, the Claude Code compatibility surface, end to end: `emit.claude`'s eight
+# CLAUDE.md pointer files, `emit.claude-skills`' two mirror modes, switching
+# between them, pruning on removal, and the hostile checkout §10 gives its own
+# finding.
+#
+# The tree is planted as truth and rebuilt once, so everything asserted below is
+# the surface reacting to a command rather than to the fixture.
+#
+# One departure from §26's spelling, and it is the one every phase has made:
+# §26's `config set emit.claude true` block prints the eight files compacted onto
+# two lines with "(8 files)", while §23 says a mutation prints "one line per
+# file". §23 wins here as it has since Phase 8 — the eight are one line each,
+# under a single `wrote` label.
+
+env PARA_NOW=2026-03-05T17:00:00Z
+env PARA_TZ=America/Los_Angeles
+cd brain
+exec para rebuild
+exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number'
+exec para doctor
+stdout '^clean$'
+
+# Off by default, and that is the whole shape of a tree that never asked for it
+# (§26's `init`: "no CLAUDE.md, no .claude/").
+! exists CLAUDE.md
+! exists .claude
+
+# --- turning it on -----------------------------------------------------------
+#
+# §26's transcript: one command writes the config file, the eight CLAUDE.md
+# files, and a link per skill. The eight locations are a fixed set rather than a
+# walk, so this is a constant number of writes and not the subtree walk §2.3
+# forbids of a mutation.
+exec para config set emit.claude true
+stdout '^ +\.para/config\.toml$'
+stdout '^ +CLAUDE\.md$'
+stdout '^ +projects/CLAUDE\.md$'
+stdout '^ +areas/CLAUDE\.md$'
+stdout '^ +resources/CLAUDE\.md$'
+stdout '^ +archive/CLAUDE\.md$'
+stdout '^ +archive/projects/CLAUDE\.md$'
+stdout '^ +archive/areas/CLAUDE\.md$'
+stdout '^ +archive/resources/CLAUDE\.md$'
+stdout '^linked  \.claude/skills/para-signups-report → \.\./\.\./\.agents/skills/para-signups-report$'
+
+# CLAUDE.md is a pointer file and nothing else: @AGENTS.md plus one @ import per
+# derived rule. The AGENTS.md is the one beside it — every location that gets a
+# CLAUDE.md gets an AGENTS.md too (§6) — while a rule needs the prefix that
+# reaches the root, because Claude Code resolves an import relative to the file
+# carrying it.
+cmp CLAUDE.md $WORK/want-root-claude.md
+cmp projects/CLAUDE.md $WORK/want-bucket-claude.md
+
+# Nothing is left for a rebuild to do, which is the property every write path in
+# para has to keep (§2.3, §2.4).
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
+
+# The surface turns on and off as one thing (§6.1), so its two keys are read at
+# the root and nowhere else — the one pair in §7's table that is a rule rather
+# than advice about where a knob usefully lives. Setting one at a level would
+# write half a surface: a bucket's CLAUDE.md with no mirror, since there is only
+# one .claude/ and it is at the root.
+! exec para config set --at projects emit.claude false
+stderr 'read at the root only'
+! exec para config unset --at projects emit.claude-skills
+stderr 'read at the root only'
+exists projects/CLAUDE.md
+
+# --- a skill mutation keeps every CLAUDE.md correct --------------------------
+#
+# The debt Phase 12 recorded: adding a skill changes the set of derived rules and
+# therefore every import list. §6.1 says the list regenerates "with no separate
+# bookkeeping", and eight known locations are what makes that affordable.
+exec para add skills.commit-style --name 'Commit style' --description 'when writing a commit message'
+stdout '^ +CLAUDE\.md$'
+stdout '^linked  \.claude/skills/para-commit-style → \.\./\.\./\.agents/skills/para-commit-style$'
+grep '^@\.agents/rules/para-commit-style\.md$' CLAUDE.md
+grep '^@\.\./\.agents/rules/para-commit-style\.md$' archive/CLAUDE.md
+exec para doctor
+stdout '^clean$'
+
+# And removing one takes its rule and its mirror with it (§18.2, §6.1).
+exec para remove skills.commit-style --force
+! exists .agents/rules/para-commit-style.md
+! exists .claude/skills/para-commit-style
+! grep 'para-commit-style' CLAUDE.md
+exec para doctor
+stdout '^clean$'
+
+# --- copy mode ---------------------------------------------------------------
+#
+# Switching modes removes the old shape and writes the new one, leaving no
+# residue (§6.1).
+exec para config set emit.claude-skills copy
+stdout '^copied  \.claude/skills/para-signups-report$'
+exists .claude/skills/para-signups-report/SKILL.md
+exists .claude/skills/para-signups-report/ACTIVITY.md
+
+# .para/ is never mirrored, in either mode. A reachable
+# .claude/skills/para-X/.para/state.toml would satisfy §1.2's entity test and
+# doctor's deep scan would report a phantom orphan living outside the tree.
+! exists .claude/skills/para-signups-report/.para
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
+
+# A copy is a projection and nothing reads it back as truth: editing it is not an
+# error, just pointless. doctor reports the divergence and rebuild overwrites it.
+cp $WORK/hand-edited.md .claude/skills/para-signups-report/SKILL.md
+! exec para doctor
+stdout '^error +stale-projection +\.claude/skills/para-signups-report differs from the skill it mirrors$'
+exec para rebuild
+stdout '^copied  \.claude/skills/para-signups-report$'
+! grep 'hand-edited' .claude/skills/para-signups-report/SKILL.md
+
+# An edit to the skill itself reaches the copy in the same command, because in
+# copy mode the mirror holds the skill's own files.
+exec para set skills.signups-report --description 'when asked for the weekly number'
+grep 'weekly number' .claude/skills/para-signups-report/SKILL.md
+exec para doctor
+stdout '^clean$'
+
+# --- back to symlink, and the hostile checkout -------------------------------
+
+exec para config set emit.claude-skills symlink
+stdout '^linked  \.claude/skills/para-signups-report → \.\./\.\./\.agents/skills/para-signups-report$'
+exec para doctor
+stdout '^clean$'
+
+# A core.symlinks=false checkout — the Windows default — materialises each link
+# as a plain file holding its target path, which reads as a corrupt skill to
+# anything that opens it. The failure is loud rather than silent: doctor names it
+# and rebuild repairs it (§6.1, §10).
+rm .claude/skills/para-signups-report
+cp $WORK/materialised-link .claude/skills/para-signups-report
+! exec para doctor
+stdout '^error +broken-link +\.claude/skills/para-signups-report is a plain file where a mirror belongs — a checkout with core\.symlinks=false$'
+exec para rebuild
+stdout '^linked  \.claude/skills/para-signups-report'
+exec para doctor
+stdout '^clean$'
+
+# orphan-mirror: a para- prefixed entry whose skill is gone. With the surface on,
+# that is what the entry is — the answer differs from repair.txtar's, where the
+# surface is off and the same directory is residue instead.
+mkdir .claude/skills/para-gone
+! exec para doctor
+stdout '^error +orphan-mirror +\.claude/skills/para-gone mirrors skills\.gone, which is gone$'
+exec para rebuild
+stdout '^removed  \.claude/skills/para-gone$'
+exec para doctor
+stdout '^clean$'
+
+# Something without the para- prefix is not para's, and para neither reads nor
+# removes it (§6.1).
+mkdir .claude/skills/my-own
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
+exists .claude/skills/my-own
+
+# --- turning it off ----------------------------------------------------------
+#
+# The mirror image of turning it on: the eight files and the mirror go, and
+# .claude/skills/ goes with them once it holds nothing of para's. The directory
+# somebody else made stays, and its presence is what keeps .claude/ itself.
+exec para config set emit.claude false
+stdout '^removed  CLAUDE\.md$'
+stdout '^ +archive/resources/CLAUDE\.md$'
+stdout '^removed  \.claude/skills/para-signups-report$'
+! exists CLAUDE.md
+! exists archive/areas/CLAUDE.md
+! exists .claude/skills/para-signups-report
+exists .claude/skills/my-own
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
+
+# With nothing of anybody's left, the sweep takes the directories too, so a tree
+# that turned the surface off is back to the shape `init` describes.
+rm .claude/skills/my-own
+exec para config set emit.claude true
+exec para config set emit.claude false
+! exists .claude
+exec para doctor
+stdout '^clean$'
+
+-- brain/.para/tree.toml --
+schema = 1
+name = "brain"
+description = "Everything I am carrying."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/projects/.para/state.toml --
+name = "Projects"
+description = "What I am working on now."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/areas/.para/state.toml --
+name = "Areas"
+description = "What I keep going."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/resources/.para/state.toml --
+name = "Resources"
+description = "What I keep to hand."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/.para/state.toml --
+name = "Archive"
+description = "What is over."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/projects/.para/state.toml --
+name = "Archived projects"
+description = "Projects that are over."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/areas/.para/state.toml --
+name = "Archived areas"
+description = "Areas no longer kept."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/resources/.para/state.toml --
+name = "Archived resources"
+description = "Resources no longer kept."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/.agents/skills/.keep --
+-- want-root-claude.md --
+@AGENTS.md
+@.agents/rules/para-signups-report.md
+-- want-bucket-claude.md --
+@AGENTS.md
+@../.agents/rules/para-signups-report.md
+-- hand-edited.md --
+hand-edited
+-- materialised-link --
+../../.agents/skills/para-signups-report

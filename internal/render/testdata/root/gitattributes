@@ -1,0 +1,10 @@
+# para:begin — generated, do not edit; run `para rebuild`
+# journals: order lives in the data, so keeping both sides is the definition of the merge
+**/logs/*.jsonl merge=union
+
+# wholly generated: any side is as good as any other, because `para rebuild` produces the truth
+**/ACTIVITY.md          merge=ours linguist-generated=true
+**/MEASUREMENTS.csv     merge=ours linguist-generated=true
+**/CLAUDE.md            merge=ours linguist-generated=true
+.agents/rules/**/*.md   merge=ours linguist-generated=true
+# para:end

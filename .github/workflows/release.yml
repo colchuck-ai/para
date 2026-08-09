@@ -1,0 +1,43 @@
+name: Release
+
+# A release is a tag. Nothing else triggers this workflow, so the tag is the
+# whole decision — and `scripts/install.sh` reads its output rather than a
+# hand-published file, which is what keeps "installs on all three platforms"
+# (implementation plan, Phase 15) a property of the same run that built them.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # goreleaser derives the changelog from history, which a shallow
+          # clone does not have.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # The tag is not a release until the two gates every commit passes have
+      # passed on the commit being tagged. `make fuzz` is deliberately not one
+      # of them: it is a search, and a search that finds something new must not
+      # be able to block a release of code it has not changed.
+      - run: make lint
+      - run: make test
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

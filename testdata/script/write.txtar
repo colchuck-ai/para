@@ -1,0 +1,289 @@
+# §26's `para add`, `para set` / `unset`, and `para note` / `measure` blocks,
+# against a hand-planted tree. The tree is planted by this script rather than by
+# `para init`, whose full file set is a later phase's job (§0.1).
+#
+# Two departures from §26, both deliberate and both resolved the way Phase 7
+# resolved the same disagreement:
+#
+#  - §26's `set` example prints only the change line, while §23 says mutations
+#    print what they wrote, one line per file. The prose wins; the example is
+#    showing the part it is about.
+#  - §23's own `measure` example lists state.toml and README.md among the files
+#    written. A key-result stores no `current`, `progress`, or derived status
+#    (§2.5), so neither file can have changed and neither is rewritten. What a
+#    mutation prints has to be what it actually wrote.
+
+env PARA_NOW=2026-03-05T17:00:00Z
+env PARA_TZ=America/Los_Angeles
+cd brain
+
+# --- §26's `para add` block -------------------------------------------------
+
+# A project, and its objectives/ container, in one operation (§18.1).
+exec para add projects.acme-migration --name 'Acme migration' --description 'Rebuild the consumer so it stops falling over under replay load.'
+cmp stdout $WORK/want-add-project.txt
+
+# The new entity's journal starts empty; the parent logs `child added` (§3.3).
+! exists projects/acme-migration/.para/logs/20260305T170000Z.jsonl
+exists projects/acme-migration/.para/logs
+grep '"kind":"child","op":"added","child":"acme-migration"' projects/.para/logs/20260305T170000Z.jsonl
+
+# `created` is a field, not an event (§3.1) — and it still earns its line in the
+# digest, so the file and `activity` agree by construction (§16.4).
+cmp projects/acme-migration/ACTIVITY.md $WORK/want-new-activity.txt
+cmp projects/acme-migration/.para/state.toml $WORK/want-project-state.txt
+
+# README frontmatter is generated over a stub body para will never touch again
+# (§2.1).
+cmp projects/acme-migration/README.md $WORK/want-project-readme.txt
+
+# An objective — the parent must already exist; key-results/ comes with it.
+exec para add projects.acme-migration.objectives.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.'
+exists projects/acme-migration/objectives/q1-growth/key-results/.para/state.toml
+
+# A key-result — type is required and permanent.
+exec para add projects.acme-migration.objectives.q1-growth.key-results.signups --name 'Weekly signups' --type ratio --start 480/9000 --target 2000/12000 --due 2026-09-30
+cmp projects/acme-migration/objectives/q1-growth/key-results/signups/.para/state.toml $WORK/want-kr-state.txt
+
+# A key-result is a leaf: no eager container comes with it.
+! exists projects/acme-migration/objectives/q1-growth/key-results/signups/key-results
+
+# Areas and resources nest freely.
+exec para add areas.health --name Health --description 'Staying in one piece.'
+exec para add areas.health.training --name Training --description 'The weekly plan.'
+exists areas/health/training/.para/state.toml
+
+# A skill — scope is a locator list, and this also writes its derived rule.
+exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope projects.acme-migration,areas.growth
+cmp stdout $WORK/want-add-skill.txt
+cmp .agents/rules/para-signups-report.md $WORK/want-scoped-rule.txt
+
+# A skill with no scope applies to the whole tree, and its rule says so (§5.3).
+exec para add skills.commit-style --name 'Commit style' --description 'when writing a commit message'
+grep '^Use the \*\*Commit style\*\* skill' .agents/rules/para-commit-style.md
+! grep 'When working under' .agents/rules/para-commit-style.md
+
+# §26's four refusals, each naming the problem.
+! exec para add projects.acme-migration --name Again --description Again.
+stderr 'projects.acme-migration already exists'
+! exec para add projects.acme-migration.nested --name A --description B
+stderr 'a project cannot nest'
+! exec para add projects.objectives --name A --description B
+stderr 'reserved word'
+! exec para add projects.acme-migration.objectives.q2.key-results.z --type ratio --name Z
+stderr 'projects.acme-migration.objectives.q2 does not exist'
+
+# A field the kind does not have, and a missing required one.
+! exec para add areas.finance --name Finance --description Money. --due 2026-09-30
+stderr 'an area has no due field'
+! exec para add projects.other --name Other
+stderr 'project needs --description'
+
+# --- §26's `para set` / `unset` block ---------------------------------------
+
+# --note is required when setting status to blocked (§18.2).
+! exec para set projects.acme-migration --status blocked
+stderr '^error: --note is required when setting status to blocked$'
+
+exec para set projects.acme-migration --status in-progress
+stdout '^projects.acme-migration  status planned → in-progress\n'
+
+exec para set projects.acme-migration --status blocked --note 'waiting on the ingest team'
+cmp stdout $WORK/want-set-blocked.txt
+
+# Setting a field to the value it already holds writes nothing and exits 0, but
+# the reason the user typed is still an act of attention (§15, §26).
+exec para set projects.acme-migration --status blocked --note 'still waiting'
+stdout '^no change \(status already blocked\); note recorded\n'
+grep '"kind":"note","note":"still waiting"' projects/acme-migration/.para/logs/20260305T170000Z.jsonl
+
+# A pure no-op writes nothing at all — and note that --note is required for
+# `blocked` before anything is compared, since the user is asserting the status
+# whether or not it turns out to have moved (§18.2).
+exec para set projects.acme-migration --name 'Acme migration'
+cmp stdout $WORK/want-no-change.txt
+
+# §26's own `log` line, run here rather than in read.txtar because this is where
+# the change events are: a kind and a limit together, since either alone would
+# leave the composition untested (§16.3).
+exec para log projects.acme-migration --kind change --limit 3
+stdout '  change  status planned → in-progress$'
+stdout '  change  status in-progress → blocked  waiting on the ingest team$'
+! stdout '  note  '
+
+# type is fixed at creation and can never be changed (§15).
+! exec para set projects.acme-migration.objectives.q1-growth.key-results.signups --type number
+stderr 'type is fixed at creation'
+
+# unset takes bare names; `created` is an error, and a required field is too.
+exec para set projects.acme-migration --due 2026-12-31 --priority high
+exec para unset projects.acme-migration due priority
+stdout '^projects.acme-migration  due unset \(was 2026-12-31\)\n'
+! exec para unset projects.acme-migration created
+stderr 'created cannot be unset'
+! exec para unset projects.acme-migration name
+stderr 'name is required'
+
+# `unset skills.x scope` widens it back to the whole tree (§5.2, §15).
+exec para unset skills.signups-report scope
+! grep 'When working under' .agents/rules/para-signups-report.md
+
+# --- §26's `para note` / `measure` block ------------------------------------
+
+exec para note areas.health.training 'swapped the tempo block for intervals'
+grep 'Note: swapped the tempo block for intervals.' areas/health/training/ACTIVITY.md
+
+# §26's measurement, with §4.2's arithmetic: start is subtracted from both
+# sides, so 880/11000 against start 480/9000 and target 2000/12000 is 0.24.
+exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 880/11000 --at 2026-01-03
+cmp stdout $WORK/want-measured.txt
+cmp projects/acme-migration/objectives/q1-growth/key-results/signups/MEASUREMENTS.csv $WORK/want-measurements.txt
+
+# The value follows the key-result's own type, and a mismatch names both.
+! exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 0.08
+stderr 'value 0.08 is not a ratio \(type ratio expects <numerator>/<denominator>\)'
+
+# Measurements are unique at the exact stored instant, not the day (§3.1).
+! exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 900/11000 --at 2026-01-03
+stderr 'a measurement already exists at 2026-01-03T08:00:00Z \(2026-01-03T00:00:00-08:00 local\)'
+exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 900/11000 --at 2026-01-03T09:02
+
+# Nothing may be dated into the future (§15.1).
+! exec para note areas.health 'later'  --at 2027-01-01
+stderr 'in the future'
+
+# Only a key-result takes measurements (§4.4: it lives there and nowhere else).
+! exec para measure projects.acme-migration 10
+stderr 'only a key-result takes measurements'
+
+# A mutation needs a tree.
+cd $WORK/outside
+! exec para add projects.x --name X --description Y
+stderr 'no para tree found'
+
+-- brain/.para/tree.toml --
+schema = 1
+name = "brain"
+
+-- brain/README.md --
+---
+kind: "tree"
+name: "brain"
+---
+
+# brain
+
+-- brain/ACTIVITY.md --
+# Activity
+
+-- brain/projects/.para/state.toml --
+name = "Projects"
+description = "What I am actively pushing on."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/projects/ACTIVITY.md --
+# Activity
+
+## 2026-01-01
+- Created.
+
+-- brain/areas/.para/state.toml --
+name = "Areas"
+description = "What I am keeping up."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/areas/ACTIVITY.md --
+# Activity
+
+## 2026-01-01
+- Created.
+
+-- brain/resources/.para/state.toml --
+name = "Resources"
+description = "What I am keeping around."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/archive/.para/state.toml --
+name = "Archive"
+description = "What is done with."
+created = "2026-01-01T16:00:00Z"
+
+-- brain/.agents/skills/.keep --
+skills live here
+
+-- want-add-project.txt --
+added  projects.acme-migration  project
+
+wrote  projects/acme-migration/.para/state.toml
+       projects/acme-migration/.para/config.toml
+       projects/acme-migration/objectives/.para/state.toml
+       projects/acme-migration/objectives/.para/config.toml
+       projects/acme-migration/README.md
+       projects/acme-migration/ACTIVITY.md
+       projects/acme-migration/objectives/README.md
+       projects/acme-migration/objectives/ACTIVITY.md
+       projects/.para/logs/20260305T170000Z.jsonl
+       projects/ACTIVITY.md
+-- want-new-activity.txt --
+# Activity
+
+## 2026-03-05
+- Created.
+-- want-project-state.txt --
+name = "Acme migration"
+description = "Rebuild the consumer so it stops falling over under replay load."
+status = "planned"
+created = "2026-03-05T17:00:00Z"
+-- want-project-readme.txt --
+---
+kind: "project"
+locator: "projects.acme-migration"
+name: "Acme migration"
+description: "Rebuild the consumer so it stops falling over under replay load."
+status: "planned"
+created: "2026-03-05T17:00:00Z"
+---
+
+# Acme migration
+
+Rebuild the consumer so it stops falling over under replay load.
+-- want-kr-state.txt --
+name = "Weekly signups"
+due = "2026-09-30"
+created = "2026-03-05T17:00:00Z"
+type = "ratio"
+start = "480/9000"
+target = "2000/12000"
+-- want-add-skill.txt --
+added  skills.signups-report  skill
+
+wrote  .agents/skills/para-signups-report/.para/state.toml
+       .agents/skills/para-signups-report/.para/config.toml
+       .agents/skills/para-signups-report/SKILL.md
+       .agents/skills/para-signups-report/ACTIVITY.md
+       .agents/rules/para-signups-report.md
+-- want-scoped-rule.txt --
+---
+generated_from: "para-signups-report"
+---
+When working under `projects/acme-migration/` or `areas/growth/`, use the **Signups report** skill (`.agents/skills/para-signups-report/SKILL.md`) when asked for the weekly signups number.
+-- want-set-blocked.txt --
+projects.acme-migration  status in-progress → blocked
+
+wrote  projects/acme-migration/.para/logs/20260305T170000Z.jsonl
+       projects/acme-migration/.para/state.toml
+       projects/acme-migration/README.md
+       projects/acme-migration/ACTIVITY.md
+-- want-no-change.txt --
+no change (name already Acme migration)
+-- want-measured.txt --
+measured signups = 880/11000   decimal 0.0800   progress 0.24   on-track
+
+wrote  projects/acme-migration/objectives/q1-growth/key-results/signups/.para/logs/20260103T080000Z.jsonl
+       projects/acme-migration/objectives/q1-growth/key-results/signups/ACTIVITY.md
+       projects/acme-migration/objectives/q1-growth/key-results/signups/MEASUREMENTS.csv
+-- want-measurements.txt --
+at,value,decimal,progress,note
+2026-01-03T08:00:00Z,880/11000,0.0800,0.2353,
+-- outside/.keep --
+not a para tree

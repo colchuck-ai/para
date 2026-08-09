@@ -1,0 +1,189 @@
+# §26's `para init` block. Every other script in this directory plants its tree
+# by hand, because until Phase 14 there was no command that made one; this is
+# the script that makes the rest of them describable as "what init would have
+# produced", and the properties asserted here are exactly that:
+#
+#   - the file set §26 lists, plus the two .agents/ directories;
+#   - a tree that is already clean, so `rebuild` has nothing to do;
+#   - the root's four child events and the archive's three (§3.3, §8.1).
+#
+# One departure from §26, and it is §23's rule winning again: the transcript
+# compacts the file list with brace notation and a "(8 files)" count, while §23
+# says a mutation prints what it wrote, one line per file. The braces are the
+# document eliding. Directories are not in the list at all — `wrote` is about
+# files, and git does not carry an empty directory anyway.
+#
+# The list is in write order, which puts .para/tree.toml near the end rather
+# than at the top where §26 shows it. That is the marker landing last on
+# purpose: until it is there the directory is not a tree and `init` can simply
+# be run again, and once it is there every other truth file already exists, so a
+# crash leaves the one degraded state §2.4 defines a repair for.
+
+env PARA_NOW=2026-03-05T17:00:00Z
+env PARA_TZ=America/Los_Angeles
+
+exec para init brain
+stdout '^created  brain/'
+stdout '^ +brain/\.para/tree\.toml$'
+stdout '^ +brain/\.para/config\.toml$'
+stdout '^ +brain/README\.md$'
+stdout '^ +brain/AGENTS\.md$'
+stdout '^ +brain/ACTIVITY\.md$'
+stdout '^ +brain/\.gitattributes$'
+stdout '^ +brain/projects/README\.md$'
+stdout '^ +brain/projects/AGENTS\.md$'
+stdout '^ +brain/projects/ACTIVITY\.md$'
+stdout 'brain/projects/\.para/state\.toml$'
+stdout '^ +brain/archive/resources/README\.md$'
+
+# §26's closing line, which is the one place a user is told the surface exists.
+stdout 'no CLAUDE\.md, no \.claude/ — enable with `para config set emit\.claude true`'
+! exists brain/CLAUDE.md
+! exists brain/.claude
+
+# The two .agents/ directories are created empty, so a tree a human opens has
+# the shape §5 describes rather than growing it when the first skill lands.
+exists brain/.agents/rules
+exists brain/.agents/skills
+
+# A journal file only appears where there are events: at the root and at the
+# archive (§3.3). A bucket that gained nothing has an empty logs/.
+exists brain/.para/logs
+exists brain/projects/.para/logs
+
+cd brain
+
+# The tree is named after its directory, which is the only thing `para init
+# brain` says about it (§13's shape has no required flags).
+grep '^schema = 1$' .para/tree.toml
+grep '^name = "brain"$' .para/tree.toml
+grep '^created = "2026-03-05T17:00:00Z"$' .para/tree.toml
+
+# §8.1: the root's journal is thin but real — a child event per bucket. There is
+# no `init` event and no kind that could be one (§3.1); what records the tree
+# coming into existence is tree.toml's `created`, which is where ACTIVITY.md's
+# "Created." line comes from.
+grep '"kind":"child","op":"added","child":"projects"' .para/logs/20260305T170000Z.jsonl
+grep '"kind":"child","op":"added","child":"areas"' .para/logs/20260305T170000Z.jsonl
+grep '"kind":"child","op":"added","child":"resources"' .para/logs/20260305T170000Z.jsonl
+grep '"kind":"child","op":"added","child":"archive"' .para/logs/20260305T170000Z.jsonl
+grep '^- Created\.$' ACTIVITY.md
+
+# The archive's own three are the archive's, because the archive is the parent
+# whose set of children changed.
+grep '"kind":"child","op":"added","child":"projects"' archive/.para/logs/20260305T170000Z.jsonl
+grep '"kind":"child","op":"added","child":"resources"' archive/.para/logs/20260305T170000Z.jsonl
+
+# The property every other verb is held to, applied to the one that makes the
+# tree: nothing to repair, and nothing to regenerate.
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite \(8 places up to date\)$'
+
+# The tree is usable straight away.
+exec para add projects.acme --name 'Acme' --description 'Rebuild the consumer.'
+exec para doctor
+stdout '^clean$'
+
+# --- the root's own digest (§16.4) ------------------------------------------
+#
+# §13 spells it `para activity [<locator>]`, and the root is what the optional
+# form addresses. Nothing else can: the root has no locator (§1.4), and `.`
+# resolves to the nearest entity or container (§14), which the root is neither.
+# Until `init` existed nothing wrote a root ACTIVITY.md into a tree anybody
+# read, so §16.4's "the two agree by construction" had an exception at exactly
+# one location. This is that location, and the two agree here too.
+exec para activity
+cp stdout $WORK/got-root-activity.txt
+cmp $WORK/got-root-activity.txt ACTIVITY.md
+stdout '^- Added \*\*projects\*\*\.$'
+stdout '^- Created\.$'
+
+# The rollup with nothing to scope it is the whole tree's chronology, buckets
+# included. The root's own lines carry the dash every absent value prints as
+# (§17), because the root genuinely has no locator to label them with — and
+# printing `.` instead would be a spelling that only pastes back from one
+# directory.
+exec para activity --recursive
+stdout '^2026-03-05 +projects +added project acme$'
+stdout '^2026-03-05 +— +added projects$'
+stdout '^2026-03-05 +— +created$'
+
+# And it stops at archive/ for the same reason `list` does: archived things are
+# not hidden, they are somewhere else, and you reach them by naming them
+# (§16.2). The archive's own three child events are the archive's to show.
+! stdout '^2026-03-05 +archive'
+exec para activity archive --recursive
+stdout '^2026-03-05 +archive +added resources$'
+
+# --since narrows the root's digest the same way it narrows any other.
+#
+# Both sides, because only the negative is not a test: a `--since` implemented
+# as "always empty" passes `! stdout 'Created'` on its own. The boundary is the
+# same instant in both runs, so the pair pins what the filter keeps as well as
+# what it drops.
+exec para activity --since 2026-03-05
+stdout 'Created'
+exec para activity --since 2026-03-06
+! stdout 'Created'
+
+# A locator that names nothing is still an error rather than a silent fallback
+# to the root.
+! exec para activity projects.nope
+stderr 'error: projects.nope does not exist'
+
+# --- emit.gitattributes, both ways ------------------------------------------
+#
+# Phase 13 left this as a debt: turning the key off wrote a config file and left
+# §9's block in a file nothing removed and nothing reported. Para owns the block
+# and the repository owns every other line (§2.2), so the repair is a shorter
+# file rather than a deleted one — and it happens in the command that turns the
+# key off, because a command that succeeds and leaves `doctor` red is not a
+# command that finished.
+grep '^# para:begin' .gitattributes
+exec para config set emit.gitattributes false
+stdout '^ +\.gitattributes$'
+! grep 'para:begin' .gitattributes
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
+
+# Back on, and the block returns to a file that no longer has one.
+exec para config set emit.gitattributes true
+stdout '^ +\.gitattributes$'
+grep '^# para:begin' .gitattributes
+grep '^\*\*/logs/\*\.jsonl merge=union$' .gitattributes
+exec para doctor
+stdout '^clean$'
+
+# Whatever else is in the file is not para's to take, in either direction.
+cp $WORK/foreign-gitattributes.txt .gitattributes
+exec para rebuild
+exec para config set emit.gitattributes false
+grep '^\*\.png binary$' .gitattributes
+! grep 'para:begin' .gitattributes
+exec para doctor
+stdout '^clean$'
+exec para config set emit.gitattributes true
+grep '^\*\.png binary$' .gitattributes
+exec para doctor
+stdout '^clean$'
+
+# §1.1: init refuses inside an existing tree, naming what it found.
+! exec para init
+stderr 'is already a para tree'
+! exec para init deeper
+stderr 'is inside the para tree at'
+cd projects
+! exec para init nested
+stderr 'is inside the para tree at'
+
+# A second tree beside the first is fine — the refusal is about containment.
+cd $WORK
+exec para init other
+exists other/.para/tree.toml
+
+-- foreign-gitattributes.txt --
+*.png binary

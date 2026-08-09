@@ -54,7 +54,7 @@ brain/
 ├── .para/
 │   ├── tree.toml                    ← the root marker: schema + tree identity
 │   ├── config.toml
-│   └── logs/20260101T080801.jsonl
+│   └── logs/20260101T160801Z.jsonl
 ├── .agents/
 │   ├── rules/
 │   │   ├── para-signups-report.md          generated from the skill. that is all rules ever are.
@@ -230,14 +230,24 @@ Archiving **moves bytes**. `projects/acme` becomes `archive/projects/acme`, and 
   and listed, and a skill's `scope` may name them.
 - **Archiving drags the whole subtree.** Archiving an area takes its sub-areas and its content with
   it, in one move. There is no partial state.
-- **Unarchiving cascades upward.** You cannot unarchive a child whose parent is archived; para
-  refuses and names the parent. Unarchive the parent and the child comes with it.
-- **Id collision on unarchive is a hard error.** If a live sibling has taken the id, para refuses and
-  names it; you rename the sibling or unarchive nothing.
+- **Unarchiving cascades upward**, which is the exact mirror of the sentence above. Unarchiving
+  something reinstates every archived ancestor it needs as a live entity and brings its own subtree
+  with it, in one operation. An ancestor that is already live is adopted rather than duplicated.
+  Archived siblings stay archived, and the reinstated ancestor's archive directory is left behind as a
+  stub to record *their* ancestry — the same stub archive leaves for a live ancestor that stays put.
+  So the two verbs are symmetric: each drags what belongs to the thing you named, and each leaves a
+  stub for whatever stays on the other side.
+- **Id collision on unarchive is a hard error — for the thing you named.** If a live sibling has taken
+  its id, para refuses and names it; you rename the sibling or unarchive nothing. An **ancestor** whose
+  id is taken gets the other answer: the live one is adopted as the parent. An ancestor is ancestry
+  rather than the thing being unarchived, and `areas/health` existing is precisely the condition under
+  which nothing needs reinstating — refusing there would refuse the ordinary case where a live parent
+  never left.
 - **Stubs preserve ancestry.** Archive a sub-area whose parent stays live and para creates
   `archive/areas/<parent>/` as a bare directory — no `README.md`, no `.para/` — purely to record
-  where the thing came from. Stubs are the one place a locator segment has no entity behind it.
-  `doctor` must recognise them and never report them as malformed.
+  where the thing came from. Unarchive the last thing beneath such a stub and it is removed, because a
+  stub that records nothing records nothing. Stubs are the one place a locator segment has no entity
+  behind it. `doctor` must recognise them and never report them as malformed.
 - **Areas and resources have no status field.** Location *is* archival state: in `areas/` it is
   active, in `archive/areas/` it is archived. This deletes v2's `active | archived` enum outright —
   a second copy of the answer, which principle 1 forbids.
@@ -344,13 +354,14 @@ to be read by something that will not compute. Truth files contain none of it.
 
 ### 3.1 An append-only event stream
 
-`.para/logs/<first-event-timestamp>.jsonl`, one JSON object per line, per entity and per container.
+`.para/logs/<first-event-timestamp-in-UTC>.jsonl`, one JSON object per line, per entity and per
+container.
 
 ```jsonl
-{"at":"2026-01-01T08:15:02-08:00","kind":"change","field":"status","from":"planned","to":"in-progress","note":"kickoff done"}
-{"at":"2026-01-03T09:02:11-08:00","kind":"measurement","value":"880/11000"}
-{"at":"2026-01-04T17:40:00-08:00","kind":"note","note":"waiting on the ingest team"}
-{"at":"2026-01-05T11:00:00-08:00","kind":"child","op":"added","child":"q1-growth"}
+{"at":"2026-01-01T16:15:02Z","kind":"change","field":"status","from":"planned","to":"in-progress","note":"kickoff done"}
+{"at":"2026-01-03T17:02:11Z","kind":"measurement","value":"880/11000"}
+{"at":"2026-01-05T01:40:00Z","kind":"note","note":"waiting on the ingest team"}
+{"at":"2026-01-05T19:00:00Z","kind":"child","op":"added","child":"q1-growth"}
 ```
 
 Four kinds. `note` is also a **field** available on every kind, so any mutation can carry a reason
@@ -405,15 +416,24 @@ line, in one file. A field change on a key-result writes one line, in one file.
 ### 3.4 Rotation
 
 One journal file grows until it exceeds `log.rotate-bytes` (default 4 MiB, §7), at which point the
-next event opens a new file named for **its own** timestamp. So a directory listing of `logs/` reads
-as a chronology, and the newest file is the last one lexically.
+next event opens a new file named for **its own** timestamp, **in UTC**, with a trailing `Z`:
+`20260101T160801Z.jsonl`. So a directory listing of `logs/` reads as a chronology, and the newest
+file is the last one lexically.
 
 Rotation never rewrites a closed file. Closed journal files are immutable.
+
+Both of those sentences are claims about **string** order, which is why the name is UTC and not the
+writer's wall clock. With no offset in the name there is no zone to compare against: an event at
+`23:00+13:00` (10:00Z) would sort *after* a later event at `12:00-07:00` (19:00Z), so the newest file
+would not be the last one lexically and the next append would reopen a closed file. The DST
+fall-back hour reproduces the same inversion annually without anyone leaving their desk. UTC is the
+only zone in which lexical order is total, so it is the only zone in which these two guarantees hold.
+A filename is an ordering key that happens to be legible, not a wall clock.
 
 ### 3.5 `ACTIVITY.md` is a local fold
 
 A human-readable digest of *this entity's own* journal, grouped by day, newest day first. Days with
-no events are absent.
+no events are absent. **Days are UTC days**, and every timestamp in a generated file is UTC.
 
 ```markdown
 # Activity
@@ -425,7 +445,7 @@ no events are absent.
 - Note: waiting on the ingest team.
 
 ## 2026-01-03
-- Measured **signups** at 880/11000 (8.0%) — 47% of target.
+- Measured 880/11000 (8.0%) — 24% of target.
 ```
 
 Two mechanics that matter:
@@ -442,6 +462,17 @@ Two mechanics that matter:
 - **Newest-first** because that is what a reader wants and what `CHANGELOG.md` taught everyone to
   expect. It costs a whole-file rewrite per mutation rather than an append; these files are small,
   and the expensive half — reading history — stays bounded.
+- **The day is a UTC day, not the author's**, and this is not a stylistic choice. Grouping by each
+  event's own recorded offset stops the sections partitioning the timeline: an event at
+  `2026-03-05T23:00-08:00` (07:00Z) would file under `03-05` while an *earlier* event at
+  `2026-03-06T09:00+09:00` (00:00Z) filed under `03-06`, so a newest-day-first file would present the
+  earlier event as the newer one — contradicting §3.1's "ordering comes from `at`, never from file
+  position". This file is also committed and read from several zones off one commit, so the
+  boundaries have to be ones every reader agrees on. UTC is the only such boundary.
+
+  The wall clock is not lost, only moved: journals keep each event's own offset, so a read command
+  converts to local time on request (§16). What a *file* says is fixed; what a *terminal* shows is the
+  reader's business.
 
 `ACTIVITY.md` is also the reason the journal does not have to be pretty. Machine truth is JSONL,
 human truth is this file, and neither is asked to be both.
@@ -501,6 +532,13 @@ invalidate every measurement already logged. Delete and recreate instead.
 - `progress = (current − start) / (target − start)`. Direction falls out of the arithmetic; there is
   no up/down flag. **Not clamped**: overshoot reads above 1 and a regression below baseline reads
   negative, because both are true and both are worth seeing.
+  **`start` is subtracted from both sides**, which is the one thing easy to get wrong and the reason
+  the worked example is spelled out here rather than left to the reader. For the `signups`
+  key-result used throughout this document — `start 480/9000`, `target 2000/12000`, a reading of
+  `880/11000` — the three decimals are `0.0533`, `0.1667`, and `0.0800`, so
+  `progress = (0.0800 − 0.0533) / (0.1667 − 0.0533) = 0.2353`. Not `0.0800 / 0.1667 = 0.48`: that
+  is progress toward the target *from zero*, which is a different and less useful question, because
+  it credits a key-result for the ground it had already covered before you committed to it.
 - **No measurements yet → progress 0.** No progress has been demonstrated, and saying so plainly is
   what lets an untouched key-result go `at-risk` instead of sitting quiet.
 - `pace = progress / elapsed`, where `elapsed = (today − created) / (due − created)`.
@@ -535,10 +573,12 @@ A projection of the key-result's `measurement` events, oldest first, one row per
 
 ```csv
 at,value,decimal,progress,note
-2026-01-03T09:02:11-08:00,880/11000,0.0800,0.4700,
-2026-01-17T09:10:04-08:00,1320/12400,0.1065,0.6800,denominator grew after the launch
+2026-01-03T17:02:11Z,880/11000,0.0800,0.2353,
+2026-01-17T17:10:04Z,1320/12400,0.1065,0.4687,denominator grew after the launch
 ```
 
+- `at` is UTC, like every timestamp in a generated file (§3.5). A column of mixed offsets does not
+  sort or plot as one axis, and charting is this file's entire job.
 - `value` is the reading exactly as logged, in the type's grammar.
 - `decimal` and `progress` are derived and belong here for one reason: a spreadsheet, a notebook, or
   GitHub's CSV viewer will chart this file and will not compute anything. It is a projection, which
@@ -571,7 +611,7 @@ scope       = [
   "areas.growth",
 ]
 tags    = ["growth", "reporting"]
-created = "2026-01-01T08:15:00-08:00"
+created = "2026-01-01T16:15:00Z"
 ```
 
 - `description` is the when-to-use hook and the only part that ever enters an agent's context
@@ -824,7 +864,7 @@ schema       = 1
 para-version = "0.4.0"          # the version that last wrote here
 name         = "max's brain"
 description  = "Everything I am carrying."
-created      = "2026-01-01T08:00:00-08:00"
+created      = "2026-01-01T16:00:00Z"
 ```
 
 This is the root marker, and it is the root's state — the root has no `state.toml`, because the root
@@ -853,7 +893,7 @@ The root's journal is thin but real: `init`, config changes, and `child` events 
 ```toml
 name        = "Objectives"
 description = "What acme-migration is trying to move."
-created     = "2026-01-01T08:15:00-08:00"
+created     = "2026-01-01T16:15:00Z"
 ```
 
 Identity for the generated README frontmatter, and a place for its config sibling to hang. No status,
@@ -868,7 +908,7 @@ status   = "in-progress"
 priority = "high"
 due      = "2026-09-30"
 tags     = ["kafka", "consumer"]
-created  = "2026-01-01T08:15:00-08:00"
+created  = "2026-01-01T16:15:00Z"
 ```
 
 ```toml
@@ -878,7 +918,7 @@ type    = "ratio"
 start   = "480/9000"
 target  = "2000/12000"
 due     = "2026-09-30"
-created = "2026-01-01T08:15:00-08:00"
+created = "2026-01-01T16:15:00Z"
 ```
 
 **Absent by construction**: `kind`, `id`, `parent`, `locator` — all in the path; `updated`,
@@ -1245,6 +1285,13 @@ local.
 Bounds: never in the future. `measure --at` must not collide with an existing measurement on the same
 key-result (§3.1); notes and changes may collide freely.
 
+**What you type is local; what is stored is UTC.** The zero-filling above happens in your offset, and
+the resolved instant is then written as UTC — so `--at 2026-01-03` in `-08:00` stores
+`2026-01-03T08:00:00Z`. One representation on disk means one answer to "which day is this" for every
+reader of a committed file (§3.5), and no comparison anywhere has to reason about two offsets. Errors
+and read commands convert back for display, so the round trip is invisible unless you look in the
+file.
+
 ---
 
 ## 16. Reading
@@ -1263,7 +1310,7 @@ Acme migration
 
 status       in-progress
 priority     high
-due          2026-09-30        in 58 days
+due          2026-09-30        in 181 days
 tags         consumer, kafka
 created      2026-01-01
 attention    2026-03-02        31 days ago
@@ -1272,12 +1319,12 @@ attention    2026-03-02        31 days ago
 objectives
   q1-growth  Grow signups                          in-progress
     signups  Weekly signups                        at-risk
-             480/9000 → 880/11000 / 2000/12000     progress 0.47   pace 0.68
+             480/9000 → 880/11000 / 2000/12000     progress 0.24   pace 0.70
 
 skills       signups-report (from skills.signups-report, scope projects)
 ```
 
-- Derived values announce themselves by being *computed lines* — `in 58 days`, `31 days ago`, `stale`,
+- Derived values announce themselves by being *computed lines* — `in 181 days`, `31 days ago`, `stale`,
   `progress`, `pace`, and a key-result's status are never stored (§2.5).
 - **`stale` names where its threshold came from**, because §7's chain resolution is only defensible if
   it is visible (§7). Same for any other resolved knob `show` reports.
@@ -1301,6 +1348,25 @@ Lists **entities** beneath the given locator, at any depth, defaulting to the wh
 - `archive/` is not traversed unless you name it: `para list archive.projects`. Archived things are
   not hidden, they are simply somewhere else, which is the whole point of §1.6.
 - Terminal-status items are hidden unless `--all`.
+
+### 16.2.1 Timestamps in output, and `--local`
+
+Every timestamp para *stores* is UTC and every timestamp it *generates into a file* is UTC (§3.5,
+§15.1). Terminal output is the one place that is negotiable, because nothing compares it and nothing
+commits it:
+
+```
+para show projects.acme-migration --local
+para log projects.acme-migration --local
+```
+
+`--local` converts every timestamp in the output to the reader's own zone, with `$PARA_TZ` overriding
+the host zone. It is available on every read command — `show`, `list`, `log`, `activity`, `review` —
+and on nothing that writes, because a mutation's job is to record an instant, not to render one.
+
+It is a flag and not a config key on purpose. Config is checked in and the same for everyone (§6.1's
+argument against per-machine behaviour applies unchanged), whereas which zone you want to read in is a
+property of *you*, not of the tree. `$PARA_TZ` covers the case where you always want it.
 
 ### 16.3 `log`
 
@@ -1451,6 +1517,16 @@ locator or anything beneath it** (§5.4).
   earns the exception: a journal is a record of what happened, not a copy of current state, and the
   entity's own history is the one place a move must remain visible after the fact. Like every
   `change`, it does not move the clock (§3.6).
+- **A move does not follow the entity's archived shadow**, and that is a limit rather than an
+  oversight. Archive `resources.a.b`, then rename `resources.a` to `resources.c`, and
+  `archive/resources/a/b` still records an ancestry no live entity has. Rewriting it would mean a
+  move reaching into `archive/` — the boundary the bullet above refuses to cross in either
+  direction — so para leaves it alone and refuses the later `unarchive`, naming the ancestor it
+  cannot reinstate. The repair is to recreate that ancestor under its old id, `unarchive` into it,
+  `move` the reinstated entity where it belongs, and remove the placeholder — every step a verb
+  already has, and no step reaching into `archive/` to rewrite an ancestry there. A refusal a
+  sequence of otherwise legal commands can reach is worth writing down; a silent rewrite across the
+  boundary would be worse.
 
 ### 18.4 `remove`
 
@@ -1478,9 +1554,13 @@ Exactly the semantics of §1.6, and the verbs exist to make them unmistakable:
 
 - `archive` takes the **whole subtree** in one move, creating stubs for any live ancestors that stay
   behind.
-- `unarchive` **cascades upward**: unarchiving a child whose parent is archived is refused, naming the
-  parent.
-- An id colliding with a live sibling on unarchive is refused, naming the sibling.
+- `unarchive` **cascades upward**: it reinstates every archived ancestor the thing needs, adopts any
+  ancestor that is already live, and leaves a stub behind wherever an archived sibling stays put.
+  Each reinstated ancestor is an entity that moved, so each gets its own `field = "locator"` change
+  and each container whose child set changed logs at both ends — which falls out of §3.3 rather than
+  needing a rule of its own.
+- An id colliding with a live sibling on unarchive is refused, naming the sibling — for the entity
+  named, not for a reinstated ancestor (§1.6).
 - Both rewrite `scope` entries, both log `child` events at the old and new parents plus a
   `field = "locator"` change on the entity, and both take `--dry-run`.
 - Neither touches a single field. Status says how something ended; the archive says where it lives
@@ -1629,9 +1709,9 @@ it is the reason `show` also names where a resolved threshold came from (§16.1)
 
 ```
 $ para measure projects.acme.objectives.q1-growth.key-results.signups 880/11000
-measured signups = 880/11000   progress 0.47   at-risk
+measured signups = 880/11000   progress 0.24   at-risk
 
-wrote  projects/…/key-results/signups/.para/logs/20260101T081502.jsonl
+wrote  projects/…/key-results/signups/.para/logs/20260101T161502Z.jsonl
        projects/…/key-results/signups/.para/state.toml
        projects/…/key-results/signups/README.md
        projects/…/key-results/signups/ACTIVITY.md
@@ -1807,18 +1887,18 @@ error: kind would change (project → area); create the target and move your con
 
 ```
 $ para measure …key-results.signups 880/11000 --at 2026-01-03
-measured signups = 880/11000   decimal 0.0800   progress 0.47   at-risk
+measured signups = 880/11000   decimal 0.0800   progress 0.24   at-risk
 
 $ para measure …key-results.signups 0.08
 error: value 0.08 is not a ratio (type ratio expects <numerator>/<denominator>)
 
 $ para measure …key-results.signups 900/11000 --at 2026-01-03
-error: a measurement already exists at 2026-01-03T00:00:00-08:00
+error: a measurement already exists at 2026-01-03T08:00:00Z (2026-01-03T00:00:00-08:00 local)
 
 $ para log projects.acme-migration --kind change --limit 3
 $ para activity projects.acme-migration --recursive --since 2026-01-01
 2026-01-05  …objectives            added objective q1-growth
-2026-01-03  …key-results.signups   measured 880/11000 (8.0%) — 47% of target
+2026-01-03  …key-results.signups   measured 880/11000 (8.0%) — 24% of target
 2026-01-01  projects.acme-migration created
 ```
 
@@ -1837,7 +1917,9 @@ archived  areas.health → archive.areas.health   (3 descendants moved with it)
           stub archive/areas/health/ became the entity
 
 $ para unarchive archive.areas.health.training
-error: parent archive.areas.health is archived; unarchive it first
+unarchived  archive.areas.health.training → areas.health.training
+            reinstated areas.health
+            archive/areas/health/ became a stub
 
 $ para unarchive archive.projects.old-migration
 error: projects.old-migration exists; rename it or leave this archived
@@ -1851,7 +1933,7 @@ stale (3)
   areas.fitness.training                    61 days   stale-after 30
   …
 behind (1)
-  …key-results.signups                      pace 0.68   at-risk-pace 0.80
+  …key-results.signups                      pace 0.70   at-risk-pace 0.80
 
 $ echo "hand-edited" >> projects/acme-migration/ACTIVITY.md
 $ para doctor
