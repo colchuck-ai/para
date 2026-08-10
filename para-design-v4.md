@@ -1464,17 +1464,53 @@ skills       signups-report (from skills.signups-report, scope projects)
 ### 16.2 `list`
 
 ```
-para list [<container-locator>] [filters]
+para list [<kind>] [<noun> [<chain>]] [filters]
 ```
 
-Lists **entities** beneath the given locator, at any depth, defaulting to the whole tree.
+Lists **entities** beneath the given scope, at any depth, defaulting to the whole tree. `<kind>` and
+`<noun>` above are the same seven-word vocabulary (§1.4) filling two different roles — a filter, and a
+scope — which is exactly what makes `list` the one command whose meaning depends on lookahead: the
+rule is stated rather than discovered. Scan left to right:
 
+| Args | Reading |
+| --- | --- |
+| *(none)* | the whole tree |
+| `<noun>` | that kind, tree-wide — which for the four buckets is the bucket |
+| `<noun> <noun>` | first is a kind filter, second is a bucket scope |
+| `<noun> <chain>` | the pair is a scope |
+| `<noun> <noun> <chain>` | first is a kind filter, the pair is a scope |
+
+```
+para list                          # everything
+para list project                  # every project
+para list key-result               # every key-result, tree-wide
+para list project acme             # inside project acme
+para list key-result project       # key-results anywhere under projects/
+para list key-result project acme  # key-results inside project acme
+```
+
+- **The kind-filter position accepts the six addressable kinds only.** `container` is not a legal
+  filter: containers are transparent to `list` and are never rows (§25), so filtering for one would
+  ask for something the output can never contain.
+- **This subsumes a capability `list` did not have before**: a kind filter, tree-wide or scoped, is
+  new rather than a reshuffle of what dotted-plural locators already let you ask for.
 - **Containers are transparent.** `objectives/` and `key-results/` are never rows in the output and
   are always traversed through, because a row you can neither set nor act on is noise. Name one
   explicitly with `show` when you want it.
-- `archive/` is not traversed unless you name it: `para list archive.projects`. Archived things are
-  not hidden, they are simply somewhere else, which is the whole point of §1.6.
+- `archive/` is not traversed unless `--archived` says so: `para list project --archived` for
+  archived projects, `para list --archived` for the whole archive. Archived things are not hidden,
+  they are simply somewhere else, which is the whole point of §1.6.
 - Terminal-status items are hidden unless `--all`.
+- **`list` and `show` print the noun as its own column**, not folded into the address, because the
+  column is what makes a mixed-kind listing scannable:
+
+```
+$ para list project acme
+project     acme                      in-progress  2d
+objective   acme.q1-growth            in-progress  2d
+key-result  acme.q1-growth.signups    at-risk      1d
+showing 3 of 3
+```
 
 ### 16.2.1 Timestamps in output, and `--local`
 
@@ -1535,7 +1571,7 @@ On `list`, and on `log`/`activity`/`review` where the flag makes sense.
 | `--limit <n>` | truncates, and the count line says so: `showing 20 of 143` |
 | `--json` | on every read command; carries `total` and `shown` when truncated |
 
-**`--direct` counts containment as a reader sees it, not as the disk does.** `list projects.acme
+**`--direct` counts containment as a reader sees it, not as the disk does.** `list project acme
 --direct` shows that project's objectives — one container down — because §16.2 makes containers
 transparent and a flag that returned nothing here would be measuring a structure the output never
 shows. The rule is: apply transparency, then take immediate children.
@@ -1571,8 +1607,8 @@ para list --tags "rust and reference or kafka and not deprecated"
 other filter answers from `state.toml` and the path. That makes an unscoped `para list --match foo` the
 most expensive read in the surface — it reads every journal file in the tree, and `--limit` does not
 help, since truncation happens after matching. It is **not restricted**: a filter that refuses to run
-without a locator would be a guess about tree size, and the cost is proportional to what you asked for.
-`--match` under a locator scopes the read to that subtree, which is the answer when it hurts.
+without an address would be a guess about tree size, and the cost is proportional to what you asked
+for. `--match` under a scope narrows the read to that subtree, which is the answer when it hurts.
 
 Operators are words, not `&`/`|`/`!`, because those are shell metacharacters and forgetting to quote
 them does not fail — it backgrounds the command and returns a confident wrong answer. With keywords
