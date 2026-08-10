@@ -16,10 +16,15 @@ import (
 // component, in order. It is a pure value — no filesystem, no clock.
 type Locator []string
 
-// ReservedWords cannot appear as an id anywhere in a locator (§1.4).
+// ReservedWords cannot appear as an id anywhere in a locator (§1.4). The
+// list grows from ten words to seventeen with R6: the seven singular nouns
+// join the ten structural words, because without them an entity legitimately
+// named e.g. "project" would make a grammar whose first token is a noun
+// unable to tell the noun from an id sharing its spelling.
 var ReservedWords = []string{
 	"projects", "areas", "resources", "archive", "objectives",
 	"key-results", "skills", "logs", ".para", ".agents",
+	"project", "area", "resource", "objective", "key-result", "skill", "container",
 }
 
 // IsReserved reports whether s is one of the words §1.4 reserves and so can

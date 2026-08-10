@@ -237,6 +237,22 @@ func TestCollision(t *testing.T) {
 	}
 }
 
+// TestCollisionSingularNoun is R6: growing locator.ReservedWords to
+// seventeen means the seven singular nouns are reserved too, so an entity
+// directory named "project" — legal before R6 — is now the same §1.4
+// collision TestCollision pins for the plural "skills".
+func TestCollisionSingularNoun(t *testing.T) {
+	root := cleanTree(t)
+	write(t, root, "projects/project/.para/state.toml", "name = \"Project\"\ndescription = \"A project named with a noun.\"\n")
+
+	rep := run(t, root, doctor.Options{})
+
+	got := findings(rep, doctor.KindCollision)
+	if len(got) != 1 || !strings.HasPrefix(got[0], "projects/project:") {
+		t.Fatalf("collision findings = %v, want one for projects/project", got)
+	}
+}
+
 // TestInvalid walks the truth failures §10 lists: unparseable TOML, a missing
 // required field, an enum out of range, and a measurement whose shape
 // contradicts its key-result's type.

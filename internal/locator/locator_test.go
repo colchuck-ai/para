@@ -145,6 +145,21 @@ func TestIsReserved(t *testing.T) {
 	}
 }
 
+// TestReservedWordsGrewToSeventeen pins R6: the seven singular nouns join
+// the ten structural words, so an entity legitimately named e.g. "project"
+// is refused as an id rather than silently accepted and later unparseable
+// by a grammar whose first token is a noun.
+func TestReservedWordsGrewToSeventeen(t *testing.T) {
+	if len(ReservedWords) != 17 {
+		t.Fatalf("len(ReservedWords) = %d, want 17", len(ReservedWords))
+	}
+	for _, noun := range []string{"project", "area", "resource", "objective", "key-result", "skill", "container"} {
+		if !IsReserved(noun) {
+			t.Errorf("IsReserved(%q) = false, want true (R6)", noun)
+		}
+	}
+}
+
 func TestPath(t *testing.T) {
 	cases := []struct {
 		name    string

@@ -126,6 +126,12 @@ func TestReservedWordRefusals(t *testing.T) {
 		{"objective own id reserved", Objective, "acme.objectives"},
 		{"key-result own id reserved", KeyResult, "acme.q1.key-results"},
 		{"container project id reserved", Container, "logs.objectives"},
+		// R6: the singular nouns joined locator.ReservedWords, so a noun
+		// word used as an id is a collision too, not just the plural
+		// structural words.
+		{"project id is a singular noun word", Project, "project"},
+		{"area id is a singular noun word", Area, "container"},
+		{"objective id is a singular noun word", Objective, "acme.skill"},
 		// A reserved id combined with a wrong tail must still report the
 		// reserved word, not the arity: checking the tail before the id
 		// positions would silently swallow the conflict behind a generic
