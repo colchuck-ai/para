@@ -698,17 +698,18 @@ created = "2026-01-01T16:15:00Z"
 - Everything except `SKILL.md`'s frontmatter is yours. Bundled scripts and references are exactly why
   a skill cannot be generated from a TOML string the way a rule can.
 
-### 5.2 Scope is an explicit locator list, and it covers the subtree
+### 5.2 Scope is an explicit address list, and it covers the subtree
 
 ```toml
-scope = ["projects", "areas.health.training"]
+scope = ["project", "area.health.training"]
 ```
 
-- Entries are fully-qualified locators — the same strings every command prints. A single language, no
-  second matcher.
+- Entries are addresses in their stored form — the same dotted strings every command prints and
+  parses (§1.4). A single language, no second matcher. `"project"` is the bare-noun form: no chain,
+  the whole bucket (§1.4).
 - **Omitting `scope` entirely means the whole tree.** Breadth is the resting state; narrowing is the
   deliberate act. There is no `scope = ["*"]` spelling, because absence already says it.
-- **An entry covers that locator and everything beneath it.** `["projects"]` means every project,
+- **An entry covers that address and everything beneath it.** `["project"]` means every project,
   now and in future. This is containment, not a glob language: no wildcards, no character classes, no
   precedence rules, nothing to document beyond the previous sentence.
 - **No exclusions.** You cannot exempt one project from a matching entry. If you want to, narrow the
