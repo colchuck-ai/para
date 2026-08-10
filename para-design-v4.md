@@ -1924,9 +1924,25 @@ nothing on knobs. Every increase in the table is a file count, which was the tra
 
 ## 25. Decision log — command surface
 
-- **Verb-first with locators, not noun-verb.** v2's biggest ergonomic win, and §1.4's locator=path
-  makes it stronger: the locator carries the kind, so the verb never needs to.
-- **Skills use the universal verbs** via `skills.<id>`; the `skill` sub-noun is deleted (§13.1).
+- **Verb, noun, and a short id-chain — not verb-first with locators.** Reverses this document's own
+  earlier decision (§12); the locator still carries the kind for the machine, but the noun was never
+  for the machine, and partitioning the help, the flags, and the completions for a reader is worth a
+  seventeen-word reserved list and a lookahead rule in `list`.
+- **Noun plus short chain, not noun plus whole locator.** `para add key-result acme.q1-growth.signups`
+  rather than spelling the container segments back in — they are recoverable from the noun and the
+  chain's own arity, so spelling them again would be a second copy of the kind — the thing principle 1
+  forbids.
+- **Output shortens too.** The alternative — type short, print long — keeps one direction of §14's
+  paste-what-you-read property and breaks the other, which is worse than changing both ends.
+- **Archive is a flag, not a noun prefix.** `archived-project` would read as though archival were a
+  kind, which §1.6 already denies.
+- **A bare noun is the bucket.** This collapses "filter by kind" and "the bucket" into one idea, and
+  gives `doctor`, `rebuild`, and `path` a bucket spelling for free.
+- **`measure` keeps no noun, and `move` speaks its noun once.** Both irregularities are bought by a
+  constraint the model already enforces — only key-results are measured, `move` is same-kind only —
+  rather than by convenience.
+- **Stubs lose addressability**, because a stub has no kind and the grammar's first token is a kind.
+- **Skills use the universal verbs** via `skill.<id>`; the `skill` sub-noun is deleted (§13.1).
 - **Four new verbs, each demanded by a first-half decision**: `archive`, `unarchive` (§1.6),
   `rebuild` (§2.4), `activity` (§3.2).
 - **`emit` is deleted by write-through**, not renamed.
