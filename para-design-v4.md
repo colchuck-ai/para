@@ -681,8 +681,8 @@ at,value,decimal,progress,note
 name        = "Signups report"
 description = "when asked for the weekly signups number"
 scope       = [
-  "projects.acme-migration.objectives.q1-growth",
-  "areas.growth",
+  "objective.acme-migration.q1-growth",
+  "area.growth",
 ]
 tags    = ["growth", "reporting"]
 created = "2026-01-01T16:15:00Z"
@@ -995,6 +995,17 @@ target  = "2000/12000"
 due     = "2026-09-30"
 created = "2026-01-01T16:15:00Z"
 ```
+
+```toml
+# .agents/skills/para-signups-report/.para/state.toml
+name    = "Signups report"
+scope   = ["objective.acme-migration.q1-growth", "area.growth"]
+created = "2026-01-01T16:15:00Z"
+```
+
+**`scope` is the one field any `state.toml` stores an address in** — a skill's, per §5.1/§5.2 — and it
+takes the dotted stored form §1.4 defines, the same as every other place an address must be a single
+token.
 
 **Absent by construction**: `kind`, `id`, `parent`, `locator` — all in the path; `updated`,
 `current`, `progress`, `pace`, derived status, `attention` — all read from the journal or computed.
