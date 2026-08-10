@@ -74,29 +74,29 @@ brain/
 ├── projects/
 │   ├── README.md  AGENTS.md  CLAUDE.md  ACTIVITY.md
 │   ├── .para/{state.toml, config.toml, logs/}
-│   └── acme-migration/                          projects.acme-migration
+│   └── acme-migration/                          project.acme-migration
 │       ├── README.md  ACTIVITY.md
 │       ├── .para/{state.toml, config.toml, logs/}
 │       ├── design.md                            yours. para never touches it.
-│       └── objectives/                          projects.acme-migration.objectives
+│       └── objectives/                          container.acme-migration.objectives
 │           ├── README.md  ACTIVITY.md
 │           ├── .para/{state.toml, config.toml, logs/}
-│           └── q1-growth/                       …objectives.q1-growth
+│           └── q1-growth/                       objective.acme-migration.q1-growth
 │               ├── README.md  ACTIVITY.md
 │               ├── .para/{state.toml, config.toml, logs/}
-│               └── key-results/                 …q1-growth.key-results
+│               └── key-results/                 container.acme-migration.q1-growth.key-results
 │                   ├── README.md  ACTIVITY.md
 │                   ├── .para/{state.toml, config.toml, logs/}
-│                   └── signups/                 …key-results.signups
+│                   └── signups/                 key-result.acme-migration.q1-growth.signups
 │                       ├── README.md  ACTIVITY.md  MEASUREMENTS.csv
 │                       └── .para/{state.toml, config.toml, logs/}
 ├── areas/
 │   ├── README.md  AGENTS.md  CLAUDE.md  ACTIVITY.md
 │   ├── .para/{state.toml, config.toml, logs/}
-│   └── health/                                  areas.health
+│   └── health/                                  area.health
 │       ├── README.md  ACTIVITY.md
 │       ├── .para/{state.toml, config.toml, logs/}
-│       ├── training/                            areas.health.training
+│       ├── training/                            area.health.training
 │       │   └── … same shape, nests freely
 │       └── scans/                               untracked. invisible to para.
 ├── resources/
@@ -107,12 +107,12 @@ brain/
     ├── projects/
     │   ├── README.md  AGENTS.md  CLAUDE.md  ACTIVITY.md
     │   ├── .para/{state.toml, config.toml, logs/}
-    │   └── old-migration/                       archive.projects.old-migration
+    │   └── old-migration/                       archive.project.old-migration
     ├── areas/
     │   ├── README.md  AGENTS.md  CLAUDE.md  ACTIVITY.md
     │   ├── .para/{state.toml, config.toml, logs/}
     │   └── health/                              ← a stub. no README, no .para/ (§1.6)
-    │       └── training/                        archive.areas.health.training
+    │       └── training/                        archive.area.health.training
     └── resources/
         └── … same shape
 ```
@@ -259,8 +259,8 @@ A log entry's identifier is its entity's stored address plus the entry timestamp
 ### 1.5 Entities all the way up
 
 An entity's parent chain is entities and containers, never content. `areas/health/scans/training/`
-with a `.para/` in `training/` is **illegal**, not merely discouraged: `areas.health.scans.training`
-would contain a segment that is not an id, and `areas.health.training` would be a lie about where the
+with a `.para/` in `training/` is **illegal**, not merely discouraged: `area.health.scans.training`
+would contain a segment that is not an id, and `area.health.training` would be a lie about where the
 bytes are. `doctor` reports it as `orphan`.
 
 The consequence is that **locators are isomorphic to disk paths**, with archive stubs the single
@@ -755,7 +755,7 @@ removing a skill removes its rule, and `doctor` reports one that outlived its sk
 **There are no authored rules**, and the reason is worth keeping because it was almost decided the
 other way. A rule directory with its own `state.toml` would hold an id, a scope, a description, and a
 body — every one of which the skill it points at already has. The only rule that genuinely has no
-skill behind it is a standing constraint ("in `areas.finance`, never commit a number you did not
+skill behind it is a standing constraint ("in `area.finance`, never commit a number you did not
 source"), and the tempting fix — an `always` mode on a skill that inlines its text into the rule — is
 worse than it looks: the inlined text would have to live in `state.toml`, but `SKILL.md`'s body is
 human-owned, so you would get the same prose in two truth sources or a special case where *some*
@@ -903,9 +903,8 @@ never reads or writes anything else under it.
 `config.toml` in any `.para/`, dotted keys, including the root's.
 
 **Resolution walks the full ancestor chain, nearest wins.** Asking for `stale-after` on
-`projects.acme.objectives.q1-growth.key-results.signups` consults, in order: the key-result, its
-`key-results/` container, the objective, `objectives/`, the project, `projects/`, and the root. First
-value found is the answer.
+`key-result.acme.q1-growth.signups` consults, in order: the key-result, its `key-results/` container,
+the objective, `objectives/`, the project, `projects/`, and the root. First value found is the answer.
 
 This is chained resolution, which §5.2 refused for rule scoping, and the difference is exact:
 config resolves along **one axis** — a single chain where nearest wins — whereas rule scope would
@@ -1171,7 +1170,7 @@ Settled in the session that produced this half. Nothing structural is open.
    they would hold already lives on the skill (§5.3).
 - **Standing constraints are unmanaged.** Write them in `.agents/rules/` without the `para-` prefix
   and para never touches them. Accepted loss: no scope-rewriting, no `doctor` check.
-- **Skills are addressable as `skills.<id>`**, so every universal verb works on them and the command
+- **Skills are addressable as `skill.<id>`**, so every universal verb works on them and the command
   surface grows by nothing (§1.4, §14).
 - **Para runs no matcher at write time**; it rewrites scope entries on move/rename/archive and
   `doctor` reports unresolvable ones.
@@ -1179,7 +1178,9 @@ Settled in the session that produced this half. Nothing structural is open.
 **Structure**
 
 - **`objectives/` and `key-results/` are both tracked containers**, uniform with the buckets.
-- **Locator = path, always.** No elision of container segments.
+- **Locator = path, always — superseded by §1.4's noun+chain address (§12).** `Locator` remains the
+  internal path-with-dots-for-slashes representation; external addressing now elides the container
+  segments via the noun, which this original decision predates.
 - **Entities may not live beneath untracked directories**; untracked directories are invisible;
   **adoption/`import` does not survive**.
 - **Archive is a place.** Locators change on archival, subtrees move whole, unarchive cascades
@@ -1322,8 +1323,8 @@ enforces rather than by convenience:
   command line. Bodies are files; you edit files with your editor. v2's principle 3 said the
   filesystem already does this better, and that principle survived the pivot even though principle 2
   did not.
-- **`para rules <locator>`** — considered and folded into `show`, which already has a line for the
-  skills that apply (§16.1). A verb whose whole output is one line of another verb is not a verb.
+- **`para rules <noun> [<chain>]`** — considered and folded into `show`, which already has a line for
+  the skills that apply (§16.1). A verb whose whole output is one line of another verb is not a verb.
 
 ---
 
@@ -1407,8 +1408,8 @@ One spelling per field, shared by `add` and `set`. `unset` takes bare names.
   everything has a creation time.
 - **`type` is fixed at creation** and never settable; changing it would invalidate every measurement
   already logged (§4.1). Delete and recreate.
-- **`scope` replaces wholly on `set`**, and `para unset skills.x scope` widens it back to the whole
-  tree (§5.2). `para set skills.x --scope a,b` is the full new list.
+- **`scope` replaces wholly on `set`**, and `para unset skill x scope` widens it back to the whole
+  tree (§5.2). `para set skill x --scope a,b` is the full new list.
   `--scope-add` / `--scope-remove` are deliberately absent: every other field replaces, and a list
   short enough to be worth managing by hand is short enough to retype. If scope lists get long enough
   that this hurts, that is evidence the skill is miscarved (§5.2).
@@ -1444,8 +1445,8 @@ whose scope reaches it. It does **not** print the journal (`log`), the digest (`
 siblings (`list`).
 
 ```
-$ para show projects.acme-migration
-projects.acme-migration                          project
+$ para show project acme-migration
+project      acme-migration
 Acme migration
   Rebuild the consumer so it stops falling over under replay load.
 
@@ -1462,7 +1463,7 @@ objectives
     signups  Weekly signups                        at-risk
              480/9000 → 880/11000 / 2000/12000     progress 0.24   pace 0.70
 
-skills       signups-report (from skills.signups-report, scope projects)
+skills       signups-report (from skill.signups-report, scope project)
 ```
 
 - Derived values announce themselves by being *computed lines* — `in 181 days`, `31 days ago`, `stale`,
@@ -1533,8 +1534,8 @@ Every timestamp para *stores* is UTC and every timestamp it *generates into a fi
 commits it:
 
 ```
-para show projects.acme-migration --local
-para log projects.acme-migration --local
+para show project acme-migration --local
+para log project acme-migration --local
 ```
 
 `--local` converts every timestamp in the output to the reader's own zone, with `$PARA_TZ` overriding
@@ -1558,7 +1559,7 @@ Prints the raw journal for one entity — the JSONL, rendered as lines, **newest
 Prints the digest — the same fold `ACTIVITY.md` contains (§3.5) — for an entity or container.
 
 ```
-para activity projects.acme-migration --recursive --since 2026-01-01
+para activity project acme-migration --recursive --since 2026-01-01
 ```
 
 `--recursive` merges the digests of everything beneath into one chronology, each line labelled with
@@ -1640,7 +1641,7 @@ vocabulary — not more operators on more flags.
 ### 18.1 `add`
 
 ```bash
-para add projects.acme-migration --name "Acme migration" --description "Rebuild the consumer."
+para add project acme-migration --name "Acme migration" --description "Rebuild the consumer."
 ```
 
 Creates the directory, its `.para/{state.toml, config.toml, logs/}`, its `README.md` (generated
@@ -1653,7 +1654,7 @@ or a human looking for objectives would have to know that absence means "none" r
 "elsewhere", and `add` would have to decide whether to create a container as a side effect. Uniform
 shape is the reason the tree looks like this at all (§0).
 
-- `add` on an existing locator is an error, not an edit. One verb, one behaviour.
+- `add` on an existing address is an error, not an edit. One verb, one behaviour.
 - A missing parent is an error, not an implicit creation. You create a project before its objectives.
 - Reserved words (§1.4) and ids colliding with a live sibling are refused by name.
 - The new entity's journal starts **empty**: `created` is a field, not an event (§3.1), so
@@ -1664,38 +1665,42 @@ shape is the reason the tree looks like this at all (§0).
 ### 18.2 `set` and `unset`
 
 ```bash
-para set projects.acme-migration --status blocked --note "waiting on the ingest team"
-para set skills.signups-report --scope projects,areas.growth
-para unset projects.acme-migration due priority
+para set project acme-migration --status blocked --note "waiting on the ingest team"
+para set skill signups-report --scope project,area.growth
+para unset project acme-migration due priority
 ```
 
 Any number of fields at once, one event per field changed, one write-through pass at the end.
 `--note` is **required** when setting `status` to `blocked` — a blocker with no recorded reason is
 worthless in six months. *(v1's one exception, kept twice.)*
 
-A skill has no status and no enabled flag (§1.7). `unset skills.x scope` widens it back to the whole
-tree; `remove skills.x` is how a skill stops applying, and it takes its derived rule with it (§5.3).
+A skill has no status and no enabled flag (§1.7). `unset skill x scope` widens it back to the whole
+tree; `remove skill x` is how a skill stops applying, and it takes its derived rule with it (§5.3).
 
 ### 18.3 `move`
 
 ```bash
-para move areas.health.training areas.fitness.training
+para move area health.training fitness.training
 ```
 
 One `rename(2)` where possible, plus the projection work that a hand-`mv` cannot do (§1.5): README
 frontmatter, both parents' journals and `ACTIVITY.md`, and **every `scope` entry naming the moved
-locator or anything beneath it** (§5.4).
+address or anything beneath it** (§5.4).
 
-- **Same-kind only.** `move projects.acme areas.acme` is refused: the kind would change, and with it
-  which fields are legal. Create the target and move your content.
-- **Refuses to cross the archive boundary** in either direction — that is `archive`/`unarchive`.
+- **Same-kind only, and the grammar makes it structural rather than a runtime check.** `move` speaks
+  its noun once for both ends (§13, R14), so there is no longer a spelling for "move this project into
+  `areas/`" to even parse as — the old `move projects.acme areas.acme` refusal has no CLI form left to
+  trigger it. What survives is which *fields* are legal staying fixed across a move, since the kind
+  cannot change.
+- **Refuses to cross the archive boundary** in either direction — that is `archive`/`unarchive`; a
+  mismatched `--archived` (§1.6) is the refusal that reaches this now.
 - Logs `child moved` at the old parent and the new one, and a `change` on the entity itself with
   `field = "locator"`. That last one is the single place a derived value enters a journal, and it
   earns the exception: a journal is a record of what happened, not a copy of current state, and the
   entity's own history is the one place a move must remain visible after the fact. Like every
   `change`, it does not move the clock (§3.6).
 - **A move does not follow the entity's archived shadow**, and that is a limit rather than an
-  oversight. Archive `resources.a.b`, then rename `resources.a` to `resources.c`, and
+  oversight. Archive `resource a.b`, then rename `resource a` to `resource c`, and
   `archive/resources/a/b` still records an ancestry no live entity has. Rewriting it would mean a
   move reaching into `archive/` — the boundary the bullet above refuses to cross in either
   direction — so para leaves it alone and refuses the later `unarchive`, naming the ancestor it
@@ -1708,7 +1713,7 @@ locator or anything beneath it** (§5.4).
 ### 18.4 `remove`
 
 ```bash
-para remove projects.acme-migration --keep-files
+para remove project acme-migration --keep-files
 ```
 
 Confirms interactively, naming the blast radius; `--force` skips; `--dry-run` rehearses.
@@ -1723,8 +1728,8 @@ The parent logs `child removed`.
 ### 18.5 `archive` and `unarchive`
 
 ```bash
-para archive projects.acme-migration          # → archive.projects.acme-migration
-para unarchive archive.areas.health.training
+para archive project acme-migration          # → archive.project.acme-migration
+para unarchive area health.training
 ```
 
 Exactly the semantics of §1.6, and the verbs exist to make them unmistakable:
@@ -1746,8 +1751,8 @@ Exactly the semantics of §1.6, and the verbs exist to make them unmistakable:
 ### 18.6 `note` and `measure`
 
 ```bash
-para note areas.health.training "swapped the tempo block for intervals"
-para measure projects.acme.objectives.q1-growth.key-results.signups 880/11000 --at 2026-01-03
+para note area health.training "swapped the tempo block for intervals"
+para measure acme.q1-growth.signups 880/11000 --at 2026-01-03
 ```
 
 The two verbs that move the clock (§3.6), which is why they are verbs of their own rather than
@@ -1779,7 +1784,7 @@ and running `rebuild`. There are no log-entry verbs, no entry ids to pass, and n
 ## 20. `review`
 
 ```
-para review [<locator>] [--stale | --blocked | --overdue | --behind | --skills]
+para review [<noun> [<chain>]] [--stale | --blocked | --overdue | --behind | --skills]
 ```
 
 | Group | Fires when |
@@ -1817,10 +1822,10 @@ has touched in a year is either load-bearing and worth re-reading, or dead and w
 ### 21.1 `rebuild`
 
 ```
-para rebuild [<locator>] [--dry-run]
+para rebuild [<noun> [<chain>]] [--dry-run]
 ```
 
-Regenerates every projection under the locator — the whole tree by default — from `state.toml`,
+Regenerates every projection under the address — the whole tree by default — from `state.toml`,
 `tree.toml`, and the journals. Idempotent, and it never reads a projection to produce one (§2.4).
 `--dry-run` lists what would change without writing.
 
@@ -1830,7 +1835,7 @@ write-through never does (§3.5).
 ### 21.2 `doctor`
 
 ```
-para doctor [<locator>]
+para doctor [<noun> [<chain>]]
 ```
 
 Read-only, no `--fix`, walks every directory including inside content, and reports the findings in
@@ -1886,7 +1891,7 @@ it is the reason `show` also names where a resolved threshold came from (§16.1)
   files and a user who cannot see that will not believe it:
 
 ```
-$ para measure projects.acme.objectives.q1-growth.key-results.signups 880/11000
+$ para measure acme.q1-growth.signups 880/11000
 measured signups = 880/11000   progress 0.24   at-risk
 
 wrote  projects/…/key-results/signups/.para/logs/20260101T161502Z.jsonl
@@ -1979,7 +1984,7 @@ nothing on knobs. Every increase in the table is a file count, which was the tra
 - **`review` gains `--skills`**, because `review.cadence` needs a reader.
 - **`doctor` has no `--fix`**, and `rebuild` is not a `doctor` flag.
 - **Mutations print every file they wrote**, because write-through is invisible otherwise.
-- **`config set` defaults to the root**, with `--at <locator>` to build the chain deliberately.
+- **`config set` defaults to the root**, with `--at <noun>.<chain>` to build the chain deliberately.
 - **Hand-editing truth is supported and hand-editing projections is harmless** — the property that
   makes write-through safe to live in (§19).
 
