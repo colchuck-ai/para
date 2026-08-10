@@ -1238,31 +1238,34 @@ output declares itself in-band rather than via a manifest.
 
 ## 13. The verb set
 
-Eighteen commands, twenty-two shapes counting `config`'s four. Every one of them is derived from the
+Nineteen commands, twenty-two shapes counting `config`'s four. Every one of them is derived from the
 model above rather than inherited: where a v2 verb survives, it survives because §1–§10 still needs
 it, and where it does not, §13.1 says what deleted it.
+
+`<noun>` is one of §1.4's seven; `<chain>` is an id-chain, and it is *short* — the noun carries the
+container segments, so the chain is not the whole path (§1.4).
 
 | Command | Shape |
 | --- | --- |
 | `init` | `para init [path]` |
-| `add` | `para add <locator> --name … [--field …]` |
-| `show` | `para show <locator>` |
-| `list` | `para list [<locator>] [filters]` |
-| `set` | `para set <locator> --field value […]` |
-| `unset` | `para unset <locator> <field> […]` |
-| `move` | `para move <from> <to>` |
-| `remove` | `para remove <locator> [--keep-files] [--force]` |
-| `archive` | `para archive <locator>` |
-| `unarchive` | `para unarchive <locator>` |
-| `note` | `para note <locator> "text" [--at …]` |
-| `measure` | `para measure <kr-locator> <value> [--at …] [--note …]` |
-| `log` | `para log <locator> [--kind …] [--limit n] [--reverse]` |
-| `activity` | `para activity [<locator>] [--recursive] [--since …]` |
-| `review` | `para review [<locator>] [--stale｜--blocked｜--overdue｜--behind｜--skills]` |
-| `rebuild` | `para rebuild [<locator>] [--dry-run]` |
-| `path` | `para path <locator>` |
-| `doctor` | `para doctor [<locator>]` |
-| `config` | `set` / `unset` / `list [--prefix …]` / `show <key> [<locator>]` |
+| `add` | `para add <noun> <chain> --name … [--field …]` |
+| `show` | `para show <noun> [<chain>]` |
+| `list` | `para list [<kind>] [<noun> [<chain>]] [filters]` |
+| `set` | `para set <noun> <chain> --field value […]` |
+| `unset` | `para unset <noun> <chain> <field> […]` |
+| `move` | `para move <noun> <from-chain> <to-chain>` |
+| `remove` | `para remove <noun> <chain> [--keep-files] [--force]` |
+| `archive` | `para archive <noun> <chain>` |
+| `unarchive` | `para unarchive <noun> <chain>` |
+| `note` | `para note <noun> <chain> "text" [--at …]` |
+| `measure` | `para measure <chain> <value> [--at …] [--note …]` |
+| `log` | `para log <noun> [<chain>] [--kind …] [--limit n] [--reverse]` |
+| `activity` | `para activity [<noun> [<chain>]] [--recursive] [--since …]` |
+| `review` | `para review [<noun> [<chain>]] [--stale｜--blocked｜--overdue｜--behind｜--skills]` |
+| `rebuild` | `para rebuild [<noun> [<chain>]] [--dry-run]` |
+| `path` | `para path <noun> [<chain>]` |
+| `doctor` | `para doctor [<noun> [<chain>]]` |
+| `config` | `set` / `unset` / `list [--prefix …]` / `show <key> [<noun.chain>]` |
 
 Four are new against v2, and each is demanded by a specific decision in the first half:
 
@@ -1273,15 +1276,29 @@ Four are new against v2, and each is demanded by a specific decision in the firs
 - **`activity`** — §3.2 promised the recursive rollup would be a read-time command, and this is it.
   Nothing about it is stored.
 
+Three shapes in the table above are irregular, and each is bought by a constraint the model already
+enforces rather than by convenience:
+
+- **`measure` takes no noun.** Only a key-result can be measured, so a noun would carry no
+  information beyond what the bare chain already does — `para measure acme.q1-growth.signups
+  880/11000`. This is the one command whose address is a bare chain, and it is worth the
+  irregularity: `measure` is the highest-frequency write in the tool.
+- **`move` speaks its noun once**, not once per chain, because §18.3 makes `move` same-kind only — a
+  second noun could only ever repeat the first or be a refusal, so the table gives it one:
+  `para move area health.training fitness.training`, `para move project acme acme-migration`.
+- **`add` refuses the `container` noun.** Containers are created eagerly by `add` on their parent
+  (§18.1) and are never created directly, so `container` is a legal noun everywhere in the table
+  above except here.
+
 ### 13.1 What did not survive, and what deleted it
 
 - **`emit`** — deleted by write-through (§2.3). There is no state in which projections are pending, so
   there is nothing to trigger. `rebuild` inherits the only job `emit` still had, and is honest about
   being repair rather than routine.
-- **`para skill add|list|remove`** — deleted by skills becoming entities (§5.1) and getting locators
+- **`para skill add|list|remove`** — deleted by skills becoming entities (§5.1) and getting addresses
   (§1.4). v2 justified the sub-noun on the grounds that a skill shared none of the field vocabulary;
-  in v4 it shares `name`, `description`, `tags`, `created`, and has a journal. `para add
-  skills.signups-report --scope …` is the same verb doing the same job, so three shapes disappear
+  in v4 it shares `name`, `description`, `tags`, `created`, and has a journal. `para add skill
+  signups-report --scope …` is the same verb doing the same job, so three shapes disappear
   without anything replacing them.
 - **`para rule …`** — never existed, because a rule is a projection (§5.3). Nothing addresses a
   projection.
