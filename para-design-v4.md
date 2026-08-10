@@ -1980,47 +1980,48 @@ The root journal records `init` and a `child` event per bucket (§8.1).
 
 ```bash
 # a project, and its objectives/ container, in one operation
-para add projects.acme-migration --name "Acme migration" \
+para add project acme-migration --name "Acme migration" \
   --description "Rebuild the consumer so it stops falling over under replay load."
 
 # an objective — the parent must already exist; key-results/ comes with it
-para add projects.acme-migration.objectives.q1-growth \
+para add objective acme-migration.q1-growth \
   --name "Grow signups" --description "Move the top of the funnel."
 
 # a key-result — type is required and permanent
-para add projects.acme-migration.objectives.q1-growth.key-results.signups \
+para add key-result acme-migration.q1-growth.signups \
   --name "Weekly signups" --type ratio --start 480/9000 --target 2000/12000 --due 2026-09-30
 
 # areas and resources nest freely
-para add areas.health --name "Health" --description "Staying in one piece."
-para add areas.health.training --name "Training" --description "The weekly plan."
+para add area health --name "Health" --description "Staying in one piece."
+para add area health.training --name "Training" --description "The weekly plan."
 
-# a skill — scope is a locator list, and this also writes .agents/rules/para-signups-report.md
-para add skills.signups-report --name "Signups report" \
+# a skill — scope is an address list, and this also writes .agents/rules/para-signups-report.md
+para add skill signups-report --name "Signups report" \
   --description "when asked for the weekly signups number" \
-  --scope projects.acme-migration,areas.growth
+  --scope project.acme-migration,area.growth
 
 # a skill with no scope applies to the whole tree, and its rule says so
-para add skills.commit-style --name "Commit style" \
+para add skill commit-style --name "Commit style" \
   --description "when writing a commit message"
 ```
 
-Refusals, each naming the problem: `para add projects.acme-migration` again (exists);
-`para add projects.a.b` (a project cannot nest); `para add projects.objectives` (reserved word);
-`para add projects.x.objectives.y.key-results.z --type ratio` with no `--target` (required field).
+Refusals, each naming the problem: `para add project acme-migration` again (exists);
+`para add project acme.b` (wrong arity — a project is one segment, it cannot nest);
+`para add project objectives` (reserved word);
+`para add key-result x.y.z --type ratio` with no `--target` (required field).
 
 ### `para show` / `list` / `path`
 
 ```
-$ para list projects --tags kafka --sort attention
-projects.acme-migration                 project        in-progress   31 days ago
-…q1-growth                              objective      in-progress   31 days ago
-…q1-growth.key-results.signups          key-result     at-risk       12 days ago
+$ para list project --tags kafka --sort attention
+project     acme-migration                    in-progress   31 days ago
+objective   acme-migration.q1-growth          in-progress   31 days ago
+key-result  acme-migration.q1-growth.signups  at-risk       12 days ago
 showing 3 of 3
 
 $ para list --status blocked --all
-$ para list archive.projects
-$ para path areas.health.training
+$ para list project --archived
+$ para path area health.training
 /Users/max/brain/areas/health/training
 $ para show .            # from inside areas/health/training
 ```
@@ -2030,84 +2031,94 @@ Note what `list` does not show: `objectives`, `key-results`, or any other contai
 ### `para set` / `unset` / `move`
 
 ```
-$ para set projects.acme-migration --status blocked
+$ para set project acme-migration --status blocked
 error: --note is required when setting status to blocked
 
-$ para set projects.acme-migration --status blocked --note "waiting on the ingest team"
-projects.acme-migration  status in-progress → blocked
+$ para set project acme-migration --status blocked --note "waiting on the ingest team"
+project.acme-migration  status in-progress → blocked
 
-$ para set projects.acme-migration --status blocked --note "still waiting"
+$ para set project acme-migration --status blocked --note "still waiting"
 no change (status already blocked); note recorded
 
-$ para move areas.health.training areas.fitness.training
-moved  areas.health.training → areas.fitness.training
-       rewrote 1 scope entry in skills.training-plan
+$ para move area health.training fitness.training
+moved  area.health.training → area.fitness.training
+       rewrote 1 scope entry in skill.training-plan
 
-$ para move projects.acme-migration areas.acme-migration
-error: kind would change (project → area); create the target and move your content
+$ para move project acme-migration acme-renamed --archived
+error: --archived means both ends are archived; project.acme-migration is live
 ```
+
+Naming a second noun to change kind is not a refusal `move` can even reach any more — one noun applies
+to both ends (§13, R14), so there is no spelling left for "move this project into `areas/`" to parse
+as. The archive boundary above is the refusal that survives.
 
 ### `para note` / `measure` / `log` / `activity`
 
 ```
-$ para measure …key-results.signups 880/11000 --at 2026-01-03
+$ para measure acme-migration.q1-growth.signups 880/11000 --at 2026-01-03
 measured signups = 880/11000   decimal 0.0800   progress 0.24   at-risk
 
-$ para measure …key-results.signups 0.08
+$ para measure acme-migration.q1-growth.signups 0.08
 error: value 0.08 is not a ratio (type ratio expects <numerator>/<denominator>)
 
-$ para measure …key-results.signups 900/11000 --at 2026-01-03
+$ para measure acme-migration.q1-growth.signups 900/11000 --at 2026-01-03
 error: a measurement already exists at 2026-01-03T08:00:00Z (2026-01-03T00:00:00-08:00 local)
 
-$ para log projects.acme-migration --kind change --limit 3
-$ para activity projects.acme-migration --recursive --since 2026-01-01
-2026-01-05  …objectives            added objective q1-growth
-2026-01-03  …key-results.signups   measured 880/11000 (8.0%) — 24% of target
-2026-01-01  projects.acme-migration created
+$ para log project acme-migration --kind change --limit 3
+$ para activity project acme-migration --recursive --since 2026-01-01
+2026-01-05  objective.acme-migration.q1-growth            added objective q1-growth
+2026-01-03  key-result.acme-migration.q1-growth.signups   measured 880/11000 (8.0%) — 24% of target
+2026-01-01  project.acme-migration                        created
 ```
 
 ### `para archive` / `unarchive`
 
 ```
-$ para archive areas.health.training
-archived  areas.health.training → archive.areas.health.training
-          created stub archive/areas/health/ (parent areas.health is live)
+$ para archive area health.training
+archived  area.health.training → archive.area.health.training
+          created stub archive/areas/health/ (parent area.health is live)
 
-$ para unarchive archive.areas.health
-error: nothing to unarchive — archive.areas.health is a stub, not an entity
+$ para unarchive area health
+error: nothing to unarchive — archive/areas/health/ is a stub, not an entity
 
-$ para archive areas.health
-archived  areas.health → archive.areas.health   (3 descendants moved with it)
+$ para archive area health
+archived  area.health → archive.area.health   (3 descendants moved with it)
           stub archive/areas/health/ became the entity
 
-$ para unarchive archive.areas.health.training
-unarchived  archive.areas.health.training → areas.health.training
-            reinstated areas.health
+$ para unarchive area health.training
+unarchived  archive.area.health.training → area.health.training
+            reinstated area.health
             archive/areas/health/ became a stub
 
-$ para unarchive archive.projects.old-migration
-error: projects.old-migration exists; rename it or leave this archived
+$ para unarchive project old-migration
+error: project.old-migration exists; rename it or leave this archived
 ```
+
+`archive`/`unarchive` take no `--archived`: the source's side is implied by which verb you ran
+(§1.6), so the address on the command line is the plain noun and chain either way — never
+`archive.<noun>.<chain>`, which is a stored form, not something you type. The stub in the second
+command has no address to type in the first place (§1.6, §14); it is named by its on-disk path because
+that is the only thing it has.
 
 ### `para review` / `rebuild` / `doctor`
 
 ```
 $ para review --stale --behind
 stale (3)
-  areas.fitness.training                    61 days   stale-after 30
+  area.fitness.training                          61 days   stale-after 30
   …
 behind (1)
-  …key-results.signups                      pace 0.70   at-risk-pace 0.80
+  key-result.acme-migration.q1-growth.signups    pace 0.70   at-risk-pace 0.80
 
 $ echo "hand-edited" >> projects/acme-migration/ACTIVITY.md
 $ para doctor
 error  stale-projection  projects/acme-migration/ACTIVITY.md differs from journal (from 2026-01-05)
 exit 1
 
-$ para rebuild projects.acme-migration --dry-run
+$ para rebuild project acme-migration --dry-run
 would rewrite  projects/acme-migration/ACTIVITY.md
 
-$ para rebuild projects.acme-migration
+$ para rebuild project acme-migration
 rewrote  projects/acme-migration/ACTIVITY.md
 
 $ para doctor
@@ -2118,13 +2129,13 @@ exit 0
 ### `para config`
 
 ```
-$ para config set --at projects project.stale-after 30
-$ para config show project.stale-after projects.acme-migration
+$ para config set --at project project.stale-after 30
+$ para config show project.stale-after project.acme-migration
 30
 
-  projects.acme-migration      —
-→ projects                     30
-  <root>                       14
+  project.acme-migration      —
+→ project                     30
+  <root>                      14
 
 $ para config set emit.claude true
 wrote  .para/config.toml
