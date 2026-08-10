@@ -1315,26 +1315,50 @@ enforces rather than by convenience:
 
 ## 14. Addressing
 
-Every command takes the one locator form from §1.4, fully qualified, and every command prints it that
-way, so anything you read pastes into anything you type. Two conveniences, and no more:
+Every command takes the two-token form §1.4 defines — a noun, then a short id-chain — and every
+command prints and serializes it as the one-token dotted form, so anything you read pastes into
+anything you type. One irregularity survives from before nouns existed, and one is new:
 
-- **`.` means the entity or container containing the working directory.** `para show .`, `para note .
-  "text"`. It resolves by walking up from `$PWD` to the nearest directory with a `.para/state.toml`,
-  which is exactly the walk §8.5 already defines. Cheap, and it is the difference between para being
-  usable from inside a project and not.
-- **`para path <locator>`** is the inverse, printing one bare line shaped for `$(…)`.
+- **`.` survives unchanged as a whole address**, replacing `<noun> [<chain>]` or `<noun> <chain>`
+  wholesale rather than filling one slot of it: `para show .`, `para note . "text"`. It is
+  self-describing — it resolves by walking up from `$PWD` to the nearest ancestor with a
+  `.para/state.toml`, the same upward-ancestor-chain style §7 uses to resolve a config value — so it
+  takes **no noun**. On a command like `note`, where both a noun and a chain are
+  otherwise mandatory, that is one token standing in for two; on a command like `show`, where the chain
+  was already optional, `.` is not reducing an argument count so much as supplying a token that is not
+  drawn from the seven-word noun vocabulary at all. Cheap either way, and it is the difference between
+  para being usable from inside a project and not.
+- **A noun with no chain is the bucket.** `para list project`, `para doctor area`, `para path skill`.
+  This collapses "filter by kind" and "the bucket" into one idea (§1.4's table gives the four buckets'
+  paths this way), and it is accepted by every command whose argument the table below calls "entity,
+  container, or bucket" — the bucket being a legitimate thing to log, roll up, or render a bare path
+  for — and by `list`, a place to look inside (§16.2).
+- **`para path <noun> [<chain>]`** is the inverse of the noun+chain → path mapping, printing one bare
+  line shaped for `$(…)`. A stub is the one thing `path` cannot produce a line for, because a stub has
+  no noun and therefore no address to resolve in the first place (§1.6) — there is nothing to type, not
+  merely something `path` fails on.
 
 What each command accepts as its argument:
 
 | Argument | Verbs |
 | --- | --- |
-| entity | `add`, `set`, `unset`, `move`, `remove`, `archive`, `unarchive`, `note`, `measure` |
-| entity or container | `show`, `log`, `activity`, `path`, `rebuild`, `doctor`, `review` |
-| container, bucket, or root | `list` (positionally — what to look inside) |
-| a key-result only | `measure` |
+| entity (bare noun refused by name) | `add`, `set`, `unset`, `move`, `remove`, `archive`, `unarchive`, `note` |
+| entity, container, or bucket — a bare noun is the bucket; `activity`, `rebuild`, `doctor`, `review` also take nothing at all, meaning the root | `show`, `log`, `activity`, `path`, `rebuild`, `doctor`, `review` |
+| entity, container, bucket, or root — a place to look inside, by §16.2's own lookahead | `list` |
+| a bare id-chain, no noun | `measure` |
 
-Naming a container where an entity is required is an error that says so: containers hold `name`,
-`description`, and `created` and nothing you would want to set (§8.2).
+**Naming a container where an entity is required is an error that says so**: containers hold `name`,
+`description`, and `created` and nothing you would want to set (§8.2). **Naming a bucket where an
+entity is required is the same refusal, by name** — `para add project` or `para remove skill` name a
+kind, not a thing, the same way naming a container does. This is independent of `add` banning the
+`container` noun outright (§13): that refusal bars the noun itself, for any chain, because `container`
+has no bucket form to begin with (§1.4's bucket rows are project, area, resource, and skill only) —
+`para add container acme.objectives` is refused by noun, not by an empty chain.
+
+**No arguments at all, where the command allows it, is the tree root**, unchanged from before nouns
+existed. `list`, `activity`, `review`, `rebuild`, and `doctor` all take a fully optional noun and
+chain (§13), so any of them run with nothing after the verb and mean the whole tree: `para list`,
+`para doctor`, `para review`, and so on.
 
 ---
 
