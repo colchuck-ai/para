@@ -1226,6 +1226,16 @@ and a future reader deserves both sides.
 | `import`/adoption exists. | It does not. | The "point para at my existing repo" story. Bought: entities-all-the-way-up, and therefore locator↔path isomorphism. |
 | Git is a precondition. | It is not, and para never invokes git. | Nothing. v2's precondition guarded a projection-merge problem that `merge=ours` now answers. |
 | One `entity.md` per entity, fields in its frontmatter. | Two truth files — `state.toml` and `config.toml` — and a generated `README.md`. | Three files where there was one, and a `config.toml` that is usually empty. Bought: policy separable from identity at any level of the tree, and a README body that is yours. |
+| Nouns partition the command surface: `para <noun> <verb> <locator>`. | The noun is restored, but as an argument after the verb, not a leading sub-command: `para <verb> <noun> <chain>`. | A seventeen-word reserved list, stubs no longer addressable, and one lookahead rule in `list`. Bought: per-kind flags, per-kind help, per-kind completion, and a kind filter on `list`. |
+
+**This one has an intermediate step the other rows don't.** v4 first reversed v2's row above to a bare
+`para <verb> <locator>` — no noun at all — recorded in §25 as "Verb-first with locators, not
+noun-verb," reasoned as "the locator carries the kind, so the verb never needs to." This amendment
+reverses *that* decision, landing the noun back in the grammar, but not where v2 had it: v2's noun led
+as a sub-command choosing among per-noun verbs; this amendment's noun follows the verb as an ordinary
+argument, because the locator still carries the kind for the machine — the noun's job is partitioning
+the help, the flags, and the completions for a reader, which §25 never weighed when it dropped the
+noun the first time.
 
 Kept from v2 without amendment, so nobody re-litigates them: location is kind; kind, id, parent, and
 locator all derived from the path and written nowhere else; one locator form; setting a field to its current value writes nothing; pushing
