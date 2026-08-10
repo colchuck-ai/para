@@ -277,10 +277,25 @@ signed.
 
 ### 1.6 Archive is a place
 
-Archiving **moves bytes**. `projects/acme` becomes `archive/projects/acme`, and the locator becomes
-`archive.projects.acme`.
+Archiving **moves bytes**. `projects/acme` becomes `archive/projects/acme`; the address is still
+`project acme`, and its stored form gains `archive.` as a prefix: `archive.project.acme`. Archival
+stays out of the noun slot — `archived-project` would read as though archival were a kind, which this
+section already denies — so `--archived` is instead an **address qualifier flag**, accepted wherever an
+address is read: `show`, `list`, `log`, `activity`, `path`, `doctor`, `rebuild`, `review`, `set`,
+`unset`, `note`, `move`, `remove`.
 
-- **Archived things are first-class.** They have locators, they are addressable, they can be shown
+```
+para show project acme --archived
+para list --archived                  # the whole archive
+para list project --archived          # archived projects
+```
+
+It is refused, each with its own message, wherever the side is already implied: `add` (nothing is ever
+created under `archive/`), `archive` (the source is live by definition), `unarchive` (the source is
+archived by definition). `move` keeps refusing to cross the archive boundary either way (§18.3);
+`--archived` on `move` means both ends are archived.
+
+- **Archived things are first-class.** They have addresses, they are addressable, they can be shown
   and listed, and a skill's `scope` may name them.
 - **Archiving drags the whole subtree.** Archiving an area takes its sub-areas and its content with
   it, in one move. There is no partial state.
@@ -302,6 +317,11 @@ Archiving **moves bytes**. `projects/acme` becomes `archive/projects/acme`, and 
   where the thing came from. Unarchive the last thing beneath such a stub and it is removed, because a
   stub that records nothing records nothing. Stubs are the one place a locator segment has no entity
   behind it. `doctor` must recognise them and never report them as malformed.
+- **A stub has no noun and no address.** A stub has no kind — it is bytes with no `.para/` behind
+  them — and the grammar's first token is always a kind, so nothing can name one. `doctor` reports a
+  stub by its on-disk relative path instead of an address, and `para path` drops stub support
+  entirely: there is no address to resolve into a path in the first place. This is the one capability
+  the noun-verb grammar gives up, and it is deliberate rather than an oversight.
 - **Areas and resources have no status field.** Location *is* archival state: in `areas/` it is
   active, in `archive/areas/` it is archived. This deletes v2's `active | archived` enum outright —
   a second copy of the answer, which principle 1 forbids.
