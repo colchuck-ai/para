@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
@@ -277,7 +278,7 @@ func (s *scan) checkUntracked(path string) {
 		return
 	}
 	parentLoc, err := locator.FromPath(s.rel(filepath.Dir(path)))
-	if err != nil || !kindmeta.IsBucket(parentLoc) {
+	if err != nil || !address.IsBucket(parentLoc) {
 		return
 	}
 	s.add(Finding{

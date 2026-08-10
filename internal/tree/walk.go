@@ -70,7 +70,7 @@ func walkChildren(dir string, loc locator.Locator, visit func(Node) error) error
 			if err := walkChildren(childPath, childLoc, visit); err != nil {
 				return err
 			}
-		case inArchive && (!locator.IsReserved(name) || kindmeta.IsContainer(childLoc)):
+		case inArchive && (!locator.IsReserved(name) || isContainerPosition(childLoc)):
 			// A stub chain runs through containers as well as entities:
 			// archiving one objective out of a live project leaves
 			// archive/projects/acme/objectives/ as a bare directory with the
