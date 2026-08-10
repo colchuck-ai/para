@@ -179,8 +179,14 @@ The noun vocabulary is exactly seven words, the singular of each kind above:
 
     project  area  resource  objective  key-result  skill  container
 
-Reserved and unusable as an id: `projects`, `areas`, `resources`, `archive`, `objectives`,
-`key-results`, `skills`, `logs`, `.para`, `.agents`.
+Reserved and unusable as an id: the ten places and structural names —
+`projects`, `areas`, `resources`, `archive`, `objectives`, `key-results`, `skills`, `logs`, `.para`,
+`.agents` — plus the seven nouns above. Seventeen words in total.
+
+Without reserving the seven nouns, an entity legitimately named `project` would make `para list
+project project` unparseable: `list`'s grammar (§16.2) tells a kind filter from a scope by lookahead,
+and that only works if a bare noun can never also be a live id. Reserving the nouns is what keeps "is
+this token a noun or an id" a lexical question instead of a contextual one.
 
 Given the noun, the arity and shape of the id-chain determine the path completely. This is the
 **inverse** of §1.3's location-is-kind, restricted to the rows §1.3 gives an entity or container kind
