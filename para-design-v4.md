@@ -25,9 +25,12 @@ derived files to get it.
 
 Five rules. Every section below is downstream of one of them.
 
-1. **Location is kind — and locator is path.** Where a directory sits says what it is, and its
-   locator is its path with `/` swapped for `.`. There is no noun word, no `--kind` flag, no
-   elision table, no second locator form.
+1. **Location is kind.** Where a directory sits says what it is; internally that fact is the
+   `Locator` — its path with `/` swapped for `.` — and nothing else names it (§1.3). The noun and
+   id-chain you type or read (§1.4) are a fixed, total, invertible encoding of that same path, never a
+   second fact that could disagree with it: no `--kind` flag, no elision table, and no format choice
+   for a command's own address argument — that slot is always two tokens on the command line and one
+   dotted token wherever it is serialized, including as another command's flag value (§1.4).
 2. **One source of truth per fact.** For anything with a `.para/`, that is its `.para/state.toml`.
    For history, the append-only journal. Nothing else is authoritative, ever.
 3. **Generated files are the product, not a cache.** README frontmatter, `ACTIVITY.md`,
@@ -35,7 +38,8 @@ Five rules. Every section below is downstream of one of them.
    They are written through on every mutation and rebuildable from truth at any time.
 4. **One home per event.** An event is logged at the entity it happened to, and nowhere else.
    Rollups are computed when asked for, never stored.
-5. **One spelling per thing.** One locator form. One place scope is declared. One clock.
+5. **One spelling per thing.** One locator form (§1.3's internal `Locator`, not §1.4's two-token
+   address — see Principle 1). One place scope is declared. One clock.
 
 Principle 3 is a direct reversal of v2's principle 2 ("no caches, no projections, no `rebuild`").
 The distinction that makes the reversal honest: v1's projection was a **cache** — it existed to make
