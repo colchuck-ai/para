@@ -32,7 +32,7 @@ func TestCheck(t *testing.T) {
 		{
 			name:  "a complete skill passes",
 			kind:  kindmeta.KindSkill,
-			state: truth.State{Name: "Report", Description: "when asked for signups", Scope: []string{"projects"}},
+			state: truth.State{Name: "Report", Description: "when asked for signups", Scope: []string{"project"}},
 		},
 		{
 			name:  "a complete container passes",
@@ -136,9 +136,15 @@ func TestCheck(t *testing.T) {
 			want:  []kindmeta.Field{kindmeta.FieldTags},
 		},
 		{
-			name:  "a scope entry that is not a locator",
+			name:  "a scope entry in the old plural locator form is not a noun",
 			kind:  kindmeta.KindSkill,
-			state: truth.State{Name: "Report", Description: "when asked", Scope: []string{"Projects/Acme"}},
+			state: truth.State{Name: "Report", Description: "when asked", Scope: []string{"projects.acme"}},
+			want:  []kindmeta.Field{kindmeta.FieldScope},
+		},
+		{
+			name:  "a scope entry with the wrong arity for its noun",
+			kind:  kindmeta.KindSkill,
+			state: truth.State{Name: "Report", Description: "when asked", Scope: []string{"objective.acme"}},
 			want:  []kindmeta.Field{kindmeta.FieldScope},
 		},
 	}
@@ -160,6 +166,44 @@ func TestCheck(t *testing.T) {
 				if fields[i] != c.want[i] {
 					t.Fatalf("Check faulted %v, want %v", fields, c.want)
 				}
+			}
+		})
+	}
+}
+
+// TestCheckScopeMessageNamesTheNoun is P18.1's acceptance criterion: a
+// malformed scope entry is refused with a message naming the noun, not the
+// old "is not a locator" wording.
+func TestCheckScopeMessageNamesTheNoun(t *testing.T) {
+	cases := []struct {
+		name  string
+		entry string
+		want  string
+	}{
+		{
+			name:  "old plural form names the legal nouns",
+			entry: "projects.acme",
+			want:  "is not a noun",
+		},
+		{
+			name:  "wrong arity names the noun that rejected it",
+			entry: "objective.acme",
+			want:  "objective takes exactly two segments",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := truth.Check(kindmeta.KindSkill, truth.State{
+				Name: "Report", Description: "when asked", Scope: []string{c.entry},
+			})
+			if len(got) != 1 {
+				t.Fatalf("Check faulted %d problems, want 1", len(got))
+			}
+			if strings.Contains(got[0].Msg, "is not a locator") {
+				t.Errorf("Msg = %q, still names a locator rather than a noun", got[0].Msg)
+			}
+			if !strings.Contains(got[0].Msg, c.want) {
+				t.Errorf("Msg = %q, want it to contain %q", got[0].Msg, c.want)
 			}
 		})
 	}

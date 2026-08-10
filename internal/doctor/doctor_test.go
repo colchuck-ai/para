@@ -371,7 +371,7 @@ func TestScopeUnresolved(t *testing.T) {
 	root := cleanTree(t)
 	e := mutate.NewEnv(root, clock.Fixed{At: now(t)})
 	var f mutate.Fields
-	f.SetList(kindmeta.FieldScope, []string{"projects.acme", "projects.gone"})
+	f.SetList(kindmeta.FieldScope, []string{"project.acme", "project.gone"})
 	if _, err := e.Set(loc(t, "skills.report"), f, ""); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
@@ -379,8 +379,8 @@ func TestScopeUnresolved(t *testing.T) {
 	rep := run(t, root, doctor.Options{})
 
 	got := findings(rep, doctor.KindScopeUnresolved)
-	if len(got) != 1 || !strings.Contains(got[0], "projects.gone") {
-		t.Fatalf("scope-unresolved findings = %v, want one naming projects.gone", got)
+	if len(got) != 1 || !strings.Contains(got[0], "project.gone") {
+		t.Fatalf("scope-unresolved findings = %v, want one naming project.gone", got)
 	}
 	assertOnly(t, rep, doctor.KindScopeUnresolved)
 }

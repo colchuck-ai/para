@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
@@ -315,11 +316,15 @@ func (s *scan) checkScope(sub rebuild.Subject, state truth.State) error {
 	}
 	rel := join(s.rel(sub.Dir), ".para/state.toml")
 	for _, entry := range state.Scope {
-		loc, err := locator.Parse(entry)
+		addr, err := address.ParseDotted(entry)
 		if err != nil {
-			// Not a locator at all: truth.Check already reported it as
+			// Not an address at all: truth.Check already reported it as
 			// invalid, and asking whether it resolves would be asking about
 			// something that cannot be looked up.
+			continue
+		}
+		loc, err := addr.ToLocator()
+		if err != nil {
 			continue
 		}
 		resolves, err := tree.Resolves(s.root, loc)
