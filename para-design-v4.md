@@ -1265,7 +1265,7 @@ container segments, so the chain is not the whole path (§1.4).
 | `rebuild` | `para rebuild [<noun> [<chain>]] [--dry-run]` |
 | `path` | `para path <noun> [<chain>]` |
 | `doctor` | `para doctor [<noun> [<chain>]]` |
-| `config` | `set` / `unset` / `list [--prefix …]` / `show <key> [<noun.chain>]` |
+| `config` | `set` / `unset` / `list [--prefix …]` / `show <key> [<noun>.<chain>]` |
 
 Four are new against v2, and each is demanded by a specific decision in the first half:
 
@@ -1836,24 +1836,25 @@ phantom entity. `--json` for the same findings as data.
 
 ```bash
 para config set project.stale-after 30              # in the nearest config.toml — see below
-para config set --at projects.acme project.stale-after 30
-para config unset --at projects.acme project.stale-after
+para config set --at project.acme project.stale-after 30
+para config unset --at project.acme project.stale-after
 para config list [--prefix emit]
-para config show project.stale-after projects.acme.objectives.q1-growth
+para config show project.stale-after objective.acme.q1-growth
 ```
 
-- `set`/`unset` write the **root's** `config.toml` unless `--at <locator>` names a level to write at.
-  Root is the default because that is where a knob usually belongs, and `--at` is how §7's chain gets
-  built deliberately rather than by accident.
-- **`config show <key> [<locator>]` prints the resolved value and the chain that produced it**, marking
-  the level that won:
+- `set`/`unset` write the **root's** `config.toml` unless `--at <noun>.<chain>` names a level to write
+  at, taking the dotted stored form (§1.4) since a flag value is one token. Root is the default
+  because that is where a knob usually belongs, and `--at` is how §7's chain gets built deliberately
+  rather than by accident.
+- **`config show <key> [<noun>.<chain>]` prints the resolved value and the chain that produced it**,
+  marking the level that won:
 
 ```
-$ para config show project.stale-after projects.acme-migration
+$ para config show project.stale-after project.acme-migration
 30
 
-  projects.acme-migration      —
-→ projects                     30
+  project.acme-migration       —
+→ project                      30
   <root>                       14
 ```
 
