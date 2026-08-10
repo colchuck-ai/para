@@ -164,39 +164,87 @@ load-bearing idea, kept whole — with the caveat in §1.5 about what a hand-`mv
 **`max-depth` remains gone**, with its two config keys, its creation-time refusal, its `--force`, and
 its `doctor` finding. Depth was a proxy for a filing judgement it could not make. *(v2 §5.3.)*
 
-### 1.4 Locator = path, always
+This table is the **internal** mapping — path to kind — and it does not change. `Locator` (the
+relative path) stays the representation the walk, the tree, and every internal package reason about;
+§1.4 gives it a second, external half by defining the mapping this table's inverse needs.
 
-```
-projects.acme-migration
-projects.acme-migration.objectives.q1-growth.key-results.signups
-areas.health.training
-archive.areas.health.training
-skills.para-signups-report
-```
+### 1.4 Addressing: noun + id-chain → path
 
-Dots separate segments, hyphens separate words within a segment, charset `[a-z0-9-]`. Reserved and
-unusable as an id: `projects`, `areas`, `resources`, `archive`, `objectives`, `key-results`, `skills`,
-`logs`, `.para`, `.agents`.
+An address is a **(noun, id-chain) pair**, not a string. On the command line it is two argument
+tokens. Wherever it must be a single token — in TOML, in frontmatter, in a journal event, in a flag
+value, in a `doctor` finding — it is written `<noun>.<id-chain>`, dots separating id-chain segments,
+hyphens separating words within a segment, charset `[a-z0-9-]`.
 
-**`skills.<id>` is the second exception to locator↔path**, mapping to `.agents/skills/para-<id>/`. It
-exists because a segment cannot contain a dot, so `.agents` can never appear in a locator, and because
-skills are entities with the same field vocabulary as everything else — giving them a locator means
-every verb works on them and the command surface grows by nothing (§14). The `para-` prefix is part of
-the directory name, not the locator: `skills.signups-report` addresses
-`.agents/skills/para-signups-report/`. There is no `rules.` namespace, because rules are projections
-and nothing addresses a projection (§5.3).
+The noun vocabulary is exactly seven words, the singular of each kind above:
 
-One form. Every command takes it, every output prints it, anything you read pastes anywhere. The
-container segments are **not elided** — a key-result is six segments and that is what you type.
+    project  area  resource  objective  key-result  skill  container
 
-The alternative was eliding `objectives`/`key-results` to give `projects.acme.q1-growth.signups`.
-Rejected: v2's best ergonomic win was killing the table explaining which command wanted which
-locator form, and elision quietly reintroduces a translation layer that every command, every output,
-every `scope` list, and every `doctor` message has to agree on. Six segments are typed once and
-pasted thereafter.
+Reserved and unusable as an id: `projects`, `areas`, `resources`, `archive`, `objectives`,
+`key-results`, `skills`, `logs`, `.para`, `.agents`.
 
-A log entry's locator is its entity's locator plus the entry timestamp as a final segment:
-`projects.acme-migration.20260101T081502`.
+Given the noun, the arity and shape of the id-chain determine the path completely. This is the
+**inverse** of §1.3's location-is-kind, restricted to the rows §1.3 gives an entity or container kind
+to — a rule, a piece of content, and anything under `.agents/**` without a `para-` prefix have no noun
+and no address (§5.3), and an archived entity's stored form carries `archive.` as an extra prefix on
+top of this table (§1.6). Within that restriction it is total in both directions: every legal
+`(noun, chain)` pair names exactly one path, because each noun's path template starts with its own
+fixed, noun-specific prefix — a distinct bucket name, or `.agents/skills/para-` for `skill` — so no two
+nouns can ever produce the same path, and a chain's arity fixes the rest; and every path in an
+addressable row names exactly one `(noun, chain)`, because the arity rule below is the argument that a
+badly-shaped chain never reaches a path at all, leaving one legal chain shape per path:
+
+| Address | Stored form | Path |
+| --- | --- | --- |
+| `project acme` | `project.acme` | `projects/acme` |
+| `objective acme.q1-growth` | `objective.acme.q1-growth` | `projects/acme/objectives/q1-growth` |
+| `key-result acme.q1-growth.signups` | `key-result.acme.q1-growth.signups` | `projects/acme/objectives/q1-growth/key-results/signups` |
+| `area health` | `area.health` | `areas/health` |
+| `area health.training` | `area.health.training` | `areas/health/training` |
+| `resource papers.kafka` | `resource.papers.kafka` | `resources/papers/kafka` |
+| `skill signups-report` | `skill.signups-report` | `.agents/skills/para-signups-report` |
+| `container acme.objectives` | `container.acme.objectives` | `projects/acme/objectives` |
+| `container acme.q1-growth.key-results` | `container.acme.q1-growth.key-results` | `projects/acme/objectives/q1-growth/key-results` |
+| `project` *(no chain)* | `project` | `projects/` — the bucket |
+| `area` *(no chain)* | `area` | `areas/` |
+| `resource` *(no chain)* | `resource` | `resources/` |
+| `skill` *(no chain)* | `skill` | `.agents/skills/` |
+
+**Arity is fixed per noun, and arity is the validation.** `project` and `skill` take exactly one
+id-chain segment; `objective` two; `key-result` three; `area` and `resource` one or more; `container`
+two or three, whose last segment must be `objectives` (under a project id) or `key-results` (under an
+objective id). A chain of the wrong arity for its noun is refused by naming the noun and the arity it
+expects — the same kind of refusal §10's `misplaced` finding describes today for a `state.toml` already
+sitting at a bad location, now caught before any path is built rather than discovered on disk
+afterward.
+
+**The noun replaces the container segments, it does not repeat them.** `key-result acme.q1-growth.signups`
+is three segments, not the five you would get by spelling `objectives` and `key-results` into the
+chain. The bucket and the container names are recoverable from the noun and the chain's own arity, so
+spelling them again would be a second copy of the kind — the thing principle 1 forbids. This reverses
+what §1.4 said before nouns existed: with no noun to carry that information, un-eliding every segment
+was the only way to keep the mapping unambiguous, and typing the bucket and container names once and
+pasting them thereafter was the offered trade. Speaking the noun removes the need for the trade.
+
+**`skill` folds in what was the locator's one exception.** `.agents/skills/para-<id>/` used to be a
+special case in the path derivation, carved out because a locator segment cannot contain a dot and
+`.agents` could therefore never appear in one. Spoken as a noun, it needs no carve-out: `skill` is
+simply the noun whose path rule prepends `.agents/skills/para-` instead of a bucket name. There is no
+`container` value that means "rules" and no way to address a rule at all, because a rule is a
+projection and nothing addresses a projection (§5.3).
+
+**Naming the container is now unnecessary rather than merely elided, for address resolution.** §1.2
+distinguished a container from an entity by name; that distinction still holds on disk exactly as
+before, since it is what the walk, `doctor`, and anything else that finds a directory rather than being
+told about it must still test. What changes is one direction only: resolving a *spoken* address to a
+path no longer has to infer "this segment must be a container" from seeing a reserved word, because the
+caller already said `container`.
+
+One address, two written forms — spoken (`<noun> <chain>`) and stored (`<noun>.<chain>`) — and every
+command, every output, and every generated file uses one or the other consistently: typed on the
+command line, printed and serialized as the single dotted token.
+
+A log entry's identifier is its entity's stored address plus the entry timestamp as a final segment:
+`project.acme-migration.20260101T081502`.
 
 ### 1.5 Entities all the way up
 
