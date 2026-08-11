@@ -3,6 +3,8 @@ package cli
 import (
 	"time"
 
+	"github.com/colchuck-ai/para/internal/address"
+	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/view"
 )
 
@@ -68,7 +70,7 @@ type keyResultJSON struct {
 
 func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 	out := entityJSON{
-		Locator:         e.Locator.String(),
+		Locator:         entityLocatorString(e.Locator),
 		Kind:            e.Kind.String(),
 		ID:              e.ID(),
 		Name:            e.State.Name,
@@ -108,6 +110,20 @@ func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 		}
 	}
 	return out
+}
+
+// entityLocatorString is loc's dotted address (R24, R26): the form changes,
+// the JSON key does not, and no separate `noun` key is added since `kind`
+// already carries it and the two agree by construction. Every view.Entity a
+// read command builds one of these from is a real entity the walk found, so
+// address.String failing here is not a case this package exercises; the raw
+// Locator string is a defensive fallback only.
+func entityLocatorString(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }
 
 func utcOrEmpty(t time.Time) string {
@@ -173,7 +189,7 @@ func showOutputOf(env *view.Env, s shown) showOutput {
 	}
 	for _, k := range s.skills {
 		out.Skills = append(out.Skills, skillJSON{
-			Locator:   k.Locator.String(),
+			Locator:   entityLocatorString(k.Locator),
 			Name:      k.Name,
 			Via:       k.Via,
 			WholeTree: k.WholeTree,
