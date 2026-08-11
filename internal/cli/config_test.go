@@ -44,9 +44,9 @@ func TestConfigShowPrintsSection22sChain(t *testing.T) {
 	}
 	want := "30\n" +
 		"\n" +
-		"  projects.acme-migration      —\n" +
-		"→ projects                     30\n" +
-		"  <root>                       14\n"
+		"  project.acme-migration      —\n" +
+		"→ project                     30\n" +
+		"  <root>                      14\n"
 	if stdout != want {
 		t.Errorf("stdout =\n%q\nwant\n%q", stdout, want)
 	}
@@ -138,17 +138,21 @@ func TestConfigShowJSONCarriesTheWholeChain(t *testing.T) {
 	if got.Key != "project.stale-after" || got.Value != 30 || !got.Set || got.Default {
 		t.Errorf("got %+v, want project.stale-after = 30, set, not default", got)
 	}
-	if got.Source == nil || *got.Source != "projects" {
-		t.Errorf("source = %v, want %q", got.Source, "projects")
+	// The subject's own locator (R24), not just the chain's.
+	if got.Locator != "project.acme-migration" {
+		t.Errorf("locator = %q, want %q", got.Locator, "project.acme-migration")
+	}
+	if got.Source == nil || *got.Source != "project" {
+		t.Errorf("source = %v, want %q", got.Source, "project")
 	}
 	if len(got.Chain) != 3 {
 		t.Fatalf("chain has %d levels, want 3", len(got.Chain))
 	}
-	if got.Chain[0].Level != "projects.acme-migration" || got.Chain[0].Set {
+	if got.Chain[0].Level != "project.acme-migration" || got.Chain[0].Set {
 		t.Errorf("chain[0] = %+v, want the unset entity level", got.Chain[0])
 	}
-	if got.Chain[1].Level != "projects" || !got.Chain[1].Winner {
-		t.Errorf("chain[1] = %+v, want projects marked as the winner", got.Chain[1])
+	if got.Chain[1].Level != "project" || !got.Chain[1].Winner {
+		t.Errorf("chain[1] = %+v, want project marked as the winner", got.Chain[1])
 	}
 	if got.Chain[2].Level != "" || got.Chain[2].File != ".para/config.toml" {
 		t.Errorf("chain[2] = %+v, want the root level", got.Chain[2])
@@ -343,7 +347,7 @@ func TestConfigListPrintsEveryKnobAndWhereItCameFrom(t *testing.T) {
 		"emit.claude":             {"true", "<root>"},
 		"emit.claude-skills":      {"symlink", "(default)"},
 		"emit.gitattributes":      {"true", "(default)"},
-		"project.stale-after":     {"30", "projects"},
+		"project.stale-after":     {"30", "project"},
 		"review.cadence":          {"—", "—"},
 		"key-result.at-risk-pace": {"—", "—"},
 		"log.rotate-bytes":        {"4194304", "(default)"},

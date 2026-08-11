@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mutate"
@@ -404,15 +405,32 @@ func resolvedSource(res config.Resolution) string {
 	return unset
 }
 
-// levelJSON is one link of the chain in --json form. Level is the locator
-// itself — empty for the root — rather than the <root> label, because JSON
-// is read by programs and a program wants the locator.
+// levelJSON is one link of the chain in --json form. Level is the dotted
+// address (R24) — empty for the root — rather than the <root> label, because
+// JSON is read by programs and a program wants the address, not the prose.
 type levelJSON struct {
 	Level  string `json:"level"`
 	File   string `json:"file"`
 	Set    bool   `json:"set"`
 	Value  any    `json:"value"`
 	Winner bool   `json:"winner"`
+}
+
+// configLocatorString is loc's dotted address (R24), or "" for the empty
+// locator every root-level config subject carries. loc ordinarily names a
+// real, already-resolved entity or container, so address.String ordinarily
+// succeeds — but openScope only checks tree.Exists, not the reserved-word
+// legality the walk's own classify() gates on, so a legacy tree with a
+// collision-shaped id (a directory named one of R6's seventeen reserved
+// words) can still reach here. The raw Locator string is the fallback for
+// exactly that case — the same position a doctor `collision` finding would
+// also show unconverted, since it derives no address either.
+func configLocatorString(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }
 
 // showPayload is `config show --json`. Set and Default answer different
@@ -432,7 +450,7 @@ type showPayload struct {
 func showJSON(s scope, res config.Resolution) showPayload {
 	out := showPayload{
 		Key:     res.Key,
-		Locator: s.locator.String(),
+		Locator: configLocatorString(s.locator),
 		Set:     res.Found && !res.FromDefault,
 		Default: res.FromDefault,
 		Source:  sourceJSON(res),
@@ -442,7 +460,7 @@ func showJSON(s scope, res config.Resolution) showPayload {
 		out.Value = jsonValue(res.Value)
 	}
 	for i, l := range res.Levels {
-		link := levelJSON{Level: l.Locator.String(), File: l.File, Set: l.Set, Winner: i == res.Winner}
+		link := levelJSON{Level: configLocatorString(l.Locator), File: l.File, Set: l.Set, Winner: i == res.Winner}
 		if l.Set {
 			link.Value = jsonValue(l.Value)
 		}
@@ -466,7 +484,7 @@ type listPayload struct {
 }
 
 func listJSON(s scope, rows []config.Resolution) listPayload {
-	out := listPayload{Locator: s.locator.String(), Keys: make([]keyPayload, 0, len(rows))}
+	out := listPayload{Locator: configLocatorString(s.locator), Keys: make([]keyPayload, 0, len(rows))}
 	for _, res := range rows {
 		k := keyPayload{
 			Key:     res.Key,
@@ -491,7 +509,7 @@ func sourceJSON(res config.Resolution) *string {
 	if !ok {
 		return nil
 	}
-	s := src.Locator.String()
+	s := configLocatorString(src.Locator)
 	return &s
 }
 

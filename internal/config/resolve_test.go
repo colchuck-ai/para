@@ -30,18 +30,18 @@ func TestChainWalksEveryAncestorNearestFirst(t *testing.T) {
 		},
 		{
 			loc:   "projects",
-			want:  []string{"projects", "<root>"},
+			want:  []string{"project", "<root>"},
 			files: []string{"projects/.para/config.toml", ".para/config.toml"},
 		},
 		{
 			loc: "projects.acme.objectives.q1-growth.key-results.signups",
 			want: []string{
-				"projects.acme.objectives.q1-growth.key-results.signups",
-				"projects.acme.objectives.q1-growth.key-results",
-				"projects.acme.objectives.q1-growth",
-				"projects.acme.objectives",
-				"projects.acme",
-				"projects",
+				"key-result.acme.q1-growth.signups",
+				"container.acme.q1-growth.key-results",
+				"objective.acme.q1-growth",
+				"container.acme.objectives",
+				"project.acme",
+				"project",
 				"<root>",
 			},
 			files: []string{
@@ -56,7 +56,7 @@ func TestChainWalksEveryAncestorNearestFirst(t *testing.T) {
 		},
 		{
 			loc:  "areas.health.training",
-			want: []string{"areas.health.training", "areas.health", "areas", "<root>"},
+			want: []string{"area.health.training", "area.health", "area", "<root>"},
 			files: []string{
 				"areas/health/training/.para/config.toml",
 				"areas/health/.para/config.toml",
@@ -66,7 +66,7 @@ func TestChainWalksEveryAncestorNearestFirst(t *testing.T) {
 		},
 		{
 			loc:  "archive.projects.old-thing",
-			want: []string{"archive.projects.old-thing", "archive.projects", "archive", "<root>"},
+			want: []string{"archive.project.old-thing", "archive.project", "archive", "<root>"},
 			files: []string{
 				"archive/projects/old-thing/.para/config.toml",
 				"archive/projects/.para/config.toml",
@@ -79,7 +79,7 @@ func TestChainWalksEveryAncestorNearestFirst(t *testing.T) {
 			// .agents/ is not in the PARA tree, so there is nothing in
 			// between." In particular there is no `skills` level.
 			loc:  "skills.signups-report",
-			want: []string{"skills.signups-report", "<root>"},
+			want: []string{"skill.signups-report", "<root>"},
 			files: []string{
 				".agents/skills/para-signups-report/.para/config.toml",
 				".para/config.toml",
@@ -130,13 +130,13 @@ func TestResolveNearestWins(t *testing.T) {
 		want   string
 		source string
 	}{
-		{loc: "projects.acme", key: "project.stale-after", want: "7", source: "projects.acme"},
-		{loc: "projects.other", key: "project.stale-after", want: "30", source: "projects"},
+		{loc: "projects.acme", key: "project.stale-after", want: "7", source: "project.acme"},
+		{loc: "projects.other", key: "project.stale-after", want: "30", source: "project"},
 		{loc: "", key: "project.stale-after", want: "14", source: "<root>"},
 		// A level that sets a different key does not shadow the one above it.
-		{loc: "areas.health", key: "area.stale-after", want: "60", source: "areas"},
+		{loc: "areas.health", key: "area.stale-after", want: "60", source: "area"},
 		// A skill reads its own config, then the root — nothing in between.
-		{loc: "skills.report", key: "review.cadence", want: "45", source: "skills.report"},
+		{loc: "skills.report", key: "review.cadence", want: "45", source: "skill.report"},
 	}
 
 	for _, tt := range tests {
@@ -184,8 +184,8 @@ func TestResolveReportsEveryLevelConsultedWithTheWinnerMarked(t *testing.T) {
 		set   bool
 		value string
 	}{
-		{"projects.acme-migration", false, ""},
-		{"projects", true, "30"},
+		{"project.acme-migration", false, ""},
+		{"project", true, "30"},
 		{"<root>", true, "14"},
 	}
 	for i, w := range want {
@@ -300,7 +300,7 @@ func TestEveryKindsThresholdNamesTheLevelItCameFrom(t *testing.T) {
 		loc  string
 		want string // the level that should win
 	}{
-		{kindmeta.KindProject, "projects.acme", "projects.acme"},
+		{kindmeta.KindProject, "projects.acme", "project.acme"},
 		{kindmeta.KindObjective, "projects.acme.objectives.q1", "<root>"},
 		{kindmeta.KindKeyResult, "projects.acme.objectives.q1.key-results.signups", "<root>"},
 		{kindmeta.KindArea, "areas.health", "<root>"},

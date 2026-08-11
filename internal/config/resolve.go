@@ -3,6 +3,7 @@ package config
 import (
 	"path/filepath"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/ptoml"
@@ -29,13 +30,17 @@ type Level struct {
 	Set bool
 }
 
-// Label is how the level prints in §22's chain: its dotted locator, or
+// Label is how the level prints in §22's chain: its dotted address (R24), or
 // <root>.
 func (l Level) Label() string {
 	if len(l.Locator) == 0 {
 		return RootLabel
 	}
-	return l.Locator.String()
+	s, err := address.String(l.Locator)
+	if err != nil {
+		return l.Locator.String()
+	}
+	return s
 }
 
 // Resolution is a resolved key: the answer, and every level consulted to

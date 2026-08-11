@@ -114,9 +114,9 @@ name = "Signups report"
 -- want-chain.txt --
 30
 
-  projects.acme-migration      —
-→ projects                     30
-  <root>                       14
+  project.acme-migration      —
+→ project                     30
+  <root>                      14
 -- want-set-projects.txt --
 wrote  projects/.para/logs/20260305T170000Z.jsonl
        projects/.para/config.toml
@@ -126,7 +126,7 @@ project.stale-after = 30
 -- want-skill-chain.txt --
 90
 
-→ skills.signups-report      90
-  <root>                     —
+→ skill.signups-report      90
+  <root>                    —
 -- outside/.keep --
 not a para tree
