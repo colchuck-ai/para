@@ -113,10 +113,10 @@ func TestMoveRelocatesTheSubtreeAndRewritesEveryLocator(t *testing.T) {
 
 	// The moved entity's README, and its descendant's, both carry the new
 	// locator: README frontmatter is the only projection that names one (§18.3).
-	if got := read(t, root, "areas/fitness/training/README.md"); !strings.Contains(got, `locator: "areas.fitness.training"`) {
+	if got := read(t, root, "areas/fitness/training/README.md"); !strings.Contains(got, `locator: "area.fitness.training"`) {
 		t.Errorf("moved README frontmatter not rewritten:\n%s", got)
 	}
-	if got := read(t, root, "areas/fitness/training/tempo/README.md"); !strings.Contains(got, `locator: "areas.fitness.training.tempo"`) {
+	if got := read(t, root, "areas/fitness/training/tempo/README.md"); !strings.Contains(got, `locator: "area.fitness.training.tempo"`) {
 		t.Errorf("descendant README frontmatter not rewritten:\n%s", got)
 	}
 
@@ -156,7 +156,7 @@ func TestMoveRewritesAContainersLocatorToo(t *testing.T) {
 	// A container's README carries a locator like everything else's (§2.2), and
 	// the eager objectives/ container came along with the project (§18.1).
 	got := read(t, root, "projects/acme-migration/objectives/README.md")
-	if !strings.Contains(got, `locator: "projects.acme-migration.objectives"`) {
+	if !strings.Contains(got, `locator: "container.acme-migration.objectives"`) {
 		t.Errorf("the container's README still names the old locator:\n%s", got)
 	}
 }
@@ -371,7 +371,7 @@ func TestArchiveCreatesAStubForALiveAncestor(t *testing.T) {
 	if got := journalOf(t, root, "areas/health"); !strings.Contains(got, `"op":"archived","child":"training"`) {
 		t.Errorf("the live parent did not log the archival:\n%s", got)
 	}
-	if got := read(t, root, "archive/areas/health/training/README.md"); !strings.Contains(got, `locator: "archive.areas.health.training"`) {
+	if got := read(t, root, "archive/areas/health/training/README.md"); !strings.Contains(got, `locator: "archive.area.health.training"`) {
 		t.Errorf("the archived README still names the old locator:\n%s", got)
 	}
 }

@@ -40,3 +40,17 @@ func IsBucket(loc locator.Locator) bool {
 		return false
 	}
 }
+
+// IsArchiveRoot reports whether loc is exactly the archive root: the one
+// bucket IsBucket admits that FromLocator always refuses. "The whole
+// archive" takes no noun at all (§1.6, R7's `para list --archived` names it
+// with no address), so there is no address for the bare locator "archive"
+// to convert to — but the archive root is still a real container with its
+// own generated files (§1.1's tree diagram: README.md, AGENTS.md, CLAUDE.md,
+// ACTIVITY.md), so every caller that walks to it and needs a printable
+// locator string — render's README and ACTIVITY.md among them — checks this
+// first rather than each re-deriving the one-segment special case for
+// itself.
+func IsArchiveRoot(loc locator.Locator) bool {
+	return len(loc) == 1 && loc[0] == "archive"
+}

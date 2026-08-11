@@ -67,6 +67,29 @@ func TestBucketRoundTrip(t *testing.T) {
 	}
 }
 
+// TestIsArchiveRoot pins the one IsBucket entry FromLocator always refuses:
+// the bare "archive" locator has no noun (§1.6/R7) and so no Address, and
+// this is the predicate a caller checks first rather than each re-deriving
+// the one-segment special case.
+func TestIsArchiveRoot(t *testing.T) {
+	if !IsArchiveRoot(locator.Locator{"archive"}) {
+		t.Error("IsArchiveRoot(archive) = false, want true")
+	}
+	if _, err := FromLocator(locator.Locator{"archive"}); err == nil {
+		t.Error("FromLocator(archive) succeeded, want a refusal — IsArchiveRoot exists because it does not")
+	}
+	for _, loc := range []locator.Locator{
+		nil,
+		{"projects"},
+		{"archive", "projects"},
+		{"archive", "areas", "health"},
+	} {
+		if IsArchiveRoot(loc) {
+			t.Errorf("IsArchiveRoot(%v) = true, want false", loc)
+		}
+	}
+}
+
 // TestSkillBucketIsNotArchivable is the one bucket §1.6 excludes from the
 // three archived mirrors: a skill's chain is empty either way, so this is
 // the one case TestSkillCannotBeArchived's entity-chain cases do not cover.
