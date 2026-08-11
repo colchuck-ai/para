@@ -123,7 +123,7 @@ func TestMoveRelocatesTheSubtreeAndRewritesEveryLocator(t *testing.T) {
 	// The entity's own history keeps the move visible — the one place a derived
 	// value enters a journal (§18.3).
 	if got := journalOf(t, root, "areas/fitness/training"); !strings.Contains(got,
-		`"kind":"change","field":"locator","from":"areas.health.training","to":"areas.fitness.training"`) {
+		`"kind":"change","field":"locator","from":"area.health.training","to":"area.fitness.training"`) {
 		t.Errorf("no locator change event on the moved entity:\n%s", got)
 	}
 
@@ -159,6 +159,19 @@ func TestMoveRewritesAContainersLocatorToo(t *testing.T) {
 	if !strings.Contains(got, `locator: "container.acme-migration.objectives"`) {
 		t.Errorf("the container's README still names the old locator:\n%s", got)
 	}
+
+	// The journal's locator change event is dotted too (R24), for a noun other
+	// than area — every other assertion of this shape in this file happens to
+	// be an area.
+	if got := journalOf(t, root, "projects/acme-migration"); !strings.Contains(got,
+		`"kind":"change","field":"locator","from":"project.acme","to":"project.acme-migration"`) {
+		t.Errorf("no dotted locator change event on the moved project:\n%s", got)
+	}
+	// And the parent's child event, for the same reason (§3.1).
+	if got := journalOf(t, root, "projects"); !strings.Contains(got,
+		`"from":"project.acme","to":"project.acme-migration","op":"moved"`) {
+		t.Errorf("the parent's child event does not carry the dotted addresses:\n%s", got)
+	}
 }
 
 func TestMoveWithinOneParentLogsOneEventNamingWhatLeft(t *testing.T) {
@@ -180,7 +193,7 @@ func TestMoveWithinOneParentLogsOneEventNamingWhatLeft(t *testing.T) {
 	if n := strings.Count(got, `"op":"moved"`); n != 1 {
 		t.Errorf("a rename inside one parent logged %d move events, want 1:\n%s", n, got)
 	}
-	if !strings.Contains(got, `"from":"areas.health.training","to":"areas.health.plan","op":"moved","child":"training"`) {
+	if !strings.Contains(got, `"from":"area.health.training","to":"area.health.plan","op":"moved","child":"training"`) {
 		t.Errorf("the event does not name what left and where it went:\n%s", got)
 	}
 }
@@ -516,8 +529,8 @@ func TestUnarchiveCascadesUpwardAndDemotesTheAncestorToAStub(t *testing.T) {
 
 	// Both entities that moved say so in their own journals (§18.3, §18.5).
 	for dir, want := range map[string]string{
-		"areas/health":          `"field":"locator","from":"archive.areas.health","to":"areas.health"`,
-		"areas/health/training": `"field":"locator","from":"archive.areas.health.training","to":"areas.health.training"`,
+		"areas/health":          `"field":"locator","from":"archive.area.health","to":"area.health"`,
+		"areas/health/training": `"field":"locator","from":"archive.area.health.training","to":"area.health.training"`,
 	} {
 		if got := journalOf(t, root, dir); !strings.Contains(got, want) {
 			t.Errorf("%s: no locator change event:\n%s", dir, got)
@@ -921,7 +934,7 @@ func TestUnarchiveReinstatingAnAncestorLeavesACleanTree(t *testing.T) {
 	// that happened to it: its locator changed, and it gained a child back.
 	got := read(t, root, "areas/health/ACTIVITY.md")
 	for _, want := range []string{
-		"Changed **locator** from archive.areas.health to areas.health.",
+		"Changed **locator** from archive.area.health to area.health.",
 		"Unarchived area **training**.",
 	} {
 		if !strings.Contains(got, want) {

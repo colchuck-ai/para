@@ -25,6 +25,28 @@ import (
 // has to remain visible after the fact.
 const fieldLocator = "locator"
 
+// movedAddresses is the dotted form (R1, R24) of a move's two ends, for the
+// journal: the `field = "locator"` change event on the moved entity itself
+// (R24's named site), and the `child` event's `from`/`to` on its parent
+// (§3.1's table gives that event "from/to locators for moves"). The second
+// site is not named in R24's table on its own, but Phase 18 task 4 requires
+// it anyway: `internal/render/activity.go`'s childLine and
+// `internal/cli/log.go` both print e.From/e.To verbatim, so the
+// `--recursive` digest and `log` cannot show the dotted form R24 asks for
+// unless the journal already stores it that way — R22 leaves no place for
+// the old form to survive in either event.
+func movedAddresses(m entityMove) (from, to string, err error) {
+	from, err = address.String(m.From)
+	if err != nil {
+		return "", "", err
+	}
+	to, err = address.String(m.To)
+	if err != nil {
+		return "", "", err
+	}
+	return from, to, nil
+}
+
 // Verb is the word a relocation's summary leads with (§26), and the operation its
 // parents' child events carry (§3.1).
 type Verb string
@@ -166,9 +188,13 @@ func (r *Relocation) subjectPlans() ([]*plan, error) {
 		if err != nil {
 			return nil, err
 		}
+		from, to, err := movedAddresses(m)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &plan{
 			subj:   subj,
-			events: []journal.Event{journal.NewChange(e.Now.UTC(), fieldLocator, m.From.String(), m.To.String(), "")},
+			events: []journal.Event{journal.NewChange(e.Now.UTC(), fieldLocator, from, to, "")},
 		})
 	}
 
@@ -236,7 +262,11 @@ func (r *Relocation) parentPlans() ([]*plan, error) {
 		// something the event otherwise could not.
 		var from, to string
 		if op == journal.ChildOpMoved {
-			from, to = m.From.String(), m.To.String()
+			var err error
+			from, to, err = movedAddresses(m)
+			if err != nil {
+				return nil, err
+			}
 		}
 		oldParent := r.relocated(m.From[:len(m.From)-1])
 		newParent := m.To[:len(m.To)-1]

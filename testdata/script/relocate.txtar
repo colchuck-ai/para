@@ -31,7 +31,7 @@ grep '^locator: "area.fitness.training.tempo"$' areas/fitness/training/tempo/REA
 
 # The entity's own history keeps the move visible — the one place a derived value
 # enters a journal (§18.3).
-grep '"kind":"change","field":"locator","from":"areas.health.training","to":"areas.fitness.training"' areas/fitness/training/.para/logs/20260305T170000Z.jsonl
+grep '"kind":"change","field":"locator","from":"area.health.training","to":"area.fitness.training"' areas/fitness/training/.para/logs/20260305T170000Z.jsonl
 
 # Both parents log, because each has a different set of children (§3.3).
 grep '"op":"moved","child":"training"' areas/health/.para/logs/20260305T170000Z.jsonl
@@ -113,8 +113,8 @@ exists archive/areas/health/sleep/.para/state.toml
 
 # Both entities that moved say so, and each container whose child set changed
 # logs at both ends (§3.3, §18.5).
-grep '"field":"locator","from":"archive.areas.health","to":"areas.health"' areas/health/.para/logs/20260305T170000Z.jsonl
-grep '"field":"locator","from":"archive.areas.health.training","to":"areas.health.training"' areas/health/training/.para/logs/20260305T170000Z.jsonl
+grep '"field":"locator","from":"archive.area.health","to":"area.health"' areas/health/.para/logs/20260305T170000Z.jsonl
+grep '"field":"locator","from":"archive.area.health.training","to":"area.health.training"' areas/health/training/.para/logs/20260305T170000Z.jsonl
 grep '"op":"unarchived","child":"health"' areas/.para/logs/20260305T170000Z.jsonl
 grep '"op":"unarchived","child":"health"' archive/areas/.para/logs/20260305T170000Z.jsonl
 

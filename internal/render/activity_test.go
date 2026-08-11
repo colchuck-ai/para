@@ -158,8 +158,8 @@ func TestActivityLinesPerEventKind(t *testing.T) {
 		},
 		{
 			"child moved names both locators",
-			journal.NewChild(ts(t, "2026-03-05T09:00:00"), journal.ChildOpMoved, "q1", "projects.acme.objectives.q1", "projects.beta.objectives.q1", ""),
-			"- Moved **q1** from projects.acme.objectives.q1 to projects.beta.objectives.q1.\n",
+			journal.NewChild(ts(t, "2026-03-05T09:00:00"), journal.ChildOpMoved, "q1", "objective.acme.q1", "objective.beta.q1", ""),
+			"- Moved **q1** from objective.acme.q1 to objective.beta.q1.\n",
 		},
 		{
 			"child archived",
