@@ -149,7 +149,7 @@ stdout '^clean$'
 # surface is off and the same directory is residue instead.
 mkdir .claude/skills/para-gone
 ! exec para doctor
-stdout '^error +orphan-mirror +\.claude/skills/para-gone mirrors skills\.gone, which is gone$'
+stdout '^error +orphan-mirror +\.claude/skills/para-gone mirrors skill\.gone, which is gone$'
 exec para rebuild
 stdout '^removed  \.claude/skills/para-gone$'
 exec para doctor

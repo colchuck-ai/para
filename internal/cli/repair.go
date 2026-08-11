@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/doctor"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
@@ -214,11 +215,30 @@ type findingOutput struct {
 	Path     string `json:"path"`
 	// Line is a journal finding's line, and absent everywhere else.
 	Line int `json:"line,omitempty"`
-	// Locator names the entity at fault where the path addresses one. An
-	// orphan is precisely a directory whose locator para cannot derive, so it
-	// is absent rather than guessed.
+	// Locator names the entity at fault where the path addresses one, in the
+	// dotted address form (R24). An orphan is precisely a directory whose
+	// locator para cannot derive, so it is absent rather than guessed — and a
+	// stub is the same absence for a different reason (R11): it has no kind,
+	// so nothing can name it in a grammar whose first token is one.
 	Locator string `json:"locator,omitempty"`
 	Detail  string `json:"detail"`
+}
+
+// findingLocatorString is a Finding's Locator, in the dotted form, or "" for
+// the empty Locator every locator-less finding carries — which includes one
+// of `misplaced`'s two shapes (a path locator.FromPath itself refuses never
+// gets a Locator at all). The other shape `misplaced` has, and `collision`
+// always, sets Locator to precisely a position that derives no valid kind (a
+// reserved word in an id position, or a position no shape admits), which is
+// by construction a position that derives no address either — so the raw
+// internal Locator string is shown there, the same way a stub (R11) has no
+// noun to print because it has no kind at all.
+func findingLocatorString(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }
 
 func doctorOutputOf(rep doctor.Report) doctorOutput {
@@ -235,7 +255,7 @@ func doctorOutputOf(rep doctor.Report) doctorOutput {
 			Finding:  string(f.Kind),
 			Path:     f.Path,
 			Line:     f.Line,
-			Locator:  f.Locator.String(),
+			Locator:  findingLocatorString(f.Locator),
 			Detail:   f.Detail,
 		})
 	}

@@ -176,7 +176,7 @@ exec para set skills.signups-report --scope project
 # orphan-rule: a derived rule whose generated_from skill is gone (§5.3).
 cp $WORK/para-gone.md .agents/rules/para-gone.md
 ! exec para doctor
-stdout '^error +orphan-rule +\.agents/rules/para-gone\.md is generated from skills\.gone, which is gone$'
+stdout '^error +orphan-rule +\.agents/rules/para-gone\.md is generated from skill\.gone, which is gone$'
 rm .agents/rules/para-gone.md
 
 # The mirror, with emit.claude off — which is the state this whole section runs

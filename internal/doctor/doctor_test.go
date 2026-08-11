@@ -394,8 +394,8 @@ func TestOrphanRule(t *testing.T) {
 	rep := run(t, root, doctor.Options{})
 
 	got := findings(rep, doctor.KindOrphanRule)
-	if len(got) != 1 || !strings.Contains(got[0], "skills.gone") {
-		t.Fatalf("orphan-rule findings = %v, want one naming skills.gone", got)
+	if len(got) != 1 || !strings.Contains(got[0], "skill.gone") {
+		t.Fatalf("orphan-rule findings = %v, want one naming skill.gone", got)
 	}
 }
 
@@ -426,8 +426,8 @@ func TestMirrorFindings(t *testing.T) {
 		rep := run(t, root, doctor.Options{})
 
 		got := findings(rep, doctor.KindOrphanMirror)
-		if len(got) != 1 || !strings.Contains(got[0], "skills.gone") {
-			t.Fatalf("orphan-mirror findings = %v, want one naming skills.gone", got)
+		if len(got) != 1 || !strings.Contains(got[0], "skill.gone") {
+			t.Fatalf("orphan-mirror findings = %v, want one naming skill.gone", got)
 		}
 	})
 
@@ -536,7 +536,7 @@ func TestMissingMirrorIsStale(t *testing.T) {
 	rep := run(t, root, doctor.Options{})
 
 	got := findings(rep, doctor.KindStaleProjection)
-	want := []string{".claude/skills/para-report: is missing; skills.report has no mirror"}
+	want := []string{".claude/skills/para-report: is missing; skill.report has no mirror"}
 	if !slices.Equal(got, want) {
 		t.Errorf("stale-projection findings = %v, want %v", got, want)
 	}
