@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
@@ -342,19 +343,7 @@ func rewriteScope(scope []string, moves []entityMove) ([]string, int) {
 	changed := 0
 
 	for _, entry := range scope {
-		next := entry
-		for _, m := range moves {
-			from := m.From.String()
-			switch {
-			case entry == from:
-				next = m.To.String()
-			case m.Subtree && strings.HasPrefix(entry, from+"."):
-				next = m.To.String() + entry[len(from):]
-			default:
-				continue
-			}
-			break
-		}
+		next := rewriteScopeEntry(entry, moves)
 		if next != entry {
 			changed++
 		}
@@ -368,6 +357,53 @@ func rewriteScope(scope []string, moves []entityMove) ([]string, int) {
 		out = append(out, next)
 	}
 	return out, changed
+}
+
+// rewriteScopeEntry applies moves to one stored scope entry (R24's dotted
+// address form), returning entry unchanged when no move touches it.
+//
+// The matching itself happens in Locator space, not on the address string
+// directly: "beneath" is a path relationship (§5.2's "an entry covers its
+// locator and everything beneath it"), and the dotted form does not carry
+// it across a noun boundary — "project.acme" is not a string prefix of
+// "objective.acme.q1-growth" the way "projects.acme" is a prefix of
+// "projects.acme.objectives.q1-growth", yet a project rename still drags
+// its objectives and key-results with it. So entry is converted to a
+// Locator, matched exactly the way it always was, and converted back. An
+// entry that does not parse as an address — or whose rewritten Locator
+// derives no address — is left as written; repairing it is doctor's
+// `invalid`/`scope-unresolved` job, not this one's.
+func rewriteScopeEntry(entry string, moves []entityMove) string {
+	addr, err := address.ParseDotted(entry)
+	if err != nil {
+		return entry
+	}
+	loc, err := addr.ToLocator()
+	if err != nil {
+		return entry
+	}
+	from := loc.String()
+	var next locator.Locator
+	for _, m := range moves {
+		mFrom := m.From.String()
+		switch {
+		case from == mFrom:
+			next = m.To
+		case m.Subtree && strings.HasPrefix(from, mFrom+"."):
+			next = append(slices.Clone(m.To), loc[len(m.From):]...)
+		default:
+			continue
+		}
+		break
+	}
+	if next == nil {
+		return entry
+	}
+	newAddr, err := address.FromLocator(next)
+	if err != nil {
+		return entry
+	}
+	return newAddr.String()
 }
 
 // relocatable refuses the subjects none of the four verbs accept, so each verb

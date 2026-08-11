@@ -191,8 +191,8 @@ func TestMoveRewritesEveryScopeEntryBeneathTheMovedLocator(t *testing.T) {
 	addArea(t, e, "areas.health")
 	addArea(t, e, "areas.health.training")
 	addArea(t, e, "areas.fitness")
-	addSkill(t, e, "training-plan", "areas.health.training", "projects")
-	addSkill(t, e, "elsewhere", "projects")
+	addSkill(t, e, "training-plan", "area.health.training", "project")
+	addSkill(t, e, "elsewhere", "project")
 
 	e = env(t, root)
 	plan, err := e.PlanMove(loc(t, "areas.health"), loc(t, "areas.wellbeing"))
@@ -215,7 +215,7 @@ func TestMoveRewritesEveryScopeEntryBeneathTheMovedLocator(t *testing.T) {
 	// An entry covers its locator and everything beneath it (§5.2), so an entry
 	// naming a descendant of the moved locator is rewritten too.
 	state := read(t, root, ".agents/skills/para-training-plan/.para/state.toml")
-	if !strings.Contains(state, `"areas.wellbeing.training"`) {
+	if !strings.Contains(state, `"area.wellbeing.training"`) {
 		t.Errorf("scope entry not rewritten:\n%s", state)
 	}
 	if got := read(t, root, ".agents/rules/para-training-plan.md"); !strings.Contains(got, "`areas/wellbeing/training/`") {
@@ -612,7 +612,7 @@ func TestUnarchiveLeavesAStillArchivedDescendantsScopeAlone(t *testing.T) {
 	addArea(t, e, "areas.health")
 	addArea(t, e, "areas.health.training")
 	addArea(t, e, "areas.health.nutrition")
-	addSkill(t, e, "plan", "areas.health.training", "areas.health.nutrition")
+	addSkill(t, e, "plan", "area.health.training", "area.health.nutrition")
 	if _, err := mustPlanArchive(t, env(t, root), "areas.health").Apply(); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
@@ -626,12 +626,12 @@ func TestUnarchiveLeavesAStillArchivedDescendantsScopeAlone(t *testing.T) {
 	}
 
 	state := read(t, root, ".agents/skills/para-plan/.para/state.toml")
-	if !strings.Contains(state, `"areas.health.training"`) {
+	if !strings.Contains(state, `"area.health.training"`) {
 		t.Errorf("the unarchived entity's entry was not rewritten:\n%s", state)
 	}
 	// nutrition stayed archived, so its entry must not have moved with the
 	// ancestor: the ancestor carried no subtree (§1.6).
-	if !strings.Contains(state, `"archive.areas.health.nutrition"`) {
+	if !strings.Contains(state, `"archive.area.health.nutrition"`) {
 		t.Errorf("a still-archived entry was rewritten:\n%s", state)
 	}
 }

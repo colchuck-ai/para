@@ -36,62 +36,78 @@ func TestRewriteScope(t *testing.T) {
 	}{
 		{
 			name:  "the moved locator itself",
-			scope: []string{"areas.health.training", "projects"},
+			scope: []string{"area.health.training", "project"},
 			moves: func(t *testing.T) []entityMove {
 				return []entityMove{subtreeMove(t, "areas.health.training", "areas.fitness.training")}
 			},
-			want:    []string{"areas.fitness.training", "projects"},
+			want:    []string{"area.fitness.training", "project"},
 			changed: 1,
 		},
 		{
 			name:  "anything beneath it",
-			scope: []string{"areas.health.training.tempo"},
+			scope: []string{"area.health.training.tempo"},
 			moves: func(t *testing.T) []entityMove {
 				return []entityMove{subtreeMove(t, "areas.health", "areas.wellbeing")}
 			},
-			want:    []string{"areas.wellbeing.training.tempo"},
+			want:    []string{"area.wellbeing.training.tempo"},
 			changed: 1,
 		},
 		{
 			name:  "a sibling whose name merely starts the same way",
-			scope: []string{"areas.health-and-safety"},
+			scope: []string{"area.health-and-safety"},
 			moves: func(t *testing.T) []entityMove {
 				return []entityMove{subtreeMove(t, "areas.health", "areas.wellbeing")}
 			},
-			want:    []string{"areas.health-and-safety"},
+			want:    []string{"area.health-and-safety"},
 			changed: 0,
 		},
 		{
 			name: "an ancestor that carried no subtree matches only itself",
 			// unarchive reinstating areas.health while nutrition stayed archived
 			// (§1.6): the ancestor moved, its other children did not.
-			scope: []string{"archive.areas.health", "archive.areas.health.nutrition"},
+			scope: []string{"archive.area.health", "archive.area.health.nutrition"},
 			moves: func(t *testing.T) []entityMove {
 				return []entityMove{exactMove(t, "archive.areas.health", "areas.health")}
 			},
-			want:    []string{"areas.health", "archive.areas.health.nutrition"},
+			want:    []string{"area.health", "archive.area.health.nutrition"},
 			changed: 1,
 		},
 		{
 			name:  "a rewrite landing on an entry the list already holds",
-			scope: []string{"areas.fitness.training", "areas.health.training"},
+			scope: []string{"area.fitness.training", "area.health.training"},
 			moves: func(t *testing.T) []entityMove {
 				return []entityMove{subtreeMove(t, "areas.health.training", "areas.fitness.training")}
 			},
 			// Two identical entries would render the same clause twice (§5.3).
-			want:    []string{"areas.fitness.training"},
+			want:    []string{"area.fitness.training"},
 			changed: 1,
 		},
 		{
 			name:  "the most specific move wins",
-			scope: []string{"archive.areas.health.training"},
+			scope: []string{"archive.area.health.training"},
 			moves: func(t *testing.T) []entityMove {
 				return []entityMove{
 					subtreeMove(t, "archive.areas.health.training", "areas.health.training"),
 					exactMove(t, "archive.areas.health", "areas.health"),
 				}
 			},
-			want:    []string{"areas.health.training"},
+			want:    []string{"area.health.training"},
+			changed: 1,
+		},
+		{
+			// A project rename drags its objectives and key-results with it
+			// (they nest under it on disk), but "project.acme" is not a
+			// dotted-string prefix of "objective.acme.q1-growth" the way
+			// "projects.acme" is a prefix of "projects.acme.objectives.q1-growth"
+			// — the structural word "objectives" the address form drops. The
+			// match has to happen in Locator space for this case to work at
+			// all.
+			name:  "a move crossing a noun boundary its own address does not show",
+			scope: []string{"objective.acme.q1-growth"},
+			moves: func(t *testing.T) []entityMove {
+				return []entityMove{subtreeMove(t, "projects.acme", "projects.acme-migration")}
+			},
+			want:    []string{"objective.acme-migration.q1-growth"},
 			changed: 1,
 		},
 		{
