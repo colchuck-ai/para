@@ -26,8 +26,8 @@ exists areas/fitness/training/tempo/.para/state.toml
 
 # Every relocated locator is rewritten, the entity's and its descendants' alike:
 # README frontmatter is the only projection that names one.
-grep '^locator: "areas.fitness.training"$' areas/fitness/training/README.md
-grep '^locator: "areas.fitness.training.tempo"$' areas/fitness/training/tempo/README.md
+grep '^locator: "area.fitness.training"$' areas/fitness/training/README.md
+grep '^locator: "area.fitness.training.tempo"$' areas/fitness/training/tempo/README.md
 
 # The entity's own history keeps the move visible — the one place a derived value
 # enters a journal (§18.3).
@@ -41,7 +41,7 @@ grep '"op":"moved","child":"training"' areas/fitness/.para/logs/20260305T170000Z
 ! exists areas/fitness/training/tempo/.para/logs/20260305T170000Z.jsonl
 
 # The scope entry moved with it, and so did the sentence in the derived rule (§5.4).
-grep 'areas.fitness.training' .agents/skills/para-training-plan/.para/state.toml
+grep 'area.fitness.training' .agents/skills/para-training-plan/.para/state.toml
 grep 'When working under `areas/fitness/training/`' .agents/rules/para-training-plan.md
 grep '"kind":"change","field":"scope"' .agents/skills/para-training-plan/.para/logs/20260305T170000Z.jsonl
 
@@ -83,7 +83,7 @@ exists archive/areas/health
 ! exists archive/areas/health/README.md
 exists archive/areas/health/training/.para/state.toml
 exists areas/health/.para/state.toml
-grep '^locator: "archive.areas.health.training"$' archive/areas/health/training/README.md
+grep '^locator: "archive.area.health.training"$' archive/areas/health/training/README.md
 
 # The live parent logs; the new parent is a stub and has no journal to log in.
 grep '"op":"archived","child":"training"' areas/health/.para/logs/20260305T170000Z.jsonl
@@ -98,7 +98,7 @@ cmp stdout $WORK/want-archive-health.txt
 exists archive/areas/health/.para/state.toml
 exists archive/areas/health/training/.para/state.toml
 exists archive/areas/health/nutrition/macros/.para/state.toml
-grep '^locator: "archive.areas.health.nutrition.macros"$' archive/areas/health/nutrition/macros/README.md
+grep '^locator: "archive.area.health.nutrition.macros"$' archive/areas/health/nutrition/macros/README.md
 
 # Unarchiving cascades upward: the ancestor comes back as a live entity, and the
 # archive keeps a stub for the sibling that stayed (§1.6).
@@ -120,7 +120,7 @@ grep '"op":"unarchived","child":"health"' archive/areas/.para/logs/20260305T1700
 
 # A still-archived sibling's scope entry did not move, because the sibling did
 # not: the reinstated ancestor carried no subtree (§1.6, §5.4).
-grep '"archive.areas.health.nutrition"' .agents/skills/para-sleep-hygiene/.para/state.toml
+grep '"archive.area.health.nutrition"' .agents/skills/para-sleep-hygiene/.para/state.toml
 
 ! exec para unarchive archive.projects.old-migration
 stderr '^error: projects.old-migration exists; rename it or leave this archived$'
@@ -180,7 +180,7 @@ exec para remove skills.training-plan --force
 # A scope entry naming something removed is left alone: there is no locator to
 # rewrite to, and an entry naming nothing is doctor's to report (§5.4, §10).
 exec para remove areas.fitness --force
-grep '"areas.fitness"' .agents/skills/para-cardio/.para/state.toml
+grep '"area.fitness"' .agents/skills/para-cardio/.para/state.toml
 
 ! exec para remove projects.acme-migration.objectives --force
 stderr 'is a container'
@@ -277,7 +277,7 @@ created = "2026-01-01T16:00:00Z"
 -- brain/areas/reading/README.md --
 ---
 kind: "area"
-locator: "areas.reading"
+locator: "area.reading"
 name: "Reading"
 description: "The pile."
 created: "2026-01-01T16:00:00Z"
@@ -327,17 +327,17 @@ created = "2026-01-01T16:00:00Z"
 -- brain/.agents/skills/para-training-plan/.para/state.toml --
 name = "Training plan"
 description = "when writing the week's training"
-scope = ["areas.health.training"]
+scope = ["area.health.training"]
 
 -- brain/.agents/skills/para-sleep-hygiene/.para/state.toml --
 name = "Sleep hygiene"
 description = "when the sleep numbers look bad"
-scope = ["areas.health.sleep", "areas.health.nutrition"]
+scope = ["area.health.sleep", "area.health.nutrition"]
 
 -- brain/.agents/skills/para-cardio/.para/state.toml --
 name = "Cardio"
 description = "when planning cardio"
-scope = ["areas.fitness"]
+scope = ["area.fitness"]
 
 -- decline.txt --
 n

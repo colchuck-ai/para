@@ -774,7 +774,7 @@ func TestRemoveKeepFilesKeepsBodiesAndDeletesParasFootprint(t *testing.T) {
 
 func TestRemoveTakesASkillsDerivedRuleWithIt(t *testing.T) {
 	root := plantTree(t)
-	addSkill(t, env(t, root), "signups-report", "projects")
+	addSkill(t, env(t, root), "signups-report", "project")
 	if !exists(t, root, ".agents/rules/para-signups-report.md") {
 		t.Fatal("the rule was never written")
 	}
@@ -821,7 +821,7 @@ func TestRemoveLeavesAnUnresolvableScopeEntryForDoctor(t *testing.T) {
 	root := plantTree(t)
 	e := env(t, root)
 	addArea(t, e, "areas.health")
-	addSkill(t, e, "plan", "areas.health")
+	addSkill(t, e, "plan", "area.health")
 
 	plan, err := env(t, root).PlanRemove(loc(t, "areas.health"), false)
 	if err != nil {
@@ -833,7 +833,7 @@ func TestRemoveLeavesAnUnresolvableScopeEntryForDoctor(t *testing.T) {
 
 	// §5.4 makes para own the rename, not the deletion: there is no locator to
 	// rewrite to, and an entry naming nothing is doctor's scope-unresolved.
-	if got := read(t, root, ".agents/skills/para-plan/.para/state.toml"); !strings.Contains(got, `"areas.health"`) {
+	if got := read(t, root, ".agents/skills/para-plan/.para/state.toml"); !strings.Contains(got, `"area.health"`) {
 		t.Errorf("the scope entry was silently changed:\n%s", got)
 	}
 }

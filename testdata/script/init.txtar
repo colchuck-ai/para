@@ -106,7 +106,7 @@ stdout '^- Created\.$'
 # printing `.` instead would be a spelling that only pastes back from one
 # directory.
 exec para activity --recursive
-stdout '^2026-03-05 +projects +added project acme$'
+stdout '^2026-03-05 +project +added project acme$'
 stdout '^2026-03-05 +— +added projects$'
 stdout '^2026-03-05 +— +created$'
 

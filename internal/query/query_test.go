@@ -117,7 +117,7 @@ func fixture(t *testing.T) string {
 		"tags", "fitness")
 	add(t, w, "resources.rust", "name", "Rust", "description", "Notes.", "tags", "rust,reference")
 	add(t, w, "skills.signups-report", "name", "Signups report",
-		"description", "when asked for the weekly signups number", "scope", "projects")
+		"description", "when asked for the weekly signups number", "scope", "project")
 
 	add(t, w, "projects.old", "name", "Old", "description", "Finished long ago.")
 	plan, err := w.PlanArchive(loc(t, "projects.old"))

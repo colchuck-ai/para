@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
@@ -260,6 +261,10 @@ type digestLine struct {
 func rollup(env *view.Env, subjects []digestSubject, since string) ([]digestLine, error) {
 	var out []digestLine
 	for _, subject := range subjects {
+		where, err := address.String(subject.Locator)
+		if err != nil {
+			return nil, err
+		}
 		events, err := journal.ReadAll(truth.LogsDir(subject.Dir))
 		if err != nil {
 			return nil, err
@@ -276,7 +281,7 @@ func rollup(env *view.Env, subjects []digestSubject, since string) ([]digestLine
 				out = append(out, digestLine{
 					Day:     d.Date,
 					At:      utcOrEmpty(line.At),
-					Locator: subject.Locator.String(),
+					Locator: where,
 					Kind:    line.Kind,
 					Text:    line.Text,
 				})

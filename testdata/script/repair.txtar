@@ -50,7 +50,7 @@ exec para note projects.acme-migration 'the ingest team is blocked' --at 2026-01
 exec para add projects.acme-migration.objectives.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.' --created 2026-01-05
 exec para add projects.acme-migration.objectives.q1-growth.key-results.signups --name 'Weekly signups' --type ratio --start 480/9000 --target 2000/12000 --created 2026-01-05
 exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 880/11000
-exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope projects --created 2026-01-05
+exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope project --created 2026-01-05
 
 # The property the whole design rests on: every projection was already written,
 # so there is nothing to regenerate and nothing to report.
@@ -168,10 +168,10 @@ rm projects/acme-migration/.para/logs/20260105T000000Z.jsonl
 # scope-unresolved: an entry naming a locator that does not exist (§5.4). The
 # write path stores it without complaint, because an entry may name something
 # not created yet — this is where it surfaces.
-exec para set skills.signups-report --scope projects,projects.nowhere
+exec para set skills.signups-report --scope project,project.nowhere
 ! exec para doctor
-stdout '^error +scope-unresolved +\.agents/skills/para-signups-report/\.para/state\.toml scope names projects\.nowhere, which does not exist$'
-exec para set skills.signups-report --scope projects
+stdout '^error +scope-unresolved +\.agents/skills/para-signups-report/\.para/state\.toml scope names project\.nowhere, which does not exist$'
+exec para set skills.signups-report --scope project
 
 # orphan-rule: a derived rule whose generated_from skill is gone (§5.3).
 cp $WORK/para-gone.md .agents/rules/para-gone.md

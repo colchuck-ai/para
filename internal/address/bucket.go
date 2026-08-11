@@ -54,3 +54,30 @@ func IsBucket(loc locator.Locator) bool {
 func IsArchiveRoot(loc locator.Locator) bool {
 	return len(loc) == 1 && loc[0] == "archive"
 }
+
+// String is the printable dotted form of loc for a generated projection
+// (R1, R24): every site where a locator must be a single token converts
+// through here rather than each re-deriving the same two exceptions to
+// FromLocator.
+//
+// The empty locator — the tree root (§1.4), which has no locator of its
+// own — prints as "": some callers (README.md's frontmatter) never reach
+// this function with one because they branch on the root shape earlier;
+// others (the `activity --recursive` rollup's locator column) print every
+// subject's locator uniformly and need the empty string as the answer for
+// the one subject that has none. The archive root prints as IsArchiveRoot's
+// bucket word, for the reason that predicate documents. Every other locator
+// converts through FromLocator.
+func String(loc locator.Locator) (string, error) {
+	switch {
+	case len(loc) == 0:
+		return "", nil
+	case IsArchiveRoot(loc):
+		return "archive", nil
+	}
+	addr, err := FromLocator(loc)
+	if err != nil {
+		return "", err
+	}
+	return addr.String(), nil
+}

@@ -251,7 +251,7 @@ func TestAddSkillWritesItsRuleAndNoParentEvent(t *testing.T) {
 	var f mutate.Fields
 	f.Set(kindmeta.FieldName, "Signups report")
 	f.Set(kindmeta.FieldDescription, "when asked for the weekly signups number")
-	f.SetList(kindmeta.FieldScope, []string{"projects.acme-migration", "areas.growth"})
+	f.SetList(kindmeta.FieldScope, []string{"project.acme-migration", "area.growth"})
 
 	res, err := e.Add(loc(t, "skills.signups-report"), f)
 	if err != nil {
@@ -267,7 +267,24 @@ func TestAddSkillWritesItsRuleAndNoParentEvent(t *testing.T) {
 
 	// A scope entry that names nothing is legal: doctor reports it
 	// (`scope-unresolved`), add does not refuse it (§5.4).
-	if got := read(t, root, ".agents/skills/para-signups-report/.para/state.toml"); !strings.Contains(got, "areas.growth") {
+	if got := read(t, root, ".agents/skills/para-signups-report/.para/state.toml"); !strings.Contains(got, "area.growth") {
 		t.Errorf("state.toml lost the scope entry:\n%s", got)
 	}
+}
+
+// TestAddRefusesAScopeEntryInTheOldPluralLocatorForm is R24's write-side
+// counterpart to truth.Check's read-side refusal (internal/truth/check.go):
+// the two must agree about which scope entries are legal, or `add`/`set`
+// would accept what `doctor` immediately reports as broken.
+func TestAddRefusesAScopeEntryInTheOldPluralLocatorForm(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+
+	var f mutate.Fields
+	f.Set(kindmeta.FieldName, "Signups report")
+	f.Set(kindmeta.FieldDescription, "when asked for the weekly signups number")
+	f.SetList(kindmeta.FieldScope, []string{"projects.acme-migration"})
+
+	_, err := e.Add(loc(t, "skills.signups-report"), f)
+	errorContains(t, err, "is not a noun")
 }

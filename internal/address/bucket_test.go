@@ -90,6 +90,50 @@ func TestIsArchiveRoot(t *testing.T) {
 	}
 }
 
+// TestString is R24's rule as every generated-projection caller uses it:
+// String(loc) is the dotted address for anything FromLocator accepts, ""
+// for the root's empty locator, and IsArchiveRoot's bucket word for the
+// one locator FromLocator refuses.
+func TestString(t *testing.T) {
+	cases := []struct {
+		name string
+		loc  locator.Locator
+		want string
+	}{
+		{"the root's empty locator", nil, ""},
+		{"the archive root", locator.Locator{"archive"}, "archive"},
+		{"an entity", locator.Locator{"projects", "acme"}, "project.acme"},
+		{
+			"a key-result, both structural words dropped",
+			locator.Locator{"projects", "acme", "objectives", "q1", "key-results", "signups"},
+			"key-result.acme.q1.signups",
+		},
+		{"a bucket", locator.Locator{"projects"}, "project"},
+		{
+			"an archived nested area",
+			locator.Locator{"archive", "areas", "health", "training"},
+			"archive.area.health.training",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := String(c.loc)
+			if err != nil {
+				t.Fatalf("String(%v): %v", c.loc, err)
+			}
+			if got != c.want {
+				t.Errorf("String(%v) = %q, want %q", c.loc, got, c.want)
+			}
+		})
+	}
+}
+
+func TestStringPropagatesAnInvalidLocatorsRefusal(t *testing.T) {
+	if _, err := String(locator.Locator{"key-results", "orphan"}); err == nil {
+		t.Error("String on a locator FromLocator refuses succeeded, want the refusal")
+	}
+}
+
 // TestSkillBucketIsNotArchivable is the one bucket §1.6 excludes from the
 // three archived mirrors: a skill's chain is empty either way, so this is
 // the one case TestSkillCannotBeArchived's entity-chain cases do not cover.

@@ -54,7 +54,7 @@ exec para add areas.health.training --name Training --description 'The weekly pl
 exists areas/health/training/.para/state.toml
 
 # A skill — scope is a locator list, and this also writes its derived rule.
-exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope projects.acme-migration,areas.growth
+exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope project.acme-migration,area.growth
 cmp stdout $WORK/want-add-skill.txt
 cmp .agents/rules/para-signups-report.md $WORK/want-scoped-rule.txt
 
@@ -237,7 +237,7 @@ created = "2026-03-05T17:00:00Z"
 -- want-project-readme.txt --
 ---
 kind: "project"
-locator: "projects.acme-migration"
+locator: "project.acme-migration"
 name: "Acme migration"
 description: "Rebuild the consumer so it stops falling over under replay load."
 status: "planned"

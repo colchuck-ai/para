@@ -5,7 +5,6 @@ import (
 
 	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/kindmeta"
-	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mdfile"
 	"github.com/colchuck-ai/para/internal/paraerr"
 )
@@ -63,7 +62,7 @@ func readmeFrontmatter(in In) ([]mdfile.Field, error) {
 	if in.Kind == kindmeta.KindUnknown {
 		return nil, paraerr.Newf(paraerr.KindInternal, "render: no kind for %q", in.Locator.String())
 	}
-	locatorValue, err := readmeLocatorValue(in.Locator)
+	locatorValue, err := address.String(in.Locator)
 	if err != nil {
 		return nil, err
 	}
@@ -93,23 +92,6 @@ func readmeFrontmatter(in In) ([]mdfile.Field, error) {
 		}
 	}
 	return fields, nil
-}
-
-// readmeLocatorValue is the dotted form (R1, R24) of loc, with one
-// exception: address.IsArchiveRoot's — the archive root is a real container
-// with its own generated README (§1.1's tree diagram) but has no address of
-// its own to convert to (§1.6/R7), so it keeps its bucket word verbatim; the
-// word is spelled the same in both the old and new forms, so this is not a
-// place R22 finds the old form surviving.
-func readmeLocatorValue(loc locator.Locator) (string, error) {
-	if address.IsArchiveRoot(loc) {
-		return "archive", nil
-	}
-	addr, err := address.FromLocator(loc)
-	if err != nil {
-		return "", err
-	}
-	return addr.String(), nil
 }
 
 // statelikeFields renders the root's three identity fields in §15's order, so

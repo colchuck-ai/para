@@ -44,7 +44,7 @@ exec para add projects.acme-migration.objectives.q1-growth.key-results.launch --
 exec para add projects.website --name Website --description 'A refresh.' --status planned
 exec para set projects.website --status blocked --note 'waiting on the design review'
 
-exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope projects --created 2026-01-01
+exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope project --created 2026-01-01
 
 # A project dropped, and one archived: both are excluded by default.
 exec para add projects.shelved --name Shelved --description 'Not happening.' --created 2026-01-01

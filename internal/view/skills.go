@@ -1,6 +1,7 @@
 package view
 
 import (
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/tree"
 	"github.com/colchuck-ai/para/internal/truth"
@@ -62,6 +63,14 @@ func (e *Env) SkillsReaching(loc locator.Locator) ([]SkillReach, error) {
 // prefix test on segments, never on the printed string: `areas.health` must not
 // be read as covering `areas.healthcare`.
 //
+// The segment test happens in Locator space, not on the stored dotted address
+// directly: a project's address does not string-prefix its own objective's —
+// "project.acme" is not a prefix of "objective.acme.q1-growth" the way
+// "projects.acme" is a prefix of "projects.acme.objectives.q1-growth" — yet a
+// project-scoped skill must still reach its objectives and key-results. So
+// entry is converted to a Locator first, and covers asks the same question it
+// always has.
+//
 // The first covering entry wins. Two entries can both cover an entity when one
 // nests inside the other, and naming the nearest would be a better answer than
 // naming the first — but scope order is the author's, and §5.2 gives no
@@ -72,11 +81,15 @@ func reaches(scope []string, loc locator.Locator) (SkillReach, bool) {
 		return SkillReach{WholeTree: true}, true
 	}
 	for _, entry := range scope {
-		parsed, err := locator.Parse(entry)
+		addr, err := address.ParseDotted(entry)
 		if err != nil {
-			// A scope entry that is not a locator is doctor's finding (§10);
+			// A scope entry that is not an address is doctor's finding (§10);
 			// treating it as a match would put a rule in context on the
 			// strength of a typo.
+			continue
+		}
+		parsed, err := addr.ToLocator()
+		if err != nil {
 			continue
 		}
 		if covers(parsed, loc) {

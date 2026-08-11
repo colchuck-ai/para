@@ -242,7 +242,7 @@ func TestUnsetScopeWidensASkillToTheWholeTree(t *testing.T) {
 	var f mutate.Fields
 	f.Set(kindmeta.FieldName, "Signups report")
 	f.Set(kindmeta.FieldDescription, "when asked for the weekly signups number")
-	f.SetList(kindmeta.FieldScope, []string{"projects.acme"})
+	f.SetList(kindmeta.FieldScope, []string{"project.acme"})
 	if _, err := e.Add(loc(t, "skills.signups-report"), f); err != nil {
 		t.Fatalf("Add skill: %v", err)
 	}

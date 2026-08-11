@@ -31,7 +31,7 @@ exec para add projects.website --name Website --description 'A refresh.' --statu
 exec para add areas.health --name Health --description 'Staying in one piece.'
 exec para add areas.health.training --name Training --description 'The weekly plan.' --tags fitness
 exec para add resources.rust --name Rust --description 'Notes.' --tags rust,reference
-exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope projects
+exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope project
 # Something with a blown deadline, for --overdue. `missed` is not terminal
 # (§1.7), so this stays visible without --all — which is the point of it.
 exec para add projects.late --name Late --description 'A deadline that went by.' --created 2026-01-01 --due 2026-02-01
@@ -58,7 +58,7 @@ cmp stdout $WORK/want-show-kr.txt
 # §5.2: omitting scope entirely means the whole tree, and absence saying
 # something is worth printing.
 exec para show skills.signups-report
-stdout 'scope        projects'
+stdout 'scope        project'
 
 # `.` resolves from the working directory (§14).
 cd areas/health/training
@@ -211,7 +211,7 @@ stdout '"shown": 1'
 # `activity --json` is the rollup as data: one line per digest line, each
 # labelled with the locator it came from.
 exec para activity projects.acme-migration --recursive --json
-stdout '"locator": "projects.acme-migration.objectives"'
+stdout '"locator": "container.acme-migration.objectives"'
 stdout '"text": "added objective q1-growth"'
 
 # --- what `list` shows once things end or move away -------------------------
@@ -310,15 +310,15 @@ created = "2026-01-01T00:00:00Z"
 
 -- brain/.agents/skills/.keep --
 -- want-activity-recursive.txt --
-2026-03-05  projects.acme-migration.objectives                                added objective q1-growth
-2026-03-05  projects.acme-migration.objectives.q1-growth.key-results          added key-result signups
-2026-03-05  projects.acme-migration.objectives                                created
-2026-03-05  projects.acme-migration.objectives.q1-growth.key-results          created
-2026-02-02  projects.acme-migration                                           note: checked in with the ingest team
-2026-01-05  projects.acme-migration.objectives.q1-growth                      created
-2026-01-03  projects.acme-migration.objectives.q1-growth.key-results.signups  measured 880/11000 (8.0%) — 24% of target
-2026-01-01  projects.acme-migration                                           created
-2026-01-01  projects.acme-migration.objectives.q1-growth.key-results.signups  created
+2026-03-05  container.acme-migration.objectives             added objective q1-growth
+2026-03-05  container.acme-migration.q1-growth.key-results  added key-result signups
+2026-03-05  container.acme-migration.objectives             created
+2026-03-05  container.acme-migration.q1-growth.key-results  created
+2026-02-02  project.acme-migration                          note: checked in with the ingest team
+2026-01-05  objective.acme-migration.q1-growth              created
+2026-01-03  key-result.acme-migration.q1-growth.signups     measured 880/11000 (8.0%) — 24% of target
+2026-01-01  project.acme-migration                          created
+2026-01-01  key-result.acme-migration.q1-growth.signups     created
 -- want-list-direct.txt --
 projects.acme-migration.objectives.q1-growth  objective  in-progress  59 days ago
 showing 1 of 1
@@ -355,7 +355,7 @@ reading      480/9000 → 880/11000 / 2000/12000
 progress     0.24
 pace         1.01
 
-skills       signups-report (from skills.signups-report, scope projects)
+skills       signups-report (from skills.signups-report, scope project)
 -- want-show-project.txt --
 projects.acme-migration  project
 Acme migration
@@ -373,7 +373,7 @@ objectives
     signups  Weekly signups  on-track
              480/9000 → 880/11000 / 2000/12000   progress 0.24   pace 1.01
 
-skills       signups-report (from skills.signups-report, scope projects)
+skills       signups-report (from skills.signups-report, scope project)
 -- want-show-stale.txt --
 projects.acme-migration  project
 Acme migration
@@ -392,4 +392,4 @@ objectives
     signups  Weekly signups  on-track
              480/9000 → 880/11000 / 2000/12000   progress 0.24   pace 1.01
 
-skills       signups-report (from skills.signups-report, scope projects)
+skills       signups-report (from skills.signups-report, scope project)

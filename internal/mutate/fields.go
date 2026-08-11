@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/krvalue"
-	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/ptime"
 	"github.com/colchuck-ai/para/internal/tagexpr"
@@ -267,16 +267,19 @@ func normaliseList(field kindmeta.Field, values []string) ([]string, error) {
 				return nil, paraerr.Newf(paraerr.KindValidation, "%q is not a valid tag (letters, digits, and hyphens)", v)
 			}
 		case kindmeta.FieldScope:
-			// A scope entry is a fully-qualified locator — the same string
-			// every command prints (§5.2). Whether it resolves is deliberately
+			// A scope entry is a dotted address — the same string every
+			// command prints (§5.2, R24). Whether it resolves is deliberately
 			// not checked here: an entry may name something that has not been
 			// created yet, and an entry that names nothing is doctor's
-			// `scope-unresolved` finding to report (§5.4, §10).
-			loc, err := locator.Parse(v)
+			// `scope-unresolved` finding to report (§5.4, §10). This is the
+			// write-side half of truth.Check's FieldScope rule
+			// (internal/truth/check.go) — the same rule, so `add`/`set` and
+			// `doctor` cannot disagree about one entry.
+			addr, err := address.ParseDotted(v)
 			if err != nil {
-				return nil, paraerr.Newf(paraerr.KindValidation, "scope entry %q is not a locator: %s", v, unwrapMessage(err))
+				return nil, paraerr.Newf(paraerr.KindValidation, "scope entry %q: %s", v, unwrapMessage(err))
 			}
-			v = loc.String()
+			v = addr.String()
 		}
 		if seen[v] {
 			continue

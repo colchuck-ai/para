@@ -474,8 +474,8 @@ func TestSkillsReaching(t *testing.T) {
 	add(t, w, "projects.acme-migration", "name", "Acme", "description", "A project.")
 	add(t, w, "areas.health", "name", "Health", "description", "An area.")
 	add(t, w, "areas.healthcare", "name", "Healthcare", "description", "Another area.")
-	add(t, w, "skills.scoped", "name", "Scoped", "description", "when asked", "scope", "projects")
-	add(t, w, "skills.narrow", "name", "Narrow", "description", "when asked", "scope", "areas.health")
+	add(t, w, "skills.scoped", "name", "Scoped", "description", "when asked", "scope", "project")
+	add(t, w, "skills.narrow", "name", "Narrow", "description", "when asked", "scope", "area.health")
 	add(t, w, "skills.everywhere", "name", "Everywhere", "description", "when asked")
 
 	r := reader(t, root)
@@ -519,7 +519,7 @@ func TestSkillsReaching(t *testing.T) {
 	for _, s := range got {
 		switch s.Locator.String() {
 		case "skills.scoped":
-			if s.Via != "projects" || s.WholeTree {
+			if s.Via != "project" || s.WholeTree {
 				t.Errorf("scoped: via %q wholeTree %v", s.Via, s.WholeTree)
 			}
 		case "skills.everywhere":
