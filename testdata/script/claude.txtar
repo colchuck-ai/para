@@ -16,7 +16,7 @@ env PARA_NOW=2026-03-05T17:00:00Z
 env PARA_TZ=America/Los_Angeles
 cd brain
 exec para rebuild
-exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number'
+exec para add skill signups-report --name 'Signups report' --description 'when asked for the weekly signups number'
 exec para doctor
 stdout '^clean$'
 
@@ -63,9 +63,9 @@ stdout '^nothing to rewrite'
 # than advice about where a knob usefully lives. Setting one at a level would
 # write half a surface: a bucket's CLAUDE.md with no mirror, since there is only
 # one .claude/ and it is at the root.
-! exec para config set --at projects emit.claude false
+! exec para config set --at project emit.claude false
 stderr 'read at the root only'
-! exec para config unset --at projects emit.claude-skills
+! exec para config unset --at project emit.claude-skills
 stderr 'read at the root only'
 exists projects/CLAUDE.md
 
@@ -74,7 +74,7 @@ exists projects/CLAUDE.md
 # The debt Phase 12 recorded: adding a skill changes the set of derived rules and
 # therefore every import list. §6.1 says the list regenerates "with no separate
 # bookkeeping", and eight known locations are what makes that affordable.
-exec para add skills.commit-style --name 'Commit style' --description 'when writing a commit message'
+exec para add skill commit-style --name 'Commit style' --description 'when writing a commit message'
 stdout '^ +CLAUDE\.md$'
 stdout '^linked  \.claude/skills/para-commit-style → \.\./\.\./\.agents/skills/para-commit-style$'
 grep '^@\.agents/rules/para-commit-style\.md$' CLAUDE.md
@@ -83,7 +83,7 @@ exec para doctor
 stdout '^clean$'
 
 # And removing one takes its rule and its mirror with it (§18.2, §6.1).
-exec para remove skills.commit-style --force
+exec para remove skill commit-style --force
 ! exists .agents/rules/para-commit-style.md
 ! exists .claude/skills/para-commit-style
 ! grep 'para-commit-style' CLAUDE.md
@@ -119,7 +119,7 @@ stdout '^copied  \.claude/skills/para-signups-report$'
 
 # An edit to the skill itself reaches the copy in the same command, because in
 # copy mode the mirror holds the skill's own files.
-exec para set skills.signups-report --description 'when asked for the weekly number'
+exec para set skill signups-report --description 'when asked for the weekly number'
 grep 'weekly number' .claude/skills/para-signups-report/SKILL.md
 exec para doctor
 stdout '^clean$'

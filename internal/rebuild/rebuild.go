@@ -40,6 +40,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
@@ -299,7 +300,7 @@ func Subjects(root string, scope locator.Locator) ([]Subject, error) {
 		return nil, err
 	}
 	if !resolves {
-		return nil, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", scope)
+		return nil, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", rebuildAddr(scope))
 	}
 
 	nodes, err := tree.Subtree(root, scope)
@@ -453,4 +454,21 @@ func (e *Env) read(path string) ([]byte, error) {
 		return nil, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("reading %s", path))
 	}
 	return data, nil
+}
+
+// rebuildAddr is loc's dotted address (R24), the same conversion every other
+// package that names a Locator in an error message asks of address.String
+// (internal/mutate's relocateAddr; internal/cli's entityLocatorString and
+// findingLocatorString; internal/view's viewAddr; internal/doctor's
+// doctorAddr; internal/query's queryAddr). The scope reaching this refusal
+// was already built by the CLI's own parseAddressArgs, which resolves it
+// through address.Parse before rebuild ever sees it — so the raw Locator
+// string is a defensive fallback only, for the one case a scope built some
+// other way (a test, a future caller) does not round-trip.
+func rebuildAddr(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }

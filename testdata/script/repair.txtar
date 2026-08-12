@@ -45,12 +45,12 @@ stdout '^clean$'
 
 # --- write-through leaves nothing for rebuild to do (§2.3) ------------------
 
-exec para add projects.acme-migration --name 'Acme migration' --description 'Rebuild the consumer.' --status in-progress --created 2026-01-05 --due 2026-09-30
-exec para note projects.acme-migration 'the ingest team is blocked' --at 2026-01-05
-exec para add projects.acme-migration.objectives.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.' --created 2026-01-05
-exec para add projects.acme-migration.objectives.q1-growth.key-results.signups --name 'Weekly signups' --type ratio --start 480/9000 --target 2000/12000 --created 2026-01-05
-exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 880/11000
-exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope project --created 2026-01-05
+exec para add project acme-migration --name 'Acme migration' --description 'Rebuild the consumer.' --status in-progress --created 2026-01-05 --due 2026-09-30
+exec para note project acme-migration 'the ingest team is blocked' --at 2026-01-05
+exec para add objective acme-migration.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.' --created 2026-01-05
+exec para add key-result acme-migration.q1-growth.signups --name 'Weekly signups' --type ratio --start 480/9000 --target 2000/12000 --created 2026-01-05
+exec para measure acme-migration.q1-growth.signups 880/11000
+exec para add skill signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope project --created 2026-01-05
 
 # The property the whole design rests on: every projection was already written,
 # so there is nothing to regenerate and nothing to report.
@@ -65,7 +65,7 @@ cp $WORK/empty-activity.md projects/acme-migration/ACTIVITY.md
 ! exec para doctor
 cmp stdout $WORK/want-doctor-stale.txt
 
-exec para rebuild projects.acme-migration --dry-run
+exec para rebuild project acme-migration --dry-run
 stdout '^would rewrite  projects/acme-migration/ACTIVITY\.md$'
 # --dry-run changes nothing: the file is byte for byte what it was, and the
 # finding is still there. The second assertion alone would pass if --dry-run had
@@ -73,7 +73,7 @@ stdout '^would rewrite  projects/acme-migration/ACTIVITY\.md$'
 cmp projects/acme-migration/ACTIVITY.md $WORK/empty-activity.md
 ! exec para doctor
 
-exec para rebuild projects.acme-migration
+exec para rebuild project acme-migration
 stdout '^rewrote  projects/acme-migration/ACTIVITY\.md$'
 
 exec para doctor
@@ -84,7 +84,7 @@ stdout '^clean$'
 # (§3.5, §21.1) — so the day named is the oldest one that differs, not the
 # newest day the file has and not the only day the journal has.
 cp $WORK/rotated-log.jsonl projects/acme-migration/.para/logs/20251201T090000Z.jsonl
-exec para rebuild projects.acme-migration
+exec para rebuild project acme-migration
 stdout '^rewrote  projects/acme-migration/ACTIVITY\.md$'
 grep '^## 2025-12-01$' projects/acme-migration/ACTIVITY.md
 grep 'from a rotated file' projects/acme-migration/ACTIVITY.md
@@ -99,7 +99,7 @@ stdout 'ACTIVITY\.md differs from journal \(from 2026-01-05\)$'
 cp $WORK/oldest-day-broken.md projects/acme-migration/ACTIVITY.md
 ! exec para doctor
 stdout 'ACTIVITY\.md differs from journal \(from 2025-12-01\)$'
-exec para rebuild projects.acme-migration
+exec para rebuild project acme-migration
 exec para doctor
 stdout '^clean$'
 
@@ -168,10 +168,10 @@ rm projects/acme-migration/.para/logs/20260105T000000Z.jsonl
 # scope-unresolved: an entry naming a locator that does not exist (§5.4). The
 # write path stores it without complaint, because an entry may name something
 # not created yet — this is where it surfaces.
-exec para set skills.signups-report --scope project,project.nowhere
+exec para set skill signups-report --scope project,project.nowhere
 ! exec para doctor
 stdout '^error +scope-unresolved +\.agents/skills/para-signups-report/\.para/state\.toml scope names project\.nowhere, which does not exist$'
-exec para set skills.signups-report --scope project
+exec para set skill signups-report --scope project
 
 # orphan-rule: a derived rule whose generated_from skill is gone (§5.3).
 cp $WORK/para-gone.md .agents/rules/para-gone.md
@@ -205,18 +205,18 @@ stdout '^clean$'
 
 # A scoped scan reports what is under the locator and nothing else.
 cp $WORK/empty-activity.md areas/ACTIVITY.md
-exec para doctor projects.acme-migration
+exec para doctor project acme-migration
 stdout '^clean$'
 ! exec para doctor
 stdout '^error +stale-projection +areas/ACTIVITY\.md '
-exec para rebuild areas
+exec para rebuild area
 exec para doctor
 stdout '^clean$'
 
 # A locator that names nothing is an error, not an empty report.
-! exec para doctor projects.nowhere
+! exec para doctor project nowhere
 stderr 'does not exist'
-! exec para rebuild projects.nowhere
+! exec para rebuild project nowhere
 stderr 'does not exist'
 
 # --json on a clean tree still says so, and says it as data (§23).

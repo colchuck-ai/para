@@ -6,7 +6,7 @@
 # ACTIVITY.md would make `activity`'s "the file and the command agree by
 # construction" (§16.4) a claim about the fixture rather than about para.
 #
-# Three departures from §26's spelling, all recorded in the plan before the phase
+# Departures from §26's spelling, all recorded in the plan before the phase
 # started:
 #
 #  - §26 writes locators as `…q1-growth`. That is the document eliding, not para:
@@ -15,6 +15,15 @@
 #  - §16.1's `progress 0.24 / pace 0.70` were computed as current ÷ target with
 #    `start` dropped. §4.2's formula is normative and krvalue implements it.
 #  - The instants differ from §26's, because the clock here is fixed at one.
+#  - §26's own `para list project --tags kafka --sort attention` reads as a
+#    kind filter under R19 ("`<noun>` alone: that kind, tree-wide"), which the
+#    code (internal/cli/list_args.go) implements literally: a bare `project`
+#    matches only project-kind rows, not everything nested beneath the
+#    projects/ bucket the way the old scope-only grammar's `projects` did.
+#    §26's worked example still shows the old three-row (project, objective,
+#    key-result) output, which R19's own prose does not produce — a spec
+#    slip, not a command-line change, so the line is kept exactly as §26
+#    spells it and the assertion below is what it actually returns.
 
 env PARA_NOW=2026-03-05T17:00:00Z
 env PARA_TZ=America/Los_Angeles
@@ -22,54 +31,55 @@ cd brain
 
 # --- the tree these blocks read ---------------------------------------------
 
-exec para add projects.acme-migration --name 'Acme migration' --description 'Rebuild the consumer so it stops falling over under replay load.' --status in-progress --priority high --due 2026-09-30 --tags consumer,kafka --created 2026-01-01
-exec para add projects.acme-migration.objectives.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.' --status in-progress --tags kafka --created 2026-01-05
-exec para add projects.acme-migration.objectives.q1-growth.key-results.signups --name 'Weekly signups' --description 'Sign-ups per week.' --type ratio --start 480/9000 --target 2000/12000 --due 2026-09-30 --tags kafka --created 2026-01-01
-exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 880/11000 --at 2026-01-03
-exec para note projects.acme-migration 'checked in with the ingest team' --at 2026-02-02
-exec para add projects.website --name Website --description 'A refresh.' --status planned --priority low --tags refresh
-exec para add areas.health --name Health --description 'Staying in one piece.'
-exec para add areas.health.training --name Training --description 'The weekly plan.' --tags fitness
-exec para add resources.rust --name Rust --description 'Notes.' --tags rust,reference
-exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope project
+exec para add project acme-migration --name 'Acme migration' --description 'Rebuild the consumer so it stops falling over under replay load.' --status in-progress --priority high --due 2026-09-30 --tags consumer,kafka --created 2026-01-01
+exec para add objective acme-migration.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.' --status in-progress --tags kafka --created 2026-01-05
+exec para add key-result acme-migration.q1-growth.signups --name 'Weekly signups' --description 'Sign-ups per week.' --type ratio --start 480/9000 --target 2000/12000 --due 2026-09-30 --tags kafka --created 2026-01-01
+exec para measure acme-migration.q1-growth.signups 880/11000 --at 2026-01-03
+exec para note project acme-migration 'checked in with the ingest team' --at 2026-02-02
+exec para add project website --name Website --description 'A refresh.' --status planned --priority low --tags refresh
+exec para add area health --name Health --description 'Staying in one piece.'
+exec para add area health.training --name Training --description 'The weekly plan.' --tags fitness
+exec para add resource rust --name Rust --description 'Notes.' --tags rust,reference
+exec para add skill signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope project
 # Something with a blown deadline, for --overdue. `missed` is not terminal
 # (§1.7), so this stays visible without --all — which is the point of it.
-exec para add projects.late --name Late --description 'A deadline that went by.' --created 2026-01-01 --due 2026-02-01
+exec para add project late --name Late --description 'A deadline that went by.' --created 2026-01-01 --due 2026-02-01
 
 # --- §16.1's `show` ---------------------------------------------------------
 
 # Stored fields, computed lines, the children summary, the skills line naming the
 # scope entry that reached it, and the threshold's provenance.
-exec para show projects.acme-migration
+exec para show project acme-migration
 cmp stdout $WORK/want-show-project.txt
 
 # `stale` names where its threshold came from, because §7's chain resolution is
 # only defensible if it is visible (§16.1).
 exec para config set project.stale-after 14
-exec para show projects.acme-migration
+exec para show project acme-migration
 cmp stdout $WORK/want-show-stale.txt
 
 # A key-result prints §4's arithmetic. The reading is the baseline, the newest
 # value, and the target, each as written — a ratio's denominator belongs to the
 # reading (§4.1).
-exec para show projects.acme-migration.objectives.q1-growth.key-results.signups
+exec para show key-result acme-migration.q1-growth.signups
 cmp stdout $WORK/want-show-kr.txt
 
 # §5.2: omitting scope entirely means the whole tree, and absence saying
 # something is worth printing.
-exec para show skills.signups-report
+exec para show skill signups-report
 stdout 'scope        project'
 
 # `.` resolves from the working directory (§14).
 cd areas/health/training
 exec para show .
-stdout '^areas.health.training  area$'
+stdout '^area  health\.training$'
 cd $WORK/brain
 
 # --- §16.2's `list` ---------------------------------------------------------
 
-# §26's own example: entities at any depth, containers never rows.
-exec para list projects --tags kafka --sort attention
+# §26's own example. A bare noun is a kind filter (R19), so this matches only
+# project-kind rows — see the header note on the spec slip this transcribes.
+exec para list project --tags kafka --sort attention
 cmp stdout $WORK/want-list-kafka.txt
 
 # Note what `list` does not show: `objectives`, `key-results`, or any other
@@ -77,12 +87,12 @@ cmp stdout $WORK/want-list-kafka.txt
 exec para list
 ! stdout 'objectives\s'
 ! stdout 'key-results\s'
-stdout 'projects.acme-migration.objectives.q1-growth\s'
-stdout 'projects.acme-migration.objectives.q1-growth.key-results.signups\s'
+stdout 'acme-migration\.q1-growth\s'
+stdout 'acme-migration\.q1-growth\.signups\s'
 
 # §17's `--direct`: transparency first, then immediate children — so a project's
 # objectives, one container down.
-exec para list projects.acme-migration --direct
+exec para list project acme-migration --direct
 cmp stdout $WORK/want-list-direct.txt
 
 # §17's count line, and `--limit` truncating after the match rather than before.
@@ -91,33 +101,33 @@ stdout 'showing 2 of 9'
 
 # A sort key no matched kind has is an error naming the key and the kinds it
 # applies to; one some matched kind has is not (§17, ADR 0002).
-! exec para list areas --sort progress
+! exec para list area --sort progress
 stderr 'error: nothing matched has a progress — it applies to key-results'
 exec para list --sort progress
 
-# A mistyped locator is an error rather than an empty list.
-! exec para list projects.nope
-stderr 'error: projects.nope does not exist'
+# A mistyped chain is an error rather than an empty list.
+! exec para list project nope
+stderr 'error: project\.nope does not exist'
 
 # --- §16.3's `log` ----------------------------------------------------------
 
 # The raw journal, newest first, matching ACTIVITY.md's direction (§16.3).
-exec para log projects.acme-migration --kind note
+exec para log project acme-migration --kind note
 cmp stdout $WORK/want-log-note.txt
 
 # §16.2.1: `--local` converts every timestamp to the reader's zone, with
 # $PARA_TZ overriding the host zone.
-exec para log projects.acme-migration --kind note --local
+exec para log project acme-migration --kind note --local
 # `--at 2026-02-02` was zero-filled in the local offset and stored as UTC
 # (§15.1), so --local is exactly that conversion run backwards.
 stdout '^2026-02-02T00:00:00-08:00  note'
 
 # --json gets the events back unchanged (§16.3).
-exec para log projects.acme-migration --kind note --json
+exec para log project acme-migration --kind note --json
 stdout '"kind": "note"'
 stdout '"note": "checked in with the ingest team"'
 
-! exec para log projects.acme-migration --kind nonsense
+! exec para log project acme-migration --kind nonsense
 stderr 'is not an event kind'
 
 # --- §16.4's `activity` -----------------------------------------------------
@@ -125,35 +135,35 @@ stderr 'is not an event kind'
 # "Without --recursive it is just `cat` on a generated file, and that is fine:
 # it means the two agree by construction." Re-derived from the journal rather
 # than read from the projection, and identical either way.
-exec para activity projects.acme-migration
+exec para activity project acme-migration
 cp stdout $WORK/got-activity.txt
 cmp $WORK/got-activity.txt projects/acme-migration/ACTIVITY.md
 
 # §26's `--recursive`: one chronology, each line labelled with the locator it
 # came from. The only rollup in the system, computed on demand, nothing written.
-exec para activity projects.acme-migration --recursive --since 2026-01-01
+exec para activity project acme-migration --recursive --since 2026-01-01
 cmp stdout $WORK/want-activity-recursive.txt
 
 # --- §17's remaining filters ------------------------------------------------
 
 # `--match` reads the thing's own text, case-insensitively.
 exec para list --match funnel
-stdout 'projects.acme-migration.objectives.q1-growth'
+stdout 'acme-migration\.q1-growth'
 stdout 'showing 1 of 1'
 
 # …and journal note bodies, which live only there — §17's "one read path that
 # must open journals".
 exec para list --match 'ingest team'
-stdout 'projects.acme-migration'
+stdout 'acme-migration\s'
 stdout 'showing 1 of 1'
 
 # §17's boolean tag grammar: word operators, `not` → `and` → `or`, comma as or.
 exec para list --tags 'kafka and not consumer'
-! stdout 'projects.acme-migration\s'
+! stdout 'project\s+acme-migration\s'
 stdout 'q1-growth'
 exec para list --tags rust,fitness
-stdout 'areas.health.training'
-stdout 'resources.rust'
+stdout 'health\.training'
+stdout 'rust'
 ! exec para list --tags 'and'
 stderr 'error:'
 
@@ -166,7 +176,7 @@ exec para list --overdue
 cmp stdout $WORK/want-list-overdue.txt
 
 # `--reverse` flips the sort and nothing else.
-exec para list projects --tags kafka --sort attention --reverse
+exec para list project --tags kafka --sort attention --reverse
 cmp stdout $WORK/want-list-kafka-reverse.txt
 
 # --- §16.2.1's `--local`, and the day count that has to follow it -----------
@@ -175,19 +185,19 @@ cmp stdout $WORK/want-list-kafka-reverse.txt
 # age, because a line reading "2026-03-04  today" is two answers to one question.
 # The subject has to predate the note, or §3.6's guard falls back to `created`
 # and there is no boundary left to cross.
-exec para note projects.late 'crossing the date line' --at 2026-03-05T02:00:00Z
-exec para show projects.late
+exec para note project late 'crossing the date line' --at 2026-03-05T02:00:00Z
+exec para show project late
 stdout 'attention    2026-03-05        today'
-exec para show projects.late --local
+exec para show project late --local
 stdout 'attention    2026-03-04        1 day ago'
 exec para list --local
-stdout 'projects.late\s+project\s+planned\s+1 day ago'
+stdout 'project\s+late\s+planned\s+1 day ago'
 
 # --- §23's `--json` ---------------------------------------------------------
 
 # An object is the stored fields plus every value the human output computed to
 # print: effective status, attention, dormancy, and a key-result's numbers.
-exec para show projects.acme-migration.objectives.q1-growth.key-results.signups --json
+exec para show key-result acme-migration.q1-growth.signups --json
 stdout '"effective-status": "on-track"'
 stdout '"attention-days": 61'
 stdout '"progress": 0.235'
@@ -204,13 +214,13 @@ stdout '"hidden": 0'
 # `--limit`, so its JSON carries the counts too rather than a bare array.
 # The `projects` container's own journal, which holds a `child` event per
 # project added (§3.3) — three by now, so --limit 1 genuinely truncates.
-exec para log projects --limit 1 --json
+exec para log project --limit 1 --json
 stdout '"total": 3'
 stdout '"shown": 1'
 
 # `activity --json` is the rollup as data: one line per digest line, each
 # labelled with the locator it came from.
-exec para activity projects.acme-migration --recursive --json
+exec para activity project acme-migration --recursive --json
 stdout '"locator": "container.acme-migration.objectives"'
 stdout '"text": "added objective q1-growth"'
 
@@ -221,21 +231,21 @@ stdout '"text": "added objective q1-growth"'
 
 # Terminal items are hidden without `--all`, and the count of them is a second
 # number with a second cause and a second fix.
-exec para set projects.website --status done
+exec para set project website --status done
 exec para list
 stdout '1 hidden \(done\) — --all to include'
-! stdout 'projects.website'
+! stdout 'website'
 exec para list --all
-stdout 'projects.website'
+stdout 'website'
 ! stdout 'hidden'
-exec para set projects.website --status planned
+exec para set project website --status planned
 
 # An explicit terminal status is not hidden from itself: `--status done` selects
 # exactly what the hiding removes, so composing the two would make the flag
 # return nothing, ever.
-exec para set projects.website --status done
+exec para set project website --status done
 exec para list --status done
-stdout 'projects.website'
+stdout 'website'
 ! stdout 'hidden'
 
 # §26's own line. `--all` and an explicit terminal status compose to the same
@@ -244,33 +254,33 @@ stdout 'projects.website'
 exec para list --status blocked --all
 stdout '^showing '
 exec para list --status done --all
-stdout 'projects.website'
-exec para set projects.website --status planned
+stdout 'website'
+exec para set project website --status planned
 
 # §1.7's cascade reaches `list`: a terminal ancestor quiets its descendants.
-exec para set projects.acme-migration --status done
+exec para set project acme-migration --status done
 exec para list
 ! stdout 'acme-migration'
 stdout '3 hidden \(done\) — --all to include'
 
 # §16.1: `show` is unaffected by the hiding — you named the thing — and it says
 # *why* something stopped appearing, "because its own fields do not explain why".
-exec para show projects.acme-migration.objectives.q1-growth
-stdout 'dormant      under projects.acme-migration \(done\)'
-exec para set projects.acme-migration --status in-progress
+exec para show objective acme-migration.q1-growth
+stdout 'dormant      under project\.acme-migration \(done\)'
+exec para set project acme-migration --status in-progress
 
 # `archive/` is not traversed unless you name it: archived things are not
 # hidden, they are somewhere else (§1.6).
-exec para archive projects.website
+exec para archive project website
 exec para list
 ! stdout 'website'
-exec para list archive.projects
-stdout 'archive.projects.website'
+exec para list project --archived
+stdout 'website'
 
 # The other dormancy §16.1 requires named: location, not a field (§1.6).
-exec para show archive.projects.website
+exec para show project website --archived
 stdout 'dormant      archived'
-exec para unarchive archive.projects.website
+exec para unarchive project website
 
 -- brain/.para/tree.toml --
 schema = 1
@@ -320,28 +330,24 @@ created = "2026-01-01T00:00:00Z"
 2026-01-01  project.acme-migration                          created
 2026-01-01  key-result.acme-migration.q1-growth.signups     created
 -- want-list-direct.txt --
-projects.acme-migration.objectives.q1-growth  objective  in-progress  59 days ago
+objective  acme-migration.q1-growth  in-progress  59 days ago
 showing 1 of 1
 -- want-list-kafka-reverse.txt --
-projects.acme-migration                                           project     in-progress  31 days ago
-projects.acme-migration.objectives.q1-growth                      objective   in-progress  59 days ago
-projects.acme-migration.objectives.q1-growth.key-results.signups  key-result  on-track     61 days ago
-showing 3 of 3
+project  acme-migration  in-progress  31 days ago
+showing 1 of 1
 -- want-list-kafka.txt --
-projects.acme-migration.objectives.q1-growth.key-results.signups  key-result  on-track     61 days ago
-projects.acme-migration.objectives.q1-growth                      objective   in-progress  59 days ago
-projects.acme-migration                                           project     in-progress  31 days ago
-showing 3 of 3
+project  acme-migration  in-progress  31 days ago
+showing 1 of 1
 -- want-list-overdue.txt --
-projects.late  project  planned  63 days ago
+project  late  planned  63 days ago
 showing 1 of 1
 -- want-list-priority.txt --
-projects.acme-migration  project  in-progress  31 days ago
+project  acme-migration  in-progress  31 days ago
 showing 1 of 1
 -- want-log-note.txt --
 2026-02-02T08:00:00Z  note    checked in with the ingest team
 -- want-show-kr.txt --
-projects.acme-migration.objectives.q1-growth.key-results.signups  key-result
+key-result  acme-migration.q1-growth.signups
 Weekly signups
   Sign-ups per week.
 
@@ -355,9 +361,9 @@ reading      480/9000 → 880/11000 / 2000/12000
 progress     0.24
 pace         1.01
 
-skills       signups-report (from skills.signups-report, scope project)
+skills       signups-report (from skill.signups-report, scope project)
 -- want-show-project.txt --
-projects.acme-migration  project
+project  acme-migration
 Acme migration
   Rebuild the consumer so it stops falling over under replay load.
 
@@ -373,9 +379,9 @@ objectives
     signups  Weekly signups  on-track
              480/9000 → 880/11000 / 2000/12000   progress 0.24   pace 1.01
 
-skills       signups-report (from skills.signups-report, scope project)
+skills       signups-report (from skill.signups-report, scope project)
 -- want-show-stale.txt --
-projects.acme-migration  project
+project  acme-migration
 Acme migration
   Rebuild the consumer so it stops falling over under replay load.
 
@@ -392,4 +398,4 @@ objectives
     signups  Weekly signups  on-track
              480/9000 → 880/11000 / 2000/12000   progress 0.24   pace 1.01
 
-skills       signups-report (from skills.signups-report, scope project)
+skills       signups-report (from skill.signups-report, scope project)

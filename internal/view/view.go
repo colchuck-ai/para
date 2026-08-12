@@ -27,6 +27,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/clock"
 	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/journal"
@@ -202,10 +203,16 @@ func (e *Env) Load(loc locator.Locator) (Entity, error) {
 			return Entity{}, err
 		}
 		if stub {
+			// A stub has no noun and no address (R11): it is named by its
+			// on-disk path, the same way doctor's own stub findings are.
+			path, pathErr := loc.Path()
+			if pathErr != nil {
+				path = loc.String()
+			}
 			return Entity{}, paraerr.Newf(paraerr.KindNotFound,
-				"%s is a stub — a locator segment with no entity behind it (§1.6)", loc)
+				"%s/ is a stub — a locator segment with no entity behind it (§1.6)", path)
 		}
-		return Entity{}, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", loc)
+		return Entity{}, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", viewAddr(loc))
 	}
 	dir, err := tree.ResolvePath(e.Root, loc)
 	if err != nil {
@@ -424,4 +431,21 @@ func (e *Env) DaysUntilIn(t time.Time, loc *time.Location) int {
 func calendarDays(t time.Time, loc *time.Location) int {
 	y, m, d := t.In(loc).Date()
 	return int(time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Unix() / 86400)
+}
+
+// viewAddr is loc's dotted address (R24), the same conversion every other
+// package that names a Locator in an error message asks of address.String
+// (internal/mutate's relocateAddr; internal/cli's entityLocatorString and
+// findingLocatorString; internal/doctor's doctorAddr; internal/rebuild's
+// rebuildAddr; internal/query's queryAddr). loc reaches here only after
+// tree.KindAt has already derived a kind from its shape, which is the same
+// shape question address.FromLocator asks independently — so the raw
+// Locator string is a defensive fallback only, for the one case the two
+// disagree, not a path this package's own tests exercise.
+func viewAddr(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }

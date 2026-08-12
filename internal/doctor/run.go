@@ -131,7 +131,7 @@ func (s *scan) walkNodes() ([]tree.Node, error) {
 		return nil, err
 	}
 	if !resolves {
-		return nil, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", s.scope)
+		return nil, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", doctorAddr(s.scope))
 	}
 	if s.scanRoot, err = s.scopeDir(); err != nil {
 		return nil, err
@@ -324,4 +324,21 @@ func message(err error) string {
 		return perr.Msg
 	}
 	return err.Error()
+}
+
+// doctorAddr is loc's dotted address (R24), the same conversion every other
+// package that names a Locator in an error message asks of address.String
+// (internal/mutate's relocateAddr; internal/cli's entityLocatorString and
+// findingLocatorString; internal/view's viewAddr; internal/rebuild's
+// rebuildAddr; internal/query's queryAddr). The scope reaching this refusal
+// was already built by the CLI's own parseAddressArgs, which resolves it
+// through address.Parse before doctor ever sees it — so the raw Locator
+// string is a defensive fallback only, for the one case a scope built some
+// other way (a test, a future caller) does not round-trip.
+func doctorAddr(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }

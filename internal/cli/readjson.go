@@ -107,7 +107,7 @@ func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 		Overdue:         e.Overdue(),
 	}
 	if len(e.DormantUnder) > 0 {
-		out.DormantUnder = e.DormantUnder.String()
+		out.DormantUnder = entityLocatorString(e.DormantUnder)
 	}
 	if e.HasDeadline {
 		days := env.DaysUntil(e.Deadline)

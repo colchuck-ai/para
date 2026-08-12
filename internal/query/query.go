@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
@@ -207,9 +208,26 @@ func checkScope(env *view.Env, scope locator.Locator) error {
 		return err
 	}
 	if !resolves {
-		return paraerr.Newf(paraerr.KindNotFound, "%s does not exist", scope)
+		return paraerr.Newf(paraerr.KindNotFound, "%s does not exist", queryAddr(scope))
 	}
 	return nil
+}
+
+// queryAddr is loc's dotted address (R24), the same conversion every other
+// package that names a Locator in an error message asks of address.String
+// (internal/mutate's relocateAddr; internal/cli's entityLocatorString and
+// findingLocatorString; internal/view's viewAddr; internal/doctor's
+// doctorAddr; internal/rebuild's rebuildAddr). The scope reaching this
+// refusal was already built by the CLI's own parseListArgs/parseAddressArgs,
+// which resolve it through address.Parse before list ever sees it — so the
+// raw Locator string is a defensive fallback only, for the one case a scope
+// built some other way (a test, a future caller) does not round-trip.
+func queryAddr(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }
 
 // walk visits every node beneath scope, plus the skills, in the §8.5 walk's

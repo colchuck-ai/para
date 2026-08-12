@@ -5,20 +5,20 @@
 # still a tree, and `para path` must find it (§8.1). init.txtar covers the
 # rendered shape.
 
-# para path resolves a locator from inside the tree, discovering the root by
-# walking up from the working directory.
+# para path resolves a noun and chain from inside the tree, discovering the
+# root by walking up from the working directory.
 cd brain/projects/acme-migration
-exec para path areas.health
+exec para path area health
 stdout 'brain[/\\]areas[/\\]health\n$'
 
 # §26's own line: one bare path, already shaped for $(…) (§23).
-exec para path areas.health.training
+exec para path area health.training
 stdout '^\S*brain[/\\]areas[/\\]health[/\\]training\n$'
 ! stderr .
 
 # ... and from content nested arbitrarily deep inside an entity.
 cd $WORK/brain/areas/health/training/notes
-exec para path projects.acme-migration
+exec para path project acme-migration
 stdout 'brain[/\\]projects[/\\]acme-migration\n$'
 
 # "." resolves to the entity or container containing the working directory.
@@ -33,7 +33,7 @@ stdout 'para-signups-report\n$'
 
 # Root discovery fails outside any tree.
 cd $WORK/outside
-! exec para path areas.health
+! exec para path area health
 stderr 'no para tree found'
 
 -- brain/.para/tree.toml --

@@ -16,7 +16,7 @@ env PARA_TZ=America/Los_Angeles
 
 # The chain is built deliberately, one level at a time (§22).
 cd brain
-exec para config set --at projects project.stale-after 30
+exec para config set --at project project.stale-after 30
 cmp stdout $WORK/want-set-projects.txt
 
 # The change is recorded where it happened (§3.2, §8.1), and reads as a
@@ -26,7 +26,7 @@ grep 'Set \*\*project\.stale-after\*\* to 30' projects/ACTIVITY.md
 
 # §22's worked example, byte for byte: the resolved value, then every level
 # consulted, nearest first, with the winner marked.
-exec para config show project.stale-after projects.acme-migration
+exec para config show project.stale-after project.acme-migration
 cmp stdout $WORK/want-chain.txt
 
 # The written file holds exactly the key that was set.
@@ -58,17 +58,17 @@ exec para config set emit.claude true
 stdout '^no change\n$'
 
 # unset removes the value and resolution continues up the chain (§7).
-exec para config unset --at projects project.stale-after
+exec para config unset --at project project.stale-after
 stdout '^ +projects/\.para/config\.toml\n'
 grep 'Unset \*\*project\.stale-after\*\* \(was 30\)' projects/ACTIVITY.md
-exec para config show project.stale-after projects.other-project
+exec para config show project.stale-after project.other-project
 stdout '^14\n'
 
 # A skill's chain is its own config.toml and then the root, with nothing in
 # between, because .agents/ is not in the PARA tree (§7).
-exec para config set --at skills.signups-report review.cadence 90
+exec para config set --at skill.signups-report review.cadence 90
 stdout '^ +\.agents/skills/para-signups-report/\.para/config\.toml\n'
-exec para config show review.cadence skills.signups-report
+exec para config show review.cadence skill.signups-report
 cmp stdout $WORK/want-skill-chain.txt
 
 # `config list` names every knob para reads and where each value came from.
@@ -85,8 +85,8 @@ stderr 'unknown config key'
 stderr 'whole number'
 ! exec para config set emit.claude-skills hardlink
 stderr 'symlink, copy'
-! exec para config set --at projects.nope project.stale-after 30
-stderr 'projects.nope does not exist'
+! exec para config set --at project.nope project.stale-after 30
+stderr 'project.nope does not exist'
 
 # Config is a property of a tree, so every config command needs one.
 cd $WORK/outside

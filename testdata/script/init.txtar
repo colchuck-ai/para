@@ -82,7 +82,7 @@ exec para rebuild
 stdout '^nothing to rewrite \(8 places up to date\)$'
 
 # The tree is usable straight away.
-exec para add projects.acme --name 'Acme' --description 'Rebuild the consumer.'
+exec para add project acme --name 'Acme' --description 'Rebuild the consumer.'
 exec para doctor
 stdout '^clean$'
 
@@ -112,10 +112,13 @@ stdout '^2026-03-05 +— +created$'
 
 # And it stops at archive/ for the same reason `list` does: archived things are
 # not hidden, they are somewhere else, and you reach them by naming them
-# (§16.2). The archive's own three child events are the archive's to show.
+# (§16.2). Under the noun grammar the archive's own top-level container has no
+# address to name it by — "archive" is not a noun (R2), and --archived with no
+# noun at all has nothing to redirect (it is inert here, unlike `list`, which
+# special-cases it into "the whole archive", R7) — so the archive's own three
+# child events are simply unreachable, and this is the negative half of that:
+# they never leak into the live tree's rollup.
 ! stdout '^2026-03-05 +archive'
-exec para activity archive --recursive
-stdout '^2026-03-05 +archive +added resources$'
 
 # --since narrows the root's digest the same way it narrows any other.
 #
@@ -130,8 +133,8 @@ exec para activity --since 2026-03-06
 
 # A locator that names nothing is still an error rather than a silent fallback
 # to the root.
-! exec para activity projects.nope
-stderr 'error: projects.nope does not exist'
+! exec para activity project nope
+stderr 'error: project\.nope does not exist'
 
 # --- emit.gitattributes, both ways ------------------------------------------
 #

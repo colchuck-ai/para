@@ -238,9 +238,9 @@ func staleCell(th view.Threshold) string {
 func dormancy(e view.Entity) string {
 	switch {
 	case len(e.DormantUnder) > 0 && e.Archived:
-		return fmt.Sprintf("archived, and under %s (%s)", e.DormantUnder, e.EffectiveStatus)
+		return fmt.Sprintf("archived, and under %s (%s)", entityLocatorString(e.DormantUnder), e.EffectiveStatus)
 	case len(e.DormantUnder) > 0:
-		return fmt.Sprintf("under %s (%s)", e.DormantUnder, e.EffectiveStatus)
+		return fmt.Sprintf("under %s (%s)", entityLocatorString(e.DormantUnder), e.EffectiveStatus)
 	case e.Archived:
 		return "archived"
 	default:
