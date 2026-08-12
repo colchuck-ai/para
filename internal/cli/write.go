@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/clock"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/krvalue"
@@ -400,10 +401,16 @@ func newNoteCmd() *cobra.Command {
 	return cmd
 }
 
+// newMeasureCmd implements `para measure <chain> <value>` (R13): the one
+// command whose address is a bare chain and takes no noun at all — only a
+// key-result can be measured, so a noun here would carry no information.
+// "." still works (R16): standing inside the key-result's own directory is
+// worth as much as typing its chain, and the resolved kind is checked
+// against key-result the same way set's and unset's dispatched noun is.
 func newMeasureCmd() *cobra.Command {
 	var at, note string
 	cmd := &cobra.Command{
-		Use:   "measure <kr-locator> <value>",
+		Use:   "measure <chain> <value>",
 		Short: "log a reading against a key-result",
 		Long: "Log a reading against a key-result.\n\n" +
 			"The value follows the key-result's own type, and two readings may not\n" +
@@ -416,7 +423,7 @@ func newMeasureCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, err := dispatchedChainToLocator(env.Root, cwd, address.KeyResult, args[0], false)
 			if err != nil {
 				return err
 			}
