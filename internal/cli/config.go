@@ -62,7 +62,7 @@ type scope struct {
 // — "" for the root, which is where `set` and `unset` write unless --at says
 // otherwise (§22).
 //
-// A named level must exist. A `config set --at projects.acme` against a
+// A named level must exist. A `config set --at project.acme` against a
 // project that is not there would otherwise write a config.toml into a
 // directory nothing reads, which is exactly the silent misconfiguration the
 // closed key set exists to prevent.
@@ -77,7 +77,7 @@ func openScope(cmd *cobra.Command, at string) (scope, error) {
 		return s, nil
 	}
 
-	loc, err := resolveLocatorArg(root, cwd, at)
+	loc, err := resolveConfigAt(root, cwd, at)
 	if err != nil {
 		return scope{}, err
 	}
@@ -86,10 +86,29 @@ func openScope(cmd *cobra.Command, at string) (scope, error) {
 		return scope{}, err
 	}
 	if !exists {
-		return scope{}, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", loc.String())
+		return scope{}, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", configLocatorString(loc))
 	}
 	s.locator = loc
 	return s, nil
+}
+
+// resolveConfigAt resolves --at (task P19.10, R24), and config show's own
+// second positional argument, which names the same thing spelled a
+// different way. Both now take the one-token dotted form (<noun>.<chain>,
+// optionally archive.-prefixed) rather than the old plural-bucket locator
+// string, since a flag value is one token and cannot carry a noun and a
+// chain as two — the same reasoning R24's whole table applies everywhere
+// else an address must be a single string. "." still works (R16), resolved
+// against cwd the same way every other address argument's does.
+func resolveConfigAt(root, cwd, at string) (locator.Locator, error) {
+	if at == "." {
+		return tree.ResolveDot(root, cwd)
+	}
+	addr, err := address.ParseDotted(at)
+	if err != nil {
+		return nil, err
+	}
+	return addr.ToLocator()
 }
 
 // file is the scope's own config.toml: the root-relative path for output,
@@ -132,7 +151,7 @@ func newConfigSetCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&at, "at", "", "the locator whose config.toml to write (default: the tree root)")
+	cmd.Flags().StringVar(&at, "at", "", "the dotted address (noun.chain) whose config.toml to write (default: the tree root)")
 	return cmd
 }
 
@@ -159,7 +178,7 @@ func newConfigUnsetCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&at, "at", "", "the locator whose config.toml to write (default: the tree root)")
+	cmd.Flags().StringVar(&at, "at", "", "the dotted address (noun.chain) whose config.toml to write (default: the tree root)")
 	return cmd
 }
 
@@ -220,7 +239,7 @@ func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (boo
 func newConfigShowCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "show <key> [<locator>]",
+		Use:   "show <key> [<noun.chain>]",
 		Short: "print a resolved config value and the chain that produced it",
 		Long: "Print a resolved config value and the chain that produced it.\n\n" +
 			"Every level consulted is listed, nearest first, with an arrow on the one\n" +
@@ -257,25 +276,25 @@ func newConfigShowCmd() *cobra.Command {
 	return cmd
 }
 
+// newConfigListCmd implements `para config list [--prefix …]` (R12): unlike
+// set, unset, and show, list takes no address argument at all — R12's own
+// table gives it none, and §22's worked example agrees — so it always
+// resolves at the tree root.
 func newConfigListCmd() *cobra.Command {
 	var (
 		asJSON bool
 		prefix string
 	)
 	cmd := &cobra.Command{
-		Use:   "list [<locator>]",
-		Short: "list every config key as resolved at a locator",
-		Long: "List every config key para recognises, resolved at a locator (the tree\n" +
-			"root by default), with the level each value came from.\n\n" +
+		Use:   "list [--prefix …]",
+		Short: "list every config key as resolved at the tree root",
+		Long: "List every config key para recognises, resolved at the tree root, with\n" +
+			"the level each value came from.\n\n" +
 			"Keys nothing sets are listed too: a knob nobody can find is a knob that\n" +
 			"will be wrong.",
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			at := ""
-			if len(args) == 1 {
-				at = args[0]
-			}
-			s, err := openScope(cmd, at)
+			s, err := openScope(cmd, "")
 			if err != nil {
 				return err
 			}

@@ -37,7 +37,7 @@ func TestConfigShowPrintsSection22sChain(t *testing.T) {
 		"projects/acme-migration/.para/state.toml": "name = \"Acme migration\"\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "show", "project.stale-after", "projects.acme-migration")
+	code, stdout, stderr := run(t, root, "config", "show", "project.stale-after", "project.acme-migration")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
@@ -112,7 +112,7 @@ func TestConfigShowJSONCarriesTheWholeChain(t *testing.T) {
 		"projects/acme-migration/.para/state.toml": "name = \"Acme migration\"\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "show", "--json", "project.stale-after", "projects.acme-migration")
+	code, stdout, stderr := run(t, root, "config", "show", "--json", "project.stale-after", "project.acme-migration")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
@@ -184,7 +184,7 @@ func TestConfigSetAtWritesTheNamedLevel(t *testing.T) {
 		"projects/.para/state.toml": "name = \"Projects\"\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "set", "--at", "projects", "project.stale-after", "30")
+	code, stdout, stderr := run(t, root, "config", "set", "--at", "project", "project.stale-after", "30")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
@@ -205,7 +205,7 @@ func TestConfigSetOnASkillWritesInsideTheSkill(t *testing.T) {
 		".agents/skills/para-signups-report/.para/state.toml": "name = \"Signups report\"\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "set", "--at", "skills.signups-report", "review.cadence", "90")
+	code, stdout, stderr := run(t, root, "config", "set", "--at", "skill.signups-report", "review.cadence", "90")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
@@ -260,13 +260,13 @@ func TestConfigSetRefusesWhatItCannotStore(t *testing.T) {
 		},
 		{
 			name:    "--at naming something that does not exist",
-			args:    []string{"config", "set", "--at", "projects.nope", "project.stale-after", "30"},
-			wantErr: "projects.nope",
+			args:    []string{"config", "set", "--at", "project.nope", "project.stale-after", "30"},
+			wantErr: "project.nope",
 		},
 		{
 			name:    "--at naming an illegal locator",
-			args:    []string{"config", "set", "--at", "projects.a.b", "project.stale-after", "30"},
-			wantErr: "projects.a.b",
+			args:    []string{"config", "set", "--at", "project.a.b", "project.stale-after", "30"},
+			wantErr: "not a chain of 2",
 		},
 	}
 
@@ -294,7 +294,7 @@ func TestConfigUnsetRemovesTheValueAtOneLevel(t *testing.T) {
 		"projects/.para/config.toml": "emit.claude = true\nproject.stale-after = 30\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "unset", "--at", "projects", "project.stale-after")
+	code, stdout, stderr := run(t, root, "config", "unset", "--at", "project", "project.stale-after")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
@@ -327,27 +327,32 @@ func TestConfigUnsetOfAnAbsentKeyIsANoOp(t *testing.T) {
 	}
 }
 
+// TestConfigListPrintsEveryKnobAndWhereItCameFrom confirms list resolves at
+// the tree root and nowhere else (R12): list takes no address argument,
+// unlike set/unset/show, so a value set below the root is invisible to it
+// even though config show would find it by walking up from there.
 func TestConfigListPrintsEveryKnobAndWhereItCameFrom(t *testing.T) {
 	root := plantTree(t, map[string]string{
-		".para/config.toml":          "emit.claude = true\n",
+		".para/config.toml":          "emit.claude = true\nproject.stale-after = 30\n",
 		"projects/.para/state.toml":  "name = \"Projects\"\n",
-		"projects/.para/config.toml": "project.stale-after = 30\n",
+		"projects/.para/config.toml": "review.cadence = 90\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "list", "projects")
+	code, stdout, stderr := run(t, root, "config", "list")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	// Every key para recognises, resolved at that level: the set ones name
-	// the level they came from, the defaulted ones say so, and the unset
-	// ones are visible rather than absent — a knob nobody can find is a
-	// knob that will be wrong (§20).
+	// Every key para recognises, resolved at the root: the set ones name the
+	// level they came from, the defaulted ones say so, and the unset ones
+	// are visible rather than absent — a knob nobody can find is a knob
+	// that will be wrong (§20). review.cadence is set only at projects/, so
+	// list — root-only — does not see it; config show would.
 	want := map[string][]string{
 		"emit.claude":             {"true", "<root>"},
 		"emit.claude-skills":      {"symlink", "(default)"},
 		"emit.gitattributes":      {"true", "(default)"},
-		"project.stale-after":     {"30", "project"},
+		"project.stale-after":     {"30", "<root>"},
 		"review.cadence":          {"—", "—"},
 		"key-result.at-risk-pace": {"—", "—"},
 		"log.rotate-bytes":        {"4194304", "(default)"},
@@ -360,6 +365,23 @@ func TestConfigListPrintsEveryKnobAndWhereItCameFrom(t *testing.T) {
 		if !slices.Equal(got[key], cols) {
 			t.Errorf("%s = %v, want %v; full output:\n%s", key, got[key], cols, stdout)
 		}
+	}
+}
+
+// TestConfigListRefusesAnAddressArgument is the new half of R12's rule:
+// list is the one config subcommand that takes no address argument at all,
+// so giving it one is cobra's own refusal (list has no subcommands to
+// dispatch "project" to) rather than a silent scope change.
+func TestConfigListRefusesAnAddressArgument(t *testing.T) {
+	root := plantTree(t, map[string]string{".para/config.toml": ""})
+
+	code, _, stderr := run(t, root, "config", "list", "project")
+
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr, `unknown command "project"`) {
+		t.Errorf("stderr = %q, want cobra's unknown-command refusal", stderr)
 	}
 }
 
