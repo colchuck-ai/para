@@ -14,24 +14,25 @@ import (
 	"github.com/colchuck-ai/para/internal/view"
 )
 
-// newShowCmd implements `para show <locator>` (§16.1).
+// newShowCmd implements `para show <noun> [<chain>]` (R3, R17: a bare noun
+// is the bucket).
 func newShowCmd() *cobra.Command {
 	var read readFlags
 	var archived archivedFlag
 
 	cmd := &cobra.Command{
-		Use:   "show <locator>",
+		Use:   "show <noun> [<chain>]",
 		Short: "print one thing: its stored fields, what is derived, its children, and the skills that reach it",
 		Long: "Print the thing itself. It does not print the journal (`log`), the digest\n" +
 			"(`activity`), or its siblings (`list`), and it is unaffected by the\n" +
 			"terminal-status hiding `list` applies — you named the thing.",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openRead(cmd)
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, _, err := parseAddressArgs(env.Root, cwd, args, bucketArity, archived.value)
 			if err != nil {
 				return err
 			}
@@ -82,7 +83,7 @@ type shown struct {
 // numbers say nothing — which is exactly what §16.1's example shows. Immediate
 // children plus nothing else for areas and resources, which nest without limit;
 // §16.1 already draws that line for siblings ("it does not print … its
-// siblings (`list`)"), and `list <locator>` is how you see the rest.
+// siblings (`list`)"), and `list <noun> <chain>` is how you see the rest.
 func showChildren(env *view.Env, ent view.Entity) ([]view.Entity, error) {
 	if ent.Kind == kindmeta.KindKeyResult || ent.Kind == kindmeta.KindSkill {
 		return nil, nil
@@ -118,7 +119,7 @@ func printShow(out io.Writer, env *view.Env, s shown, read readFlags) {
 
 	// The header: what it is, then what it is called, then what it is for.
 	var head table
-	head.add(ent.Locator.String(), ent.Kind.String())
+	head.add(entityLocatorString(ent.Locator), ent.Kind.String())
 	head.write(out)
 	if name := ent.Name(); name != "" {
 		fmt.Fprintln(out, name)
@@ -310,7 +311,7 @@ func skillsCell(skills []view.SkillReach) string {
 		if !s.WholeTree {
 			via = "scope " + s.Via
 		}
-		entries = append(entries, fmt.Sprintf("%s (from %s, %s)", s.Locator[len(s.Locator)-1], s.Locator, via))
+		entries = append(entries, fmt.Sprintf("%s (from %s, %s)", s.Locator[len(s.Locator)-1], entityLocatorString(s.Locator), via))
 	}
 	return strings.Join(entries, "\n"+strings.Repeat(" ", showLabelWidth))
 }

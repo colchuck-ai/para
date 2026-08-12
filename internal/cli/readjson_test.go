@@ -17,7 +17,7 @@ func TestShowJSONLocatorIsTheDottedAddress(t *testing.T) {
 		".agents/skills/para-signups-report/.para/state.toml": "name = \"Signups report\"\nscope = [\"project.acme-migration\"]\n",
 	})
 
-	code, stdout, stderr := run(t, root, "show", "projects.acme-migration", "--json")
+	code, stdout, stderr := run(t, root, "show", "project", "acme-migration", "--json")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}

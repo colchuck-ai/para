@@ -20,7 +20,8 @@ import (
 	"github.com/colchuck-ai/para/internal/view"
 )
 
-// newActivityCmd implements `para activity [<locator>]` (§16.4).
+// newActivityCmd implements `para activity [<noun> [<chain>]]` (R3, R17,
+// R18).
 func newActivityCmd() *cobra.Command {
 	var read readFlags
 	var archived archivedFlag
@@ -28,7 +29,7 @@ func newActivityCmd() *cobra.Command {
 	var since string
 
 	cmd := &cobra.Command{
-		Use:   "activity [<locator>]",
+		Use:   "activity [<noun> [<chain>]]",
 		Short: "print the digest — the same fold ACTIVITY.md contains",
 		Long: "Print the digest for an entity, a container, or — naming nothing — the tree\n" +
 			"root, which has an ACTIVITY.md like every other tracked directory and no\n" +
@@ -38,20 +39,18 @@ func newActivityCmd() *cobra.Command {
 			"everything beneath into one chronology, each line labelled with the locator it\n" +
 			"came from. That is the only rollup in the system, it is computed on demand, and\n" +
 			"nothing about it is written to disk.",
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openRead(cmd)
 			if err != nil {
 				return err
 			}
-			// No locator is the root, the same way it is for `list`, `rebuild`,
-			// and `doctor`: absent means the whole tree, never the working
-			// directory. `.` is the spelling for that (§14).
-			var loc locator.Locator
-			if len(args) == 1 {
-				if loc, err = resolveLocatorArg(env.Root, cwd, args[0]); err != nil {
-					return err
-				}
+			// No noun at all is the root, the same way it is for `list`,
+			// `rebuild`, and `doctor`: absent means the whole tree, never the
+			// working directory. `.` is the spelling for that (R16).
+			loc, _, err := parseAddressArgs(env.Root, cwd, args, scopeArity, archived.value)
+			if err != nil {
+				return err
 			}
 			from, err := parseSince(since)
 			if err != nil {
