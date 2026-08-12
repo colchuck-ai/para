@@ -57,6 +57,18 @@ type Options struct {
 	// locator itself — `show` is how you see the thing you named (§16.1).
 	Scope locator.Locator
 
+	// Kind narrows the walk to one addressable kind (R19's filter position),
+	// or the zero value kindmeta.KindUnknown for no filter at all. It composes
+	// with Scope rather than replacing it — R19's `<noun> <noun> <chain>` row
+	// is both at once.
+	//
+	// It is asked in `visible`, alongside container transparency, rather than
+	// folded into Filter: those are all §17's *content* filters, evaluated
+	// against a derived entity; this is §16.2's structural question — is this
+	// node a candidate row at all — decided from the walk's own node, before
+	// an entity is even derived.
+	Kind kindmeta.Kind
+
 	Filter Filter
 
 	Sort    SortKey
@@ -244,6 +256,14 @@ func visible(node tree.Node, opts Options) bool {
 		// every node under it legitimate. §20's `--all` is the third way in.
 		return false
 	case opts.Filter.Direct && ReaderDepth(node.Locator, opts.Scope) != 1:
+		return false
+	case opts.Kind != kindmeta.KindUnknown && node.Kind != opts.Kind:
+		// R19/R21's kind filter, composing with Scope rather than replacing
+		// it. It runs after the container case above, never before: a
+		// container's own Kind is KindContainer, never the zero value, so
+		// without that ordering a filter could do nothing to exclude one —
+		// but containers were already excluded on structural grounds, not
+		// this one, and stay excluded regardless of what Kind is set to.
 		return false
 	}
 	return true
