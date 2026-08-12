@@ -133,6 +133,35 @@ func TestListChainColumnAtArbitraryDepth(t *testing.T) {
 	}
 }
 
+// TestListCountAndHiddenLinesAreUnchanged is P20.6: the two lines below the
+// table answer different questions — "is that everything" and "why isn't
+// it" — and stay two lines with their existing wording, unaffected by the
+// noun column or the kind filter this phase added.
+func TestListCountAndHiddenLinesAreUnchanged(t *testing.T) {
+	root := mixedKindTree(t)
+	mustRun(t, root, "set", "project", "acme", "--status", "done")
+
+	code, stdout, stderr := run(t, root, "list")
+	if code != 0 {
+		t.Fatalf("list: exit %d, stderr = %q", code, stderr)
+	}
+	want := "showing 0 of 0\n3 hidden (done) — --all to include\n"
+	if stdout != want {
+		t.Errorf("list =\n%q\nwant\n%q", stdout, want)
+	}
+
+	code, stdout, stderr = run(t, root, "list", "--all")
+	if code != 0 {
+		t.Fatalf("list --all: exit %d, stderr = %q", code, stderr)
+	}
+	if strings.Contains(stdout, "hidden") {
+		t.Errorf("list --all = %q, want no hidden line", stdout)
+	}
+	if !strings.Contains(stdout, "showing 3 of 3") {
+		t.Errorf("list --all = %q, want the count line to report all 3", stdout)
+	}
+}
+
 // TestListContainerIsRefusedAsAFilter is R20, read end to end through the
 // real command rather than the parser alone: `container` is a legal noun
 // everywhere else an address is read, but never in list's filter position.
