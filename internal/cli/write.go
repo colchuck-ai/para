@@ -99,7 +99,18 @@ func (f *fieldFlags) registerForKind(cmd *cobra.Command, kind kindmeta.Kind, atC
 		var v string
 		f.values[field] = &v
 		cmd.Flags().StringVar(&v, string(field), "", help)
-		_ = cmd.RegisterFlagCompletionFunc(string(field), completeFieldValue(field, atCreation))
+		// The value vocabulary is per-noun (task P21.8): kind is already
+		// fixed here, so a key-result's `--status` offers only `dropped`
+		// without a special case, and no other kind offers it at all. scope
+		// is the one field whose vocabulary is not a closed set of values to
+		// choose from but a list of *addresses* to reference, so it takes
+		// completeScopeValue instead of the fixed set fieldVocabulary would
+		// give it (nil, since scope has no closed vocabulary of its own).
+		if field == kindmeta.FieldScope {
+			_ = cmd.RegisterFlagCompletionFunc(string(field), completeScopeValue)
+		} else {
+			_ = cmd.RegisterFlagCompletionFunc(string(field), fixed(fieldVocabulary(kind, field)))
+		}
 	}
 }
 
