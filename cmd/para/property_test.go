@@ -8,6 +8,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/colchuck-ai/para/internal/address"
+	"github.com/colchuck-ai/para/internal/locator"
 )
 
 // This file is the plan's Phase 14 task 2, the four properties carried forward
@@ -161,14 +164,14 @@ func TestRemoveKeepFilesRestoresThePreParaDirectory(t *testing.T) {
 		t.Fatalf("init: exit %d:\n%s", code, out)
 	}
 	for _, args := range [][]string{
-		{"add", "projects.acme", "--name", "Acme", "--description", "Rebuild the consumer."},
-		{"add", "projects.acme.objectives.q1", "--name", "Q1", "--description", "Move the funnel."},
+		{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+		{"add", "objective", "acme.q1", "--name", "Q1", "--description", "Move the funnel."},
 		{
-			"add", "projects.acme.objectives.q1.key-results.signups",
+			"add", "key-result", "acme.q1.signups",
 			"--name", "Signups", "--type", "ratio", "--start", "480/9000", "--target", "2000/12000",
 		},
-		{"measure", "projects.acme.objectives.q1.key-results.signups", "880/11000"},
-		{"note", "projects.acme", "the ingest team is blocked"},
+		{"measure", "acme.q1.signups", "880/11000"},
+		{"note", "project", "acme", "the ingest team is blocked"},
 	} {
 		if out, code := runPara(t, root, nil, args...); code != 0 {
 			t.Fatalf("%v: exit %d:\n%s", args, code, out)
@@ -215,7 +218,7 @@ func TestRemoveKeepFilesRestoresThePreParaDirectory(t *testing.T) {
 		t.Fatalf("the fixture is too thin to prove anything: %v", want)
 	}
 
-	if out, code := runPara(t, root, nil, "remove", "projects.acme", "--keep-files", "--force"); code != 0 {
+	if out, code := runPara(t, root, nil, "remove", "project", "acme", "--keep-files", "--force"); code != 0 {
 		t.Fatalf("remove --keep-files: exit %d:\n%s", code, out)
 	}
 
@@ -313,8 +316,10 @@ func (w *world) next(step int) []string {
 	id := fmt.Sprintf("x%d", step)
 	switch w.rng.Intn(14) {
 	case 0:
-		w.projects = append(w.projects, "projects."+id)
-		return []string{"add", "projects." + id, "--name", "P" + id, "--description", "A project."}
+		loc := "projects." + id
+		w.projects = append(w.projects, loc)
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "P" + id, "--description", "A project."}
 	case 1:
 		parent, ok := pick(w.rng, w.projects)
 		if !ok {
@@ -322,7 +327,8 @@ func (w *world) next(step int) []string {
 		}
 		loc := parent + ".objectives." + id
 		w.objectives = append(w.objectives, loc)
-		return []string{"add", loc, "--name", "O" + id, "--description", "An objective."}
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "O" + id, "--description", "An objective."}
 	case 2:
 		parent, ok := pick(w.rng, w.objectives)
 		if !ok {
@@ -330,7 +336,8 @@ func (w *world) next(step int) []string {
 		}
 		loc := parent + ".key-results." + id
 		w.keyResults = append(w.keyResults, loc)
-		return []string{"add", loc, "--name", "K" + id, "--type", "ratio", "--start", "100/1000", "--target", "900/1000"}
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "K" + id, "--type", "ratio", "--start", "100/1000", "--target", "900/1000"}
 	case 3:
 		// An area, sometimes nested inside another — §1.5's "areas and
 		// resources nest freely".
@@ -339,7 +346,8 @@ func (w *world) next(step int) []string {
 			loc = parent + "." + id
 		}
 		w.areas = append(w.areas, loc)
-		return []string{"add", loc, "--name", "A" + id, "--description", "An area."}
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "A" + id, "--description", "An area."}
 	case 4:
 		// §1.5's "areas and resources nest freely" is about both, so this nests
 		// too. Without it the generator claimed a shape it could never emit.
@@ -348,37 +356,42 @@ func (w *world) next(step int) []string {
 			loc = parent + "." + id
 		}
 		w.resources = append(w.resources, loc)
-		return []string{"add", loc, "--name", "R" + id, "--description", "A resource."}
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "R" + id, "--description", "A resource."}
 	case 5:
 		loc := "skills." + id
 		w.skills = append(w.skills, loc)
-		return []string{"add", loc, "--name", "S" + id, "--description", "when " + id}
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "S" + id, "--description", "when " + id}
 	case 6:
 		// A status, on a kind that has one (§15): project and objective.
 		loc, ok := pick(w.rng, append(slices.Clone(w.projects), w.objectives...))
 		if !ok {
 			return nil
 		}
+		noun, chain := cmdAddr(loc)
 		switch w.rng.Intn(3) {
 		case 0:
-			return []string{"set", loc, "--status", "in-progress"}
+			return []string{"set", noun, chain, "--status", "in-progress"}
 		case 1:
-			return []string{"set", loc, "--status", "blocked", "--note", "waiting on " + id}
+			return []string{"set", noun, chain, "--status", "blocked", "--note", "waiting on " + id}
 		default:
-			return []string{"set", loc, "--status", "done"}
+			return []string{"set", noun, chain, "--status", "done"}
 		}
 	case 7:
 		loc, ok := pick(w.rng, w.everything())
 		if !ok {
 			return nil
 		}
-		return []string{"set", loc, "--tags", "alpha,beta"}
+		noun, chain := cmdAddr(loc)
+		return []string{"set", noun, chain, "--tags", "alpha,beta"}
 	case 8:
 		loc, ok := pick(w.rng, w.everything())
 		if !ok {
 			return nil
 		}
-		return []string{"note", loc, "something happened at step " + id}
+		noun, chain := cmdAddr(loc)
+		return []string{"note", noun, chain, "something happened at step " + id}
 	case 9:
 		loc, ok := pick(w.rng, w.keyResults)
 		if !ok {
@@ -394,7 +407,10 @@ func (w *world) next(step int) []string {
 		hour := (w.measured / 27) % 24
 		w.measured++
 		at := fmt.Sprintf("2026-02-%02dT%02d:00", day, hour)
-		return []string{"measure", loc, "500/1000", "--at", at}
+		// R13: measure takes no noun — only a key-result can be measured, so
+		// the noun would carry no information.
+		_, chain := cmdAddr(loc)
+		return []string{"measure", chain, "500/1000", "--at", at}
 	case 10:
 		// A rename inside the same parent, which is the only move that cannot
 		// change a kind (§18.3).
@@ -404,7 +420,10 @@ func (w *world) next(step int) []string {
 		}
 		to := loc[:strings.LastIndex(loc, ".")+1] + "r" + id
 		w.rename(loc, to)
-		return []string{"move", loc, to}
+		// R14: move speaks its noun once, since a rename never changes kind.
+		noun, fromChain := cmdAddr(loc)
+		_, toChain := cmdAddr(to)
+		return []string{"move", noun, fromChain, toChain}
 	case 11:
 		// Archive a leaf. Leaves only, so the model does not have to reproduce
 		// §1.6's cascade to know what is where afterwards.
@@ -414,7 +433,8 @@ func (w *world) next(step int) []string {
 		}
 		w.forget(loc)
 		w.archived = append(w.archived, "archive."+loc)
-		return []string{"archive", loc}
+		noun, chain := cmdAddr(loc)
+		return []string{"archive", noun, chain}
 	case 12:
 		// §1.6: "unarchiving cascades upward … and brings its own subtree with
 		// it, in one operation". So the model has to bring the subtree back too —
@@ -432,7 +452,11 @@ func (w *world) next(step int) []string {
 			w.archived = slices.DeleteFunc(w.archived, func(s string) bool { return s == archived })
 			w.remember(strings.TrimPrefix(archived, "archive."))
 		}
-		return []string{"unarchive", loc}
+		// R8: the archived side is implied, so the chain is the live address
+		// it will have once restored — cmdAddr drops the "archive." prefix
+		// the same way it drops every qualifier this generator does not need.
+		noun, chain := cmdAddr(loc)
+		return []string{"unarchive", noun, chain}
 	default:
 		// A config key at the root, including the two that decide whether a file
 		// exists at all — which is what makes the surface axis a moving target
@@ -576,6 +600,29 @@ func (w *world) remember(loc string) {
 
 func (w *world) lists() []*[]string {
 	return []*[]string{&w.projects, &w.objectives, &w.keyResults, &w.areas, &w.resources, &w.skills}
+}
+
+// cmdAddr converts one of the generator's own tree-shaped locator strings
+// (e.g. "projects.x0.objectives.x1", "archive.areas.health") into the noun
+// and chain the CLI now takes, through the real address package rather than
+// a second, hand-rolled copy of the same derivation. The model's bookkeeping
+// keeps the old dotted-plural form because that is what makes a child a
+// string-prefix of its parent — the property every method below depends
+// on — so the grammar's noun+chain split happens only here, at the one
+// place a command line is finally assembled. The archive qualifier is
+// dropped along with everything else `address.FromLocator` derives beyond
+// noun and chain: every caller here either implies which side it is on
+// (`archive`/`unarchive`) or never touches an archived entity at all.
+func cmdAddr(loc string) (noun, chain string) {
+	l, err := locator.Parse(loc)
+	if err != nil {
+		panic(fmt.Sprintf("cmdAddr(%q): %v", loc, err))
+	}
+	a, err := address.FromLocator(l)
+	if err != nil {
+		panic(fmt.Sprintf("cmdAddr(%q): %v", loc, err))
+	}
+	return a.Noun.String(), strings.Join(a.Chain, ".")
 }
 
 func pick(rng *rand.Rand, from []string) (string, bool) {
