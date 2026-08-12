@@ -17,6 +17,7 @@ import (
 // newShowCmd implements `para show <locator>` (§16.1).
 func newShowCmd() *cobra.Command {
 	var read readFlags
+	var archived archivedFlag
 
 	cmd := &cobra.Command{
 		Use:   "show <locator>",
@@ -60,6 +61,7 @@ func newShowCmd() *cobra.Command {
 		},
 	}
 	read.register(cmd)
+	archived.register(cmd)
 	return cmd
 }
 

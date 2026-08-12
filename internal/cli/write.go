@@ -104,6 +104,7 @@ func (f *fieldFlags) collect(cmd *cobra.Command) mutate.Fields {
 
 func newAddCmd() *cobra.Command {
 	var f fieldFlags
+	var archived archivedFlag
 	cmd := &cobra.Command{
 		Use:   "add <locator>",
 		Short: "create an entity",
@@ -115,6 +116,9 @@ func newAddCmd() *cobra.Command {
 			"event — and the parent logs that its set of children changed.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := archived.check("nothing is created under archive/"); err != nil {
+				return err
+			}
 			env, _, err := openEnv(cmd)
 			if err != nil {
 				return err
@@ -135,13 +139,15 @@ func newAddCmd() *cobra.Command {
 		},
 	}
 	f.register(cmd)
+	archived.registerRefused(cmd, "nothing is created under archive/")
 	return cmd
 }
 
 func newSetCmd() *cobra.Command {
 	var (
-		f    fieldFlags
-		note string
+		f        fieldFlags
+		archived archivedFlag
+		note     string
 	)
 	cmd := &cobra.Command{
 		Use:   "set <locator> [flags]",
@@ -170,11 +176,13 @@ func newSetCmd() *cobra.Command {
 		},
 	}
 	f.register(cmd)
+	archived.register(cmd)
 	cmd.Flags().StringVar(&note, "note", "", "the reason, recorded with the change; required when setting status to blocked")
 	return cmd
 }
 
 func newUnsetCmd() *cobra.Command {
+	var archived archivedFlag
 	cmd := &cobra.Command{
 		Use:   "unset <locator> <field>...",
 		Short: "remove stored fields",
@@ -205,6 +213,7 @@ func newUnsetCmd() *cobra.Command {
 			return nil
 		},
 	}
+	archived.register(cmd)
 	return cmd
 }
 
@@ -219,6 +228,7 @@ func summariseSet(res mutate.Result) []string {
 
 func newNoteCmd() *cobra.Command {
 	var at string
+	var archived archivedFlag
 	cmd := &cobra.Command{
 		Use:   "note <locator> <text>",
 		Short: "record a note against an entity",
@@ -245,6 +255,7 @@ func newNoteCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&at, "at", "", "when it happened, in progressive precision; defaults to now")
+	archived.register(cmd)
 	return cmd
 }
 

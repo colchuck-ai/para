@@ -14,7 +14,8 @@ import (
 // newPathCmd implements `para path <locator>` (§14): the inverse of typing a
 // locator, printing one bare line shaped for $(…).
 func newPathCmd() *cobra.Command {
-	return &cobra.Command{
+	var archived archivedFlag
+	cmd := &cobra.Command{
 		Use:   "path <locator>",
 		Short: "print the filesystem path a locator addresses",
 		Long: "Print the absolute path a locator addresses, as one bare line and nothing\n" +
@@ -44,6 +45,8 @@ func newPathCmd() *cobra.Command {
 			return nil
 		},
 	}
+	archived.register(cmd)
+	return cmd
 }
 
 // resolveLocatorArg parses a command-line locator argument, honoring the

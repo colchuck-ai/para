@@ -21,6 +21,7 @@ const dryRunLine = "dry-run: nothing was written"
 
 func newMoveCmd() *cobra.Command {
 	var dryRun bool
+	var archived archivedFlag
 	cmd := &cobra.Command{
 		Use:   "move <from> <to>",
 		Short: "move an entity, with its subtree",
@@ -54,11 +55,13 @@ func newMoveCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
+	archived.register(cmd)
 	return cmd
 }
 
 func newArchiveCmd() *cobra.Command {
 	var dryRun bool
+	var archived archivedFlag
 	cmd := &cobra.Command{
 		Use:   "archive <locator>",
 		Short: "move an entity into the archive",
@@ -69,6 +72,9 @@ func newArchiveCmd() *cobra.Command {
 			"says where it lives.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := archived.check("the source is live by definition"); err != nil {
+				return err
+			}
 			env, cwd, err := openEnv(cmd)
 			if err != nil {
 				return err
@@ -85,11 +91,13 @@ func newArchiveCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
+	archived.registerRefused(cmd, "the source is live by definition")
 	return cmd
 }
 
 func newUnarchiveCmd() *cobra.Command {
 	var dryRun bool
+	var archived archivedFlag
 	cmd := &cobra.Command{
 		Use:   "unarchive <locator>",
 		Short: "bring an entity back out of the archive",
@@ -100,6 +108,9 @@ func newUnarchiveCmd() *cobra.Command {
 			"a stub to record its ancestry — the mirror of what `archive` leaves.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := archived.check("the source is archived by definition"); err != nil {
+				return err
+			}
 			env, _, err := openEnv(cmd)
 			if err != nil {
 				return err
@@ -118,6 +129,7 @@ func newUnarchiveCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
+	archived.registerRefused(cmd, "the source is archived by definition")
 	return cmd
 }
 
@@ -209,6 +221,7 @@ func newRemoveCmd() *cobra.Command {
 		dryRun    bool
 		force     bool
 		keepFiles bool
+		archived  archivedFlag
 	)
 	cmd := &cobra.Command{
 		Use:   "remove <locator>",
@@ -266,6 +279,7 @@ func newRemoveCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	cmd.Flags().BoolVar(&force, "force", false, "skip the confirmation")
 	cmd.Flags().BoolVar(&keepFiles, "keep-files", false, "keep your content; delete para's footprint throughout the subtree")
+	archived.register(cmd)
 	return cmd
 }
 

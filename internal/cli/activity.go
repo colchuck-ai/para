@@ -23,6 +23,7 @@ import (
 // newActivityCmd implements `para activity [<locator>]` (§16.4).
 func newActivityCmd() *cobra.Command {
 	var read readFlags
+	var archived archivedFlag
 	var recursive bool
 	var since string
 
@@ -87,6 +88,7 @@ func newActivityCmd() *cobra.Command {
 		},
 	}
 	read.register(cmd)
+	archived.register(cmd)
 	cmd.Flags().BoolVar(&recursive, "recursive", false, "merge the digests of everything beneath into one chronology")
 	cmd.Flags().StringVar(&since, "since", "", "only days on or after this date")
 	return cmd

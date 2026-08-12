@@ -18,6 +18,7 @@ import (
 // newRebuildCmd implements `para rebuild [<locator>] [--dry-run]` (§21.1).
 func newRebuildCmd() *cobra.Command {
 	var dryRun bool
+	var archived archivedFlag
 
 	cmd := &cobra.Command{
 		Use:   "rebuild [<locator>]",
@@ -60,6 +61,7 @@ func newRebuildCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "list what would change without writing")
+	archived.register(cmd)
 	return cmd
 }
 
@@ -110,6 +112,7 @@ func tense(did, would string, dryRun bool) string {
 // newDoctorCmd implements `para doctor [<locator>]` (§21.2).
 func newDoctorCmd() *cobra.Command {
 	var read readFlags
+	var archived archivedFlag
 
 	cmd := &cobra.Command{
 		Use:   "doctor [<locator>]",
@@ -165,6 +168,7 @@ func newDoctorCmd() *cobra.Command {
 	// journal line, which is quoted back exactly as the line stores it so that
 	// the line can be found.
 	read.register(cmd)
+	archived.register(cmd)
 	cmd.Flags().Lookup("local").Usage = "accepted for consistency; doctor prints no timestamp to convert"
 	return cmd
 }

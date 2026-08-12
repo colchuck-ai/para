@@ -16,6 +16,7 @@ import (
 func newListCmd() *cobra.Command {
 	var read readFlags
 	var filter filterFlags
+	var archived archivedFlag
 
 	cmd := &cobra.Command{
 		Use:   "list [<locator>]",
@@ -54,6 +55,7 @@ func newListCmd() *cobra.Command {
 	}
 	read.register(cmd)
 	filter.register(cmd)
+	archived.register(cmd)
 	return cmd
 }
 

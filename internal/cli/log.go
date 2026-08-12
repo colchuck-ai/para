@@ -16,6 +16,7 @@ import (
 // newLogCmd implements `para log <locator>` (§16.3).
 func newLogCmd() *cobra.Command {
 	var read readFlags
+	var archived archivedFlag
 	var kind string
 	var limit int
 	var reverse bool
@@ -75,6 +76,7 @@ func newLogCmd() *cobra.Command {
 		},
 	}
 	read.register(cmd)
+	archived.register(cmd)
 	cmd.Flags().StringVar(&kind, "kind", "", "only events of this kind: change, measurement, note, child")
 	cmd.Flags().IntVar(&limit, "limit", 0, "print at most this many")
 	cmd.Flags().BoolVar(&reverse, "reverse", false, "chronological rather than newest first")

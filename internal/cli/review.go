@@ -14,6 +14,7 @@ import (
 // newReviewCmd implements `para review [<locator>]` (§20).
 func newReviewCmd() *cobra.Command {
 	var read readFlags
+	var archived archivedFlag
 	var all bool
 	var limit int
 	selected := map[review.Group]*bool{}
@@ -80,6 +81,7 @@ func newReviewCmd() *cobra.Command {
 	// converted at all: it is a day somebody chose, not an instant something
 	// happened at (§15.1).
 	read.register(cmd)
+	archived.register(cmd)
 	cmd.Flags().Lookup("local").Usage = "accepted for consistency; review prints no timestamp to convert"
 	return cmd
 }
