@@ -317,7 +317,7 @@ func TestMoveRefusals(t *testing.T) {
 		},
 		{
 			name: "the source does not exist", src: "areas.nothing", dst: "areas.something",
-			kind: paraerr.KindNotFound, message: "areas.nothing does not exist",
+			kind: paraerr.KindNotFound, message: "area.nothing does not exist",
 		},
 	}
 	for _, tc := range cases {
@@ -675,7 +675,7 @@ func TestUnarchiveRefusals(t *testing.T) {
 		},
 		{
 			name: "a stub is not an entity", loc: "archive.areas.health",
-			kind: paraerr.KindNotFound, message: "nothing to unarchive — archive.areas.health is a stub, not an entity",
+			kind: paraerr.KindNotFound, message: "nothing to unarchive — archive.area.health is a stub, not an entity",
 		},
 		{
 			name: "not archived", loc: "areas.health",

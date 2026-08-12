@@ -456,7 +456,7 @@ func (e *Env) relocatable(loc locator.Locator, base, past string) (kindmeta.Kind
 	}
 	if kind == kindmeta.KindContainer {
 		return kind, paraerr.Newf(paraerr.KindValidation,
-			"%s is a container — it is part of its parent's shape and cannot be %s on its own", loc, past)
+			"%s is a container — it is part of its parent's shape and cannot be %s on its own", relocateAddr(loc), past)
 	}
 	exists, err := tree.Exists(e.Root, loc)
 	if err != nil {
@@ -469,9 +469,26 @@ func (e *Env) relocatable(loc locator.Locator, base, past string) (kindmeta.Kind
 		}
 		if isStub {
 			return kind, paraerr.Newf(paraerr.KindNotFound,
-				"nothing to %s — %s is a stub, not an entity", base, loc)
+				"nothing to %s — %s is a stub, not an entity", base, relocateAddr(loc))
 		}
-		return kind, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", loc)
+		return kind, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", relocateAddr(loc))
 	}
 	return kind, nil
+}
+
+// relocateAddr is loc's dotted address (R24), the same conversion
+// movedAddresses above already asks of address.String rather than a second
+// copy of it — deriving kind from a locator's shape is exactly what
+// tree.KindAt just did to reach every call site below, and address.FromLocator
+// asks the identical shape question independently (plan §0.2's round-trip
+// property), so a locator relocatable has already classified converts here
+// without error in practice. The raw Locator string is a defensive fallback
+// only, matching every other site R24 reaches (readjson.go's
+// entityLocatorString, doctor's findingLocatorString).
+func relocateAddr(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }
