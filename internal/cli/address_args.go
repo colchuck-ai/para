@@ -103,3 +103,48 @@ func nounWords() string {
 	}
 	return strings.Join(words, ", ")
 }
+
+// dispatchedChainToLocator is chainToLocator's counterpart for add's,
+// set's, and unset's noun-dispatching subcommands (R3): the noun is already
+// fixed by which subcommand cobra dispatched to, so the only argument left
+// is the chain — except that "." (R16) may stand in for it, resolved
+// against cwd the way parseAddressArgs resolves it for the commands whose
+// noun is a runtime argument instead.
+//
+// A dispatched noun can no longer be read off "." the way parseAddressArgs
+// reads one off args[0], so "." is instead checked against what it actually
+// resolves to — via address.FromLocator, never kindmeta.KindOf, since the
+// CLI path does not derive a kind by inference (plan §0.1) — refusing a
+// mismatch by name rather than silently mutating whatever "." happened to
+// name under a noun the user did not mean.
+//
+// add never calls this: "." is deliberately refused there (it resolves to
+// something that already exists, and add is for something that does not),
+// so add keeps calling chainToLocator directly.
+func dispatchedChainToLocator(root, cwd string, kind address.Noun, chain string, archived bool) (locator.Locator, error) {
+	if chain != "." {
+		return chainToLocator(kind.String(), chain, archived, false)
+	}
+	loc, err := tree.ResolveDot(root, cwd)
+	if err != nil {
+		return nil, err
+	}
+	addr, err := address.FromLocator(loc)
+	if err != nil {
+		return nil, err
+	}
+	if addr.Noun != kind {
+		return nil, paraerr.Newf(paraerr.KindValidation,
+			"the working directory names %s, not %s", withArticle(addr.Noun.String()), withArticle(kind.String()))
+	}
+	return loc, nil
+}
+
+// withArticle prefixes noun with "a" or "an", since "a area" and "a
+// objective" read as typos in a refusal a user is already annoyed by.
+func withArticle(noun string) string {
+	if strings.ContainsRune("aeiou", rune(noun[0])) {
+		return "an " + noun
+	}
+	return "a " + noun
+}

@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,20 +12,16 @@ import (
 	"github.com/colchuck-ai/para/internal/kindmeta"
 )
 
-// chdirToTestTree points the process cwd at a freshly built, minimal para
-// tree, restoring the original cwd on cleanup. Some refusals — R17's bucket
+// chdirToTestTree points the process cwd at a freshly built para tree —
+// built through the real `init` command rather than a hand-planted
+// fixture, so every bucket exists exactly as it would for a user — and
+// restores the original cwd on cleanup. Some refusals — R17's bucket
 // refusal among them — only fire once tree.Find has succeeded, since
 // openEnv runs before the chain is parsed (the same order every other
 // mutating command already uses).
 func chdirToTestTree(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".para"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, ".para", "tree.toml"), []byte("schema = 1\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -35,6 +30,15 @@ func chdirToTestTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	initCmd := newInitCmd()
+	var out bytes.Buffer
+	initCmd.SetOut(&out)
+	initCmd.SetErr(&out)
+	initCmd.SetArgs([]string{"--name", "Test"})
+	if err := initCmd.Execute(); err != nil {
+		t.Fatalf("init: %v (%s)", err, out.String())
+	}
 }
 
 // allFieldNames is every §15 field flag name, for checking that a per-noun
@@ -54,6 +58,26 @@ func findAddSubcommand(t *testing.T, noun string) *cobra.Command {
 	}
 	t.Fatalf("add has no %q subcommand", noun)
 	return nil
+}
+
+// TestNounDispatchShortTextUsesTheRightArticle is a regression test for a
+// review finding: add's, set's, and unset's per-noun Short text built "a "
+// + kind.String() by hand instead of withArticle, so `para add --help`
+// printed "create a area" and "create a objective" — exactly the typo
+// withArticle exists to avoid.
+func TestNounDispatchShortTextUsesTheRightArticle(t *testing.T) {
+	dispatchers := map[string]*cobra.Command{
+		"add":   newAddCmd(),
+		"set":   newSetCmd(),
+		"unset": newUnsetCmd(),
+	}
+	for verb, parent := range dispatchers {
+		for _, sub := range parent.Commands() {
+			if strings.Contains(sub.Short, "a area") || strings.Contains(sub.Short, "a objective") {
+				t.Errorf("%s %s: Short = %q, wrong article", verb, sub.Name(), sub.Short)
+			}
+		}
+	}
 }
 
 func flagNames(cmd *cobra.Command) map[string]bool {
@@ -223,7 +247,7 @@ func TestAddUnknownNounIsRefused(t *testing.T) {
 	if err == nil {
 		t.Fatal("add bogus-noun: want a refusal, got none")
 	}
-	if !strings.Contains(err.Error(), `"bogus-noun" is not a noun add can create`) {
+	if !strings.Contains(err.Error(), `"bogus-noun" is not a noun add takes`) {
 		t.Errorf("add bogus-noun: error = %q, want it to name the bad word", err.Error())
 	}
 }

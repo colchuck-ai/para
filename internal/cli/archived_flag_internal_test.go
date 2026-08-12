@@ -6,12 +6,20 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/colchuck-ai/para/internal/kindmeta"
 )
 
 // TestArchivedFlagRegisteredOnTheThirteen is R7: every command that reads an
 // address takes --archived without cobra reporting "unknown flag" — checked
 // structurally, since these commands go on to open a real tree in RunE and
 // this test asserts nothing about that.
+//
+// set and unset point at a per-noun subcommand rather than newSetCmd/
+// newUnsetCmd themselves: since P19.5 those dispatch on the noun, and
+// --archived is registered per noun subcommand rather than on the now
+// childless-of-its-own-flags top-level command, the same reason add moved
+// out of this table in P19.3.
 func TestArchivedFlagRegisteredOnTheThirteen(t *testing.T) {
 	constructors := map[string]func() *cobra.Command{
 		"show":     newShowCmd,
@@ -22,8 +30,8 @@ func TestArchivedFlagRegisteredOnTheThirteen(t *testing.T) {
 		"doctor":   newDoctorCmd,
 		"rebuild":  newRebuildCmd,
 		"review":   newReviewCmd,
-		"set":      newSetCmd,
-		"unset":    newUnsetCmd,
+		"set":      func() *cobra.Command { return newSetNounCmd(kindmeta.KindProject) },
+		"unset":    func() *cobra.Command { return newUnsetNounCmd(kindmeta.KindProject) },
 		"note":     newNoteCmd,
 		"move":     newMoveCmd,
 		"remove":   newRemoveCmd,

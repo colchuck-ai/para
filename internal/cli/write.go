@@ -45,22 +45,17 @@ type fieldFlags struct {
 // help is the one-line description each field's flag carries. A field with no
 // entry would be a field nobody could be told about, so the map is keyed by the
 // same §15 row order register walks.
+// FieldStatus carries no entry: registerForKind, its one reader, always
+// builds status's help from statusHelpForKind instead, because status is
+// the one field whose legal vocabulary genuinely varies by kind rather than
+// merely being present or absent.
 var fieldHelp = map[kindmeta.Field]string{
 	kindmeta.FieldName:        "the thing's name",
 	kindmeta.FieldDescription: "one line: what it is, or when to use it",
-	// The vocabulary is a kind's, not the tree's (§1.7): a key-result's status
-	// is derived, with exactly one value carved out as settable. Naming that
-	// exception here is cheaper than a reader discovering it as a refusal.
-	// This entry is only reached by the unconditional `register`, used by
-	// `set`/`unset` (P19.5 has not run yet) — `registerForKind` builds its
-	// own status text instead, via statusHelpForKind, since it already knows
-	// which kind it is and does not need the footnote at all (task P19.4).
-	kindmeta.FieldStatus: "one of " + strings.Join(kindmeta.AllStatuses(), ", ") +
-		"; a key-result takes only " + strings.Join(kindmeta.SettableStatuses(kindmeta.KindKeyResult), ", "),
-	kindmeta.FieldPriority: "one of " + strings.Join(kindmeta.Priorities(), ", "),
-	kindmeta.FieldDue:      "a deadline, in progressive precision",
-	kindmeta.FieldTags:     "a comma-separated list, replacing whatever is there",
-	kindmeta.FieldCreated:  "the creation time; defaults to now, never in the future",
+	kindmeta.FieldPriority:    "one of " + strings.Join(kindmeta.Priorities(), ", "),
+	kindmeta.FieldDue:         "a deadline, in progressive precision",
+	kindmeta.FieldTags:        "a comma-separated list, replacing whatever is there",
+	kindmeta.FieldCreated:     "the creation time; defaults to now, never in the future",
 	// type, start, target, and scope each belong to exactly one kind, so
 	// naming it here was never disambiguating anything — it only read as an
 	// apology for the flag being offered everywhere. The one subcommand that
@@ -79,35 +74,21 @@ func statusHelpForKind(kind kindmeta.Kind) string {
 	return "one of " + strings.Join(kindmeta.SettableStatuses(kind), ", ")
 }
 
-func (f *fieldFlags) register(cmd *cobra.Command) {
-	f.values = map[kindmeta.Field]*string{}
-	// AllFields, not the map: §15's row order is declared once and the map is
-	// only ever asked for one key's help text (§0.2 — no map iteration reaches
-	// output, and flag registration order reaches --help).
-	for _, field := range kindmeta.AllFields() {
-		var v string
-		f.values[field] = &v
-		cmd.Flags().StringVar(&v, string(field), "", fieldHelp[field])
-		// Registered here, where the role is known: these are values being
-		// stored, so the kind the locator names decides the vocabulary and
-		// whether the flag applies at all. `add` is the creation, so it alone
-		// may set a field that is fixed at creation. The error is the "already
-		// registered" one, which cannot happen on a freshly built command.
-		_ = cmd.RegisterFlagCompletionFunc(string(field),
-			completeFieldValue(field, cmd.Name() == "add"))
-	}
-}
-
-// registerForKind is add's own registration (R3, task P19.3): only the
-// fields kindmeta.Has(kind, field) gives kind, in AllFields order — so a
-// project's --help shows seven flags and a key-result's nine, instead of
-// every command offering all eleven and refusing the wrong ones at
-// mutate-time. atCreation is always true here: add is the one command that
-// may set a RequiredFixed field at all.
-func (f *fieldFlags) registerForKind(cmd *cobra.Command, kind kindmeta.Kind) {
+// registerForKind is add's and set's per-noun registration (R3, task
+// P19.3/P19.5): only the fields kindmeta.Has(kind, field) gives kind, in
+// AllFields order — so a project's `add --help` shows seven flags and a
+// key-result's nine, instead of every command offering all eleven and
+// refusing the wrong ones at mutate-time.
+//
+// atCreation distinguishes the one thing add may do that set may not: set
+// a field fixed at creation. add passes true and gets all of Has(kind,
+// field); set passes false and additionally drops any field RequiredFixed
+// — key-result's type, the one row §15 marks that way — the same
+// distinction completeFieldValue already draws for value completion.
+func (f *fieldFlags) registerForKind(cmd *cobra.Command, kind kindmeta.Kind, atCreation bool) {
 	f.values = map[kindmeta.Field]*string{}
 	for _, field := range kindmeta.AllFields() {
-		if !kindmeta.Has(kind, field) {
+		if !fieldApplies(kind, field, atCreation) {
 			continue
 		}
 		help := fieldHelp[field]
@@ -117,7 +98,7 @@ func (f *fieldFlags) registerForKind(cmd *cobra.Command, kind kindmeta.Kind) {
 		var v string
 		f.values[field] = &v
 		cmd.Flags().StringVar(&v, string(field), "", help)
-		_ = cmd.RegisterFlagCompletionFunc(string(field), completeFieldValue(field, true))
+		_ = cmd.RegisterFlagCompletionFunc(string(field), completeFieldValue(field, atCreation))
 	}
 }
 
@@ -140,51 +121,46 @@ func (f *fieldFlags) collect(cmd *cobra.Command) mutate.Fields {
 	return out
 }
 
-// newAddCmd implements `para add <noun> <chain>` (R3, R15): one subcommand
-// per addressable noun, dispatching on the noun the way §25 amended R2's own
-// argument turns "which fields, which help, which refusals" into a lookup
-// instead of a mutate-time surprise. `container` is not among them — R15
-// refuses it because a container is created eagerly by its parent (§18.1)
-// and never directly.
-func newAddCmd() *cobra.Command {
+// newNounDispatchCmd builds a noun-dispatching parent command shared by
+// add, set, and unset (R3): one subcommand per addressable noun (from
+// buildSub, over kindmeta.AllKinds() — the six that exclude container), and
+// a RunE that only ever runs when cobra's dispatch does not match any of
+// them, since every recognized noun is its own subcommand and is reached
+// directly.
+//
+// Without that RunE, an unmatched first argument — a typo, or container,
+// which none of the three registers a subcommand for — would fall through
+// to cobra printing this command's own help and exiting 0: a silent no-op
+// indistinguishable from success. containerWhy names each verb's own reason
+// container is refused (§13's "naming a container where an entity is
+// required is an error that says so" — the reason differs by verb, the
+// refusal does not), and a bare `para <verb>` with no args still shows help
+// and exits 0, matching every other cobra parent-dispatch command.
+func newNounDispatchCmd(use, short, long, containerWhy string, buildSub func(kindmeta.Kind) *cobra.Command) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add <noun> <chain> --name … [--field …]",
-		Short: "create an entity",
-		Long: "Create the entity a noun and a chain name — one subcommand per noun, so\n" +
-			"`para add <noun> --help` shows exactly that kind's own fields.\n\n" +
-			"A project is created with its objectives/ container and an objective\n" +
-			"with its key-results/, because a uniform shape is what lets an agent or\n" +
-			"a human look somewhere and trust that absence means none.\n\n" +
-			"The new entity's journal starts empty — `created` is a field, not an\n" +
-			"event — and the parent logs that its set of children changed.\n\n" +
-			"Nouns: " + strings.Join(addableNounWords(), ", ") + ".",
-		// Without a RunE, an unmatched first argument (a typo, or R15's
-		// refused "container") falls through to cobra printing this
-		// command's own help and exiting 0 — a silent no-op indistinguishable
-		// from success. This RunE only ever runs for that fallthrough case:
-		// every recognized noun is its own subcommand and cobra dispatches to
-		// it directly, never reaching here.
+		Use:   use,
+		Short: short,
+		Long:  long,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return cmd.Help()
 			}
 			if args[0] == kindmeta.KindContainer.String() {
-				return paraerr.New(paraerr.KindValidation,
-					"container is refused: a container is created eagerly by its parent and never directly")
+				return paraerr.New(paraerr.KindValidation, containerWhy)
 			}
 			return paraerr.Newf(paraerr.KindValidation,
-				"%q is not a noun add can create (one of: %s)", args[0], strings.Join(addableNounWords(), ", "))
+				"%q is not a noun %s takes (one of: %s)", args[0], cmd.Name(), strings.Join(addableNounWords(), ", "))
 		},
 	}
 	for _, kind := range kindmeta.AllKinds() {
-		cmd.AddCommand(newAddNounCmd(kind))
+		cmd.AddCommand(buildSub(kind))
 	}
 	return cmd
 }
 
-// addableNounWords is R2's seven words minus container, the six add
-// actually registers a subcommand for (R15) — used both for the noun list
-// in its help and for naming what a bad noun should have been.
+// addableNounWords is R2's seven words minus container, the six add, set,
+// and unset each register a subcommand for — used both for their help's
+// noun list and for naming what a bad noun should have been.
 func addableNounWords() []string {
 	kinds := kindmeta.AllKinds()
 	words := make([]string, len(kinds))
@@ -192,6 +168,26 @@ func addableNounWords() []string {
 		words[i] = k.String()
 	}
 	return words
+}
+
+// newAddCmd implements `para add <noun> <chain>` (R3, R15). container is
+// refused because it is created eagerly by its parent (§18.1) and never
+// directly.
+func newAddCmd() *cobra.Command {
+	return newNounDispatchCmd(
+		"add <noun> <chain> --name … [--field …]",
+		"create an entity",
+		"Create the entity a noun and a chain name — one subcommand per noun, so\n"+
+			"`para add <noun> --help` shows exactly that kind's own fields.\n\n"+
+			"A project is created with its objectives/ container and an objective\n"+
+			"with its key-results/, because a uniform shape is what lets an agent or\n"+
+			"a human look somewhere and trust that absence means none.\n\n"+
+			"The new entity's journal starts empty — `created` is a field, not an\n"+
+			"event — and the parent logs that its set of children changed.\n\n"+
+			"Nouns: "+strings.Join(addableNounWords(), ", ")+".",
+		"container is refused: a container is created eagerly by its parent and never directly",
+		newAddNounCmd,
+	)
 }
 
 // newAddNounCmd is one noun's `add` subcommand: its own chain arity (via
@@ -205,7 +201,7 @@ func newAddNounCmd(kind kindmeta.Kind) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   kind.String() + " <chain> --name … [--field …]",
-		Short: "create a " + kind.String(),
+		Short: "create " + withArticle(kind.String()),
 		Long: "Create the " + kind.String() + " the chain names.\n\n" +
 			"\".\" is deliberately not accepted: it resolves to something that\n" +
 			"already exists, and add is for something that does not.",
@@ -234,21 +230,47 @@ func newAddNounCmd(kind kindmeta.Kind) *cobra.Command {
 			return nil
 		},
 	}
-	f.registerForKind(cmd, kind)
+	f.registerForKind(cmd, kind, true)
 	archived.registerRefused(cmd, archivedWhy)
 	return cmd
 }
 
+// newSetCmd implements `para set <noun> <chain> --field value […]` (R3),
+// the same noun-dispatching shape add's subcommand takes. container is
+// refused for the same reason naming a bare noun is (§13): it holds name,
+// description, and created and nothing you would want to set.
 func newSetCmd() *cobra.Command {
+	return newNounDispatchCmd(
+		"set <noun> <chain> --field value […]",
+		"change stored fields",
+		"Change any number of a noun's stored fields at once — one subcommand\n"+
+			"per noun, so `para set <noun> --help` shows exactly that kind's own\n"+
+			"settable fields.\n\n"+
+			"One journal event per field that actually changed, and one\n"+
+			"write-through pass at the end. Setting a field to the value it already\n"+
+			"holds writes nothing and exits 0 — without that rule a loop would buy\n"+
+			"permanent silence from every check in `para review`.\n\n"+
+			"Nouns: "+strings.Join(addableNounWords(), ", ")+".",
+		"container is refused: containers hold name, description, and created and nothing you would want to set",
+		newSetNounCmd,
+	)
+}
+
+// newSetNounCmd is one noun's `set` subcommand: dispatchedChainToLocator
+// resolves the chain (or ".", checked against this kind) rather than
+// chainToLocator alone, since set — unlike add — addresses something that
+// must already exist and so may be found by standing in it.
+func newSetNounCmd(kind kindmeta.Kind) *cobra.Command {
 	var (
 		f        fieldFlags
 		archived archivedFlag
 		note     string
 	)
 	cmd := &cobra.Command{
-		Use:   "set <locator> [flags]",
-		Short: "change stored fields",
-		Long: "Change any number of stored fields at once.\n\n" +
+		Use:   kind.String() + " <chain> --field value […]",
+		Short: "change " + withArticle(kind.String()) + "'s stored fields",
+		Long: "Change any number of stored fields, at once, on the " + kind.String() + " the\n" +
+			"chain names.\n\n" +
 			"One journal event per field that actually changed, and one\n" +
 			"write-through pass at the end. Setting a field to the value it already\n" +
 			"holds writes nothing and exits 0 — without that rule a loop would buy\n" +
@@ -259,7 +281,7 @@ func newSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, err := dispatchedChainToLocator(env.Root, cwd, kind, args[0], archived.value)
 			if err != nil {
 				return err
 			}
@@ -271,29 +293,52 @@ func newSetCmd() *cobra.Command {
 			return nil
 		},
 	}
-	f.register(cmd)
+	f.registerForKind(cmd, kind, false)
 	archived.register(cmd)
 	cmd.Flags().StringVar(&note, "note", "", "the reason, recorded with the change; required when setting status to blocked")
 	return cmd
 }
 
+// newUnsetCmd implements `para unset <noun> <chain> <field>...` (R3), the
+// same noun-dispatching shape as add and set.
 func newUnsetCmd() *cobra.Command {
+	return newNounDispatchCmd(
+		"unset <noun> <chain> <field>...",
+		"remove stored fields",
+		"Remove stored fields, which is different from setting them to nothing:\n"+
+			"`para unset skill x scope` widens a skill back to the whole tree,\n"+
+			"because absence already says everywhere.\n\n"+
+			"`created` cannot be unset — everything has a creation time — and\n"+
+			"neither can a field the kind requires or one fixed at creation.\n\n"+
+			"Nouns: "+strings.Join(addableNounWords(), ", ")+".",
+		"container is refused: containers hold name, description, and created and nothing you would want to unset",
+		newUnsetNounCmd,
+	)
+}
+
+// newUnsetNounCmd is one noun's `unset` subcommand. It does not itself
+// re-validate the field names against kindmeta.UnsettableFields(kind) — the
+// noun-dispatch rewiring changes how the locator is found, not the field
+// rule, and mutate.Unset already names an inapplicable field clearly
+// (fields.go's unknownField/unsetRefused), the same "one rule, one
+// function" reason registerForKind reuses fieldApplies rather than
+// re-deriving it.
+func newUnsetNounCmd(kind kindmeta.Kind) *cobra.Command {
 	var archived archivedFlag
 	cmd := &cobra.Command{
-		Use:   "unset <locator> <field>...",
-		Short: "remove stored fields",
-		Long: "Remove stored fields, which is different from setting them to nothing:\n" +
-			"`para unset skills.x scope` widens a skill back to the whole tree,\n" +
-			"because absence already says everywhere.\n\n" +
+		Use:   kind.String() + " <chain> <field>...",
+		Short: "remove " + withArticle(kind.String()) + "'s stored fields",
+		Long: "Remove stored fields from the " + kind.String() + " the chain names,\n" +
+			"which is different from setting them to nothing.\n\n" +
 			"`created` cannot be unset — everything has a creation time — and\n" +
-			"neither can a field the kind requires or one fixed at creation.",
+			"neither can a field the " + kind.String() + " requires or one fixed at creation.",
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openEnv(cmd)
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, err := dispatchedChainToLocator(env.Root, cwd, kind, args[0], archived.value)
 			if err != nil {
 				return err
 			}
