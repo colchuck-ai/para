@@ -50,6 +50,97 @@ func TestShowJSONLocatorIsTheDottedAddress(t *testing.T) {
 	}
 }
 
+// TestShowBucketJSONGetsANounKey is R26's disagreement branch: a bucket is
+// structurally a container (§1.1's furniture, not a thing in its own right),
+// but its address is the bare noun with no chain (R3) — "project", not
+// "container" — so `kind` and `locator`'s own noun disagree, and R26 says
+// that is exactly when a `noun` key is added beside them. Nested containers
+// (`container.acme.objectives`) don't hit this: their own noun already is
+// `container`, which is why the "no new key" default holds everywhere else.
+func TestShowBucketJSONGetsANounKey(t *testing.T) {
+	root := plantTree(t, map[string]string{
+		".para/state.toml":          "",
+		"projects/.para/state.toml": "name = \"Projects\"\n",
+	})
+
+	code, stdout, stderr := run(t, root, "show", "project", "--json")
+	if code != 0 {
+		t.Fatalf("show project --json: exit %d, stderr = %q", code, stderr)
+	}
+
+	var got struct {
+		Locator string `json:"locator"`
+		Kind    string `json:"kind"`
+		Noun    string `json:"noun"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshalling %q: %v", stdout, err)
+	}
+	if got.Kind != "container" {
+		t.Errorf("kind = %q, want %q — a bucket is structurally a container", got.Kind, "container")
+	}
+	if got.Locator != "project" {
+		t.Errorf("locator = %q, want %q — a noun with no chain is the bucket (R3)", got.Locator, "project")
+	}
+	if got.Noun != "project" {
+		t.Errorf("noun = %q, want %q, since kind and locator's own noun disagree here", got.Noun, "project")
+	}
+}
+
+// TestListJSONNeverEmitsAContainerRow documents why `list --json`'s own
+// entityJSON.Noun is never actually populated in practice, unlike
+// `show --json`'s: containers — buckets included — are never rows in
+// `list`'s output (§16.2), so the one entity kind disagreeingNoun ever
+// returns something for never reaches `list`'s JSON at all.
+func TestListJSONNeverEmitsAContainerRow(t *testing.T) {
+	root := plantTree(t, map[string]string{
+		".para/state.toml":          "",
+		"projects/.para/state.toml": "name = \"Projects\"\n",
+	})
+	mustRun(t, root, "add", "project", "acme", "--name", "Acme", "--description", "x")
+
+	code, stdout, stderr := run(t, root, "list", "--json")
+	if code != 0 {
+		t.Fatalf("list --json: exit %d, stderr = %q", code, stderr)
+	}
+	if strings.Contains(stdout, `"container"`) || strings.Contains(stdout, `"noun"`) {
+		t.Errorf("list --json = %s, want no container row and no noun key", stdout)
+	}
+}
+
+// TestShowNestedContainerJSONHasNoNounKey is the other half of R26's
+// disagreement rule: a container nested under a project already has
+// `container` as its own noun, so `kind` and `locator` agree by
+// construction and no `noun` key is added — the case
+// TestShowBucketJSONGetsANounKey's own doc comment names as the reason the
+// "no new key" default holds everywhere except a bucket.
+func TestShowNestedContainerJSONHasNoNounKey(t *testing.T) {
+	root := plantTree(t, map[string]string{
+		".para/state.toml":          "",
+		"projects/.para/state.toml": "name = \"Projects\"\n",
+	})
+	mustRun(t, root, "add", "project", "acme", "--name", "Acme", "--description", "x")
+	mustRun(t, root, "add", "objective", "acme.q1", "--name", "Q1", "--description", "x")
+
+	code, stdout, stderr := run(t, root, "show", "container", "acme.objectives", "--json")
+	if code != 0 {
+		t.Fatalf("show container acme.objectives --json: exit %d, stderr = %q", code, stderr)
+	}
+	if strings.Contains(stdout, `"noun"`) {
+		t.Errorf("output = %s, want no noun key — kind and locator already agree", stdout)
+	}
+	var got struct {
+		Locator string `json:"locator"`
+		Kind    string `json:"kind"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshalling %q: %v", stdout, err)
+	}
+	if got.Locator != "container.acme.objectives" || got.Kind != "container" {
+		t.Errorf("locator/kind = %q/%q, want container.acme.objectives/container", got.Locator, got.Kind)
+	}
+}
+
 // TestListJSONLocatorIsTheDottedAddress is the same rule for `list --json`,
 // whose entities share entityJSON with `show`.
 func TestListJSONLocatorIsTheDottedAddress(t *testing.T) {

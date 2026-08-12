@@ -252,3 +252,36 @@ func execSetMust(t *testing.T, args []string) {
 		t.Fatalf("set %v: %v (%s)", args, err, out)
 	}
 }
+
+// TestShowDotAtArchiveRootJSONHasNoNounKey is para-cov's archive-root edge
+// case, reached the one way the CLI can actually produce it: standing
+// inside archive/ itself and typing "." (R16), which resolves to the bare
+// archive root rather than to any of R2's seven addressable nouns (R7 —
+// "the whole archive" has no noun at all). disagreeingNoun's "no key" read
+// of address.FromLocator's refusal there is otherwise untested end to end.
+func TestShowDotAtArchiveRootJSONHasNoNounKey(t *testing.T) {
+	chdirToTestTree(t)
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(filepath.Join(cwd, "archive")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	out, err := execRead(newShowCmd(), []string{".", "--json"})
+	if err != nil {
+		t.Fatalf("show . --json: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, `"kind": "container"`) {
+		t.Errorf("show . --json = %s, want kind: container for the archive root", out)
+	}
+	if !strings.Contains(out, `"locator": "archive"`) {
+		t.Errorf("show . --json = %s, want locator: archive (R7's own bucket word)", out)
+	}
+	if strings.Contains(out, `"noun"`) {
+		t.Errorf("show . --json = %s, want no noun key — the archive root has no address to disagree with", out)
+	}
+}

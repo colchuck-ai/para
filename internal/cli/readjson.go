@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/colchuck-ai/para/internal/address"
+	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/view"
 )
@@ -28,8 +29,19 @@ import (
 // counts beside them are the part that was ever about a wall clock, and they
 // are carried as numbers.
 type entityJSON struct {
-	Locator     string   `json:"locator"`
-	Kind        string   `json:"kind"`
+	Locator string `json:"locator"`
+	Kind    string `json:"kind"`
+	// Noun is R26's disagreement branch: present only when Kind and the
+	// locator's own noun would otherwise disagree, which happens at exactly
+	// one position — a bucket. A bucket is structurally a container (§1.1's
+	// furniture, not a thing in its own right) but its address is the bare
+	// noun with no chain (R3: "project", not "container"), so Kind alone
+	// would leave a reader unable to tell "the container acme.objectives"
+	// from "the projects bucket" apart from the Locator's own shape. Every
+	// other position — every ordinary entity, and a container nested under a
+	// project — has Kind agree with the locator's noun by construction, so
+	// the default stays no new key (R26).
+	Noun        string   `json:"noun,omitempty"`
 	ID          string   `json:"id"`
 	Name        string   `json:"name,omitempty"`
 	Description string   `json:"description,omitempty"`
@@ -73,6 +85,7 @@ func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 	out := entityJSON{
 		Locator:         entityLocatorString(e.Locator),
 		Kind:            e.Kind.String(),
+		Noun:            disagreeingNoun(e.Kind, e.Locator),
 		ID:              e.ID(),
 		Name:            e.State.Name,
 		Description:     e.State.Description,
@@ -114,17 +127,38 @@ func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 }
 
 // entityLocatorString is loc's dotted address (R24, R26): the form changes,
-// the JSON key does not, and no separate `noun` key is added since `kind`
-// already carries it and the two agree by construction. Every view.Entity a
-// read command builds one of these from is a real entity the walk found, so
-// address.String failing here is not a case this package exercises; the raw
-// Locator string is a defensive fallback only.
+// the JSON key does not. `kind` already carries the noun for every position
+// except a bucket, where disagreeingNoun adds the separate `noun` key R26
+// asks for. Every view.Entity a read command builds one of these from is a
+// real entity or container the walk found, so address.String failing here is
+// not a case this package exercises; the raw Locator string is a defensive
+// fallback only.
 func entityLocatorString(loc locator.Locator) string {
 	s, err := address.String(loc)
 	if err != nil {
 		return loc.String()
 	}
 	return s
+}
+
+// disagreeingNoun is R26's own check: a bucket is structurally a container
+// (§1.1's furniture, not a thing in its own right) but its address is the
+// bare noun with no chain (R3) — so a bucket's Kind (always KindContainer)
+// and its address's own Noun disagree, and R26 asks for a `noun` key
+// wherever that happens. Every other container — one nested under a
+// project, addressed as `container.<chain>` — already has Container as its
+// own noun, so this returns "" there too, which entityJSON's `omitempty`
+// then drops. Non-container kinds never reach the mismatch at all: their
+// own noun is always their kind by construction (R1).
+func disagreeingNoun(kind kindmeta.Kind, loc locator.Locator) string {
+	if kind != kindmeta.KindContainer {
+		return ""
+	}
+	addr, err := address.FromLocator(loc)
+	if err != nil || addr.Noun == address.Container {
+		return ""
+	}
+	return addr.Noun.String()
 }
 
 // entityChain is loc's id-chain alone — the address's own Chain, joined with

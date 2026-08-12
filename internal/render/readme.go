@@ -5,6 +5,7 @@ import (
 
 	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/kindmeta"
+	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mdfile"
 	"github.com/colchuck-ai/para/internal/paraerr"
 )
@@ -33,6 +34,10 @@ func (readmeRenderer) Path(in In) (string, error) {
 const (
 	readmeKeyKind    = "kind"
 	readmeKeyLocator = "locator"
+	// readmeKeyNoun is R26's disagreement branch (para-cov): present only
+	// where `kind` and the locator's own noun would otherwise disagree,
+	// which is a bucket (see disagreeingNoun's doc comment).
+	readmeKeyNoun = "noun"
 )
 
 // kindTree is the value the root's `kind` carries. The root is not an entity,
@@ -71,6 +76,9 @@ func readmeFrontmatter(in In) ([]mdfile.Field, error) {
 		{Key: readmeKeyKind, Value: mdfile.String(in.Kind.String())},
 		{Key: readmeKeyLocator, Value: mdfile.String(locatorValue)},
 	}
+	if noun := disagreeingNoun(in.Kind, in.Locator); noun != "" {
+		fields = append(fields, mdfile.Field{Key: readmeKeyNoun, Value: mdfile.String(noun)})
+	}
 	// §15's row order, filtered to the fields this kind has and this state
 	// carries. Derived values — attention, progress, pace, key-result status —
 	// are deliberately absent: README.md is rewritten on mutation, not on
@@ -92,6 +100,29 @@ func readmeFrontmatter(in In) ([]mdfile.Field, error) {
 		}
 	}
 	return fields, nil
+}
+
+// disagreeingNoun is R26's rule: a bucket is structurally a container
+// (§1.1's furniture, not a thing in its own right) but its address is the
+// bare noun with no chain (R3) — "project", not "container" — so its
+// `kind` and its address's own noun disagree, and that is exactly when the
+// separate `noun` key is added. A container nested under a project already
+// has Container as its own noun, so it agrees and returns "" here too; so
+// does the archive root, which has no address at all to disagree with
+// (R7) — address.FromLocator refuses it, and that refusal is read as
+// agreement rather than propagated, the same way it is everywhere else this
+// conversion has a defensive fallback (entityLocatorString's own doc
+// comment gives the reason). Non-container kinds never reach the mismatch:
+// their own noun is always their kind, by construction (R1).
+func disagreeingNoun(kind kindmeta.Kind, loc locator.Locator) string {
+	if kind != kindmeta.KindContainer {
+		return ""
+	}
+	addr, err := address.FromLocator(loc)
+	if err != nil || addr.Noun == address.Container {
+		return ""
+	}
+	return addr.Noun.String()
 }
 
 // statelikeFields renders the root's three identity fields in §15's order, so

@@ -109,3 +109,84 @@ func TestReadmeLocatorIsTheDottedAddress(t *testing.T) {
 		})
 	}
 }
+
+// TestReadmeNounKeyOnlyOnDisagreement is para-cov: a bucket's `kind` is
+// always `container` (§1.1's furniture, not a thing in its own right), but
+// its own address is the bare noun with no chain (R3) — "project", not
+// "container" — so the two disagree, and R26 says that is exactly when a
+// `noun` key is added beside them. Every other position, including a
+// container nested under a project and the archive root itself (which has
+// no address at all, R7), agrees or has nothing to disagree with, and gets
+// no key.
+func TestReadmeNounKeyOnlyOnDisagreement(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      render.In
+		wantKey bool
+		want    string
+	}{
+		{
+			name: "a bucket disagrees and gets a noun key",
+			in: render.In{
+				Locator: loc(t, "projects"),
+				Kind:    kindmeta.KindContainer,
+				State:   truth.State{Name: "Projects"},
+			},
+			wantKey: true,
+			want:    `noun: "project"`,
+		},
+		{
+			name: "an archived bucket mirror disagrees too",
+			in: render.In{
+				Locator: loc(t, "archive.areas"),
+				Kind:    kindmeta.KindContainer,
+				State:   truth.State{Name: "Archived areas"},
+			},
+			wantKey: true,
+			want:    `noun: "area"`,
+		},
+		{
+			name: "a container nested under a project already agrees",
+			in: render.In{
+				Locator: loc(t, "projects.acme.objectives"),
+				Kind:    kindmeta.KindContainer,
+				State:   truth.State{Name: "Objectives"},
+			},
+			wantKey: false,
+		},
+		{
+			name: "the archive root has no address at all to disagree with",
+			in: render.In{
+				Locator: loc(t, "archive"),
+				Kind:    kindmeta.KindContainer,
+				State:   truth.State{Name: "Archive"},
+			},
+			wantKey: false,
+		},
+		{
+			name: "an ordinary entity never reaches the mismatch",
+			in: render.In{
+				Locator: loc(t, "projects.acme-migration"),
+				Kind:    kindmeta.KindProject,
+				State:   truth.State{Name: "Acme migration"},
+			},
+			wantKey: false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := render.Readme.Render(c.in)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			has := strings.Contains(string(got), "noun:")
+			if has != c.wantKey {
+				t.Errorf("Readme =\n%s\nwant a noun key: %v", got, c.wantKey)
+			}
+			if c.wantKey && !strings.Contains(string(got), c.want) {
+				t.Errorf("Readme =\n%s\nwant it to contain %q", got, c.want)
+			}
+		})
+	}
+}
