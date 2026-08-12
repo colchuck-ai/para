@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,6 +14,9 @@ import (
 // leaves implicit: a noun with no bucket form (objective, key-result) named
 // in the second, "bucket scope" position.
 func TestParseListArgs(t *testing.T) {
+	root := writeAddrFixture(t)
+	cwd := root
+
 	cases := []struct {
 		name      string
 		args      []string
@@ -95,7 +99,7 @@ func TestParseListArgs(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := parseListArgs(c.args, false)
+			got, err := parseListArgs(root, cwd, c.args, false)
 			if c.wantErr != "" {
 				if err == nil {
 					t.Fatalf("parseListArgs(%v) = %+v, want error containing %q", c.args, got, c.wantErr)
@@ -118,11 +122,50 @@ func TestParseListArgs(t *testing.T) {
 	}
 }
 
+// TestParseListArgsDot is R16's "." convenience, restored for `list`: it
+// stands for a whole scope as one token, resolved by walking up from cwd to
+// the nearest .para/state.toml, and it is refused with anything after it
+// rather than guessed at, since `list` gives it no second, kind-filter slot.
+func TestParseListArgsDot(t *testing.T) {
+	root := writeAddrFixture(t)
+	cwd := filepath.Join(root, "projects", "acme")
+
+	got, err := parseListArgs(root, cwd, []string{"."}, false)
+	if err != nil {
+		t.Fatalf("parseListArgs(.): %v", err)
+	}
+	if got.Kind != kindmeta.KindUnknown {
+		t.Errorf("parseListArgs(.).Kind = %v, want no filter", got.Kind)
+	}
+	if want := "projects.acme"; got.Scope.String() != want {
+		t.Errorf("parseListArgs(.).Scope = %q, want %q", got.Scope.String(), want)
+	}
+
+	if _, err := parseListArgs(root, cwd, []string{".", "extra"}, false); err == nil {
+		t.Fatal(`parseListArgs(., extra): want a refusal, got none`)
+	} else if !strings.Contains(err.Error(), "takes no further argument") {
+		t.Errorf("parseListArgs(., extra) error = %q, want it to contain %q", err.Error(), "takes no further argument")
+	}
+
+	// archived is ignored in the dot branch, the same way parseAddressArgs'
+	// own dot branch ignores it: cwd already names an archived or live place,
+	// not an independent qualifier layered on top of one.
+	archivedGot, err := parseListArgs(root, cwd, []string{"."}, true)
+	if err != nil {
+		t.Fatalf("parseListArgs(., archived): %v", err)
+	}
+	if want := "projects.acme"; archivedGot.Scope.String() != want {
+		t.Errorf("parseListArgs(., archived).Scope = %q, want %q (archived should be ignored)", archivedGot.Scope.String(), want)
+	}
+}
+
 // TestParseListArgsArchived is R7 threaded through the two rows a chain
 // carries archived on its own (chainToLocator does the work there), plus the
 // two rows that never call chainToLocator at all and so need archived
 // applied directly: no args, and one noun alone.
 func TestParseListArgsArchived(t *testing.T) {
+	root := writeAddrFixture(t)
+
 	cases := []struct {
 		name      string
 		args      []string
@@ -155,7 +198,7 @@ func TestParseListArgsArchived(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := parseListArgs(c.args, true)
+			got, err := parseListArgs(root, root, c.args, true)
 			if err != nil {
 				t.Fatalf("parseListArgs(%v, archived): %v", c.args, err)
 			}

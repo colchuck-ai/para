@@ -106,10 +106,14 @@ func sortKeyList() string {
 }
 
 // options turns the flags into a query, validating the two that have grammars
-// of their own.
-func (f filterFlags) options(scope locator.Locator) (query.Options, error) {
+// of their own. kind is `list`'s own R19 filter, `filterFlags`' only caller —
+// nothing else in the CLI has a kind position in its own grammar, so kind
+// exists here rather than inside filterFlags itself, which registers no flag
+// for it.
+func (f filterFlags) options(scope locator.Locator, kind kindmeta.Kind) (query.Options, error) {
 	opts := query.Options{
 		Scope: scope,
+		Kind:  kind,
 		Filter: query.Filter{
 			Match:    f.match,
 			Status:   f.status,

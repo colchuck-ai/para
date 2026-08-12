@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/tree"
 )
@@ -48,14 +47,4 @@ func newPathCmd() *cobra.Command {
 	}
 	archived.register(cmd)
 	return cmd
-}
-
-// resolveLocatorArg parses a command-line locator argument, honoring the
-// "." convenience (§14): the entity or container containing the working
-// directory.
-func resolveLocatorArg(root, cwd, arg string) (locator.Locator, error) {
-	if arg == "." {
-		return tree.ResolveDot(root, cwd)
-	}
-	return locator.Parse(arg)
 }

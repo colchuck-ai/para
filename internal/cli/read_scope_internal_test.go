@@ -146,12 +146,36 @@ func TestReadCommandsAcceptDot(t *testing.T) {
 	}
 }
 
-// TestShowOutputUsesTheDottedAddress is a regression test found while
-// implementing this task: show's own header line and its skills-reaching
-// line both printed the old plural-bucket locator form directly, a gap
-// Phase 18's sweep missed since it covered --json (already correct) but not
-// the human-readable path.
-func TestShowOutputUsesTheDottedAddress(t *testing.T) {
+// TestListAcceptsDot is R16 for `list`, which is not in allReadCmds() above
+// since its grammar is R19's own lookahead rather than the shared
+// bucket/scope arities — a regression found in review while implementing
+// P20.3: rewiring `list` onto parseListArgs initially dropped "." along with
+// the old single-locator arg parser it replaced.
+func TestListAcceptsDot(t *testing.T) {
+	chdirToTestTree(t)
+	mustAddViaCLI(t, "project", "acme")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(filepath.Join(cwd, "projects", "acme")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	out, err := execRead(newListCmd(), []string{"."})
+	if err != nil {
+		t.Fatalf("list .: %v (%s)", err, out)
+	}
+}
+
+// TestShowOutputPrintsNounAndChainAsSeparateColumns is R23: show's header
+// prints the noun and the chain as their own columns, the same way list's
+// rows do, rather than folded into one dotted address or left in the old
+// plural-bucket locator form Phase 18's sweep missed (this test's original
+// form, before P20.4 gave the header its own column split).
+func TestShowOutputPrintsNounAndChainAsSeparateColumns(t *testing.T) {
 	chdirToTestTree(t)
 	mustAddViaCLI(t, "project", "acme")
 
@@ -159,11 +183,11 @@ func TestShowOutputUsesTheDottedAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("show project acme: %v (%s)", err, out)
 	}
-	if !strings.Contains(out, "project.acme") {
-		t.Errorf("show output = %q, want it to contain %q", out, "project.acme")
+	if !strings.HasPrefix(out, "project  acme\n") {
+		t.Errorf("show output = %q, want the header to start with the noun and chain as separate columns", out)
 	}
-	if strings.Contains(out, "projects.acme") {
-		t.Errorf("show output = %q, still has the old plural-bucket form", out)
+	if strings.Contains(out, "project.acme") || strings.Contains(out, "projects.acme") {
+		t.Errorf("show output = %q, want no dotted form at all in the header, old or new", out)
 	}
 }
 

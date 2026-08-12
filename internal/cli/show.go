@@ -118,8 +118,10 @@ func printShow(out io.Writer, env *view.Env, s shown, read readFlags) {
 	zone := read.zone(env)
 
 	// The header: what it is, then what it is called, then what it is for.
+	// The noun and the chain print as their own columns (R23), the same way
+	// `list`'s rows do, so the two never disagree about how an address looks.
 	var head table
-	head.add(entityLocatorString(ent.Locator), ent.Kind.String())
+	head.add(ent.Kind.String(), entityChain(ent.Locator))
 	head.write(out)
 	if name := ent.Name(); name != "" {
 		fmt.Fprintln(out, name)

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"time"
 
 	"github.com/colchuck-ai/para/internal/address"
@@ -124,6 +125,24 @@ func entityLocatorString(loc locator.Locator) string {
 		return loc.String()
 	}
 	return s
+}
+
+// entityChain is loc's id-chain alone — the address's own Chain, joined with
+// "." — without the noun word address.String prepends (R23): `list` and
+// `show` both print the noun as its own column rather than folded into the
+// address, and this is the other half of that column, shared so the two can
+// never disagree about how an address looks (R23's "list and show print the
+// noun as its own column" applies to both). Every view.Entity a read command
+// builds one of these from is a real entity or container the walk found, so
+// address.FromLocator failing here is not a case this package exercises;
+// the raw Locator string is a defensive fallback only, matching
+// entityLocatorString's own.
+func entityChain(loc locator.Locator) string {
+	addr, err := address.FromLocator(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return strings.Join(addr.Chain, ".")
 }
 
 func utcOrEmpty(t time.Time) string {

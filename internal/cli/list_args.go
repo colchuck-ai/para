@@ -5,6 +5,7 @@ import (
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/tree"
 )
 
 // listArgs is R19's lookahead rule, resolved: an optional kind filter and
@@ -34,7 +35,17 @@ var archiveRoot = locator.Locator{"archive"}
 // Without it, `para list --archived` and `para list project --archived`
 // would silently list the live tree, the one thing `--archived` promises not
 // to do.
-func parseListArgs(args []string, archived bool) (listArgs, error) {
+//
+// `root` and `cwd` exist for exactly one row, checked before any of R19's
+// five: "." (R16) stands in for a whole `<noun> <chain>` scope as a single
+// token, the same convenience `show`/`log`/etc. get from `parseAddressArgs`.
+// `list` never had a second slot for a kind filter beside it — nothing in
+// R16, R19, or the old single-locator grammar this replaces gives "." a
+// second meaning — so it is refused with anything after it rather than
+// guessed at. Like `parseAddressArgs`'s own dot branch, `archived` is not
+// applied here: cwd already names an archived or live place, not an
+// independent qualifier on top of one.
+func parseListArgs(root, cwd string, args []string, archived bool) (listArgs, error) {
 	if len(args) > 3 {
 		return listArgs{}, paraerr.Newf(paraerr.KindValidation,
 			"list takes at most a kind filter, a noun, and a chain — got %d arguments", len(args))
@@ -44,6 +55,17 @@ func parseListArgs(args []string, archived bool) (listArgs, error) {
 			return listArgs{Scope: archiveRoot}, nil
 		}
 		return listArgs{}, nil
+	}
+	if args[0] == "." {
+		if len(args) > 1 {
+			return listArgs{}, paraerr.New(paraerr.KindValidation,
+				`"." stands for the whole scope and takes no further argument`)
+		}
+		scope, err := tree.ResolveDot(root, cwd)
+		if err != nil {
+			return listArgs{}, err
+		}
+		return listArgs{Scope: scope}, nil
 	}
 
 	first, err := address.ParseNoun(args[0])
