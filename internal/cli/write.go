@@ -51,16 +51,32 @@ var fieldHelp = map[kindmeta.Field]string{
 	// The vocabulary is a kind's, not the tree's (§1.7): a key-result's status
 	// is derived, with exactly one value carved out as settable. Naming that
 	// exception here is cheaper than a reader discovering it as a refusal.
+	// This entry is only reached by the unconditional `register`, used by
+	// `set`/`unset` (P19.5 has not run yet) — `registerForKind` builds its
+	// own status text instead, via statusHelpForKind, since it already knows
+	// which kind it is and does not need the footnote at all (task P19.4).
 	kindmeta.FieldStatus: "one of " + strings.Join(kindmeta.AllStatuses(), ", ") +
 		"; a key-result takes only " + strings.Join(kindmeta.SettableStatuses(kindmeta.KindKeyResult), ", "),
 	kindmeta.FieldPriority: "one of " + strings.Join(kindmeta.Priorities(), ", "),
 	kindmeta.FieldDue:      "a deadline, in progressive precision",
 	kindmeta.FieldTags:     "a comma-separated list, replacing whatever is there",
 	kindmeta.FieldCreated:  "the creation time; defaults to now, never in the future",
-	kindmeta.FieldType:     "a key-result's measurement grammar: " + strings.Join(krvalue.TypeNames(), ", "),
-	kindmeta.FieldStart:    "a key-result's baseline; defaults to its first measurement",
-	kindmeta.FieldTarget:   "a key-result's target",
-	kindmeta.FieldScope:    "a skill's scope: a comma-separated locator list, or omit for the whole tree",
+	// type, start, target, and scope each belong to exactly one kind, so
+	// naming it here was never disambiguating anything — it only read as an
+	// apology for the flag being offered everywhere. The one subcommand that
+	// registers each of these already says which kind it is.
+	kindmeta.FieldType:   "the measurement grammar: " + strings.Join(krvalue.TypeNames(), ", "),
+	kindmeta.FieldStart:  "the baseline; defaults to the first measurement",
+	kindmeta.FieldTarget: "the target",
+	kindmeta.FieldScope:  "a comma-separated locator list, or omit for the whole tree",
+}
+
+// statusHelpForKind is registerForKind's status text: the settable
+// vocabulary kind actually has, with no footnote about any other kind's
+// restriction, because the subcommand that shows this text simply does not
+// register the values it cannot take.
+func statusHelpForKind(kind kindmeta.Kind) string {
+	return "one of " + strings.Join(kindmeta.SettableStatuses(kind), ", ")
 }
 
 func (f *fieldFlags) register(cmd *cobra.Command) {
@@ -94,9 +110,13 @@ func (f *fieldFlags) registerForKind(cmd *cobra.Command, kind kindmeta.Kind) {
 		if !kindmeta.Has(kind, field) {
 			continue
 		}
+		help := fieldHelp[field]
+		if field == kindmeta.FieldStatus {
+			help = statusHelpForKind(kind)
+		}
 		var v string
 		f.values[field] = &v
-		cmd.Flags().StringVar(&v, string(field), "", fieldHelp[field])
+		cmd.Flags().StringVar(&v, string(field), "", help)
 		_ = cmd.RegisterFlagCompletionFunc(string(field), completeFieldValue(field, true))
 	}
 }
