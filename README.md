@@ -29,8 +29,8 @@ go install github.com/colchuck-ai/para/cmd/para@latest
 Prebuilt archives for linux, macOS, and Windows — amd64 and arm64 — are attached to each
 [release](https://github.com/colchuck-ai/para/releases), with `checksums.txt` beside them.
 
-**Shell completion** knows every locator in the tree, which is worth having given that a locator can
-run six segments deep:
+**Shell completion** knows every noun and narrows its id-chain to what already exists, which is worth
+having given that a chain can run three segments deep:
 
 ```sh
 para completion zsh > "${fpath[1]}/_para"      # bash, zsh, fish, powershell
@@ -60,16 +60,17 @@ created  brain/projects/.para/state.toml
 no CLAUDE.md, no .claude/ — enable with `para config set emit.claude true`
 ```
 
-**Add something.** A thing is addressed by a locator — the path with dots for slashes — and every
-command takes one and prints them the same way, so anything you read pastes into anything you type:
+**Add something.** A thing is addressed by a noun and a short id-chain — `project acme-migration`,
+`objective acme-migration.q1-growth` — and every command takes that same pair, so anything you read
+pastes into anything you type:
 
 ```console
 $ cd brain
-$ para add projects.acme-migration --name 'Acme migration' \
+$ para add project acme-migration --name 'Acme migration' \
     --description 'Rebuild the consumer so it stops falling over under replay load.' \
     --status in-progress --priority high --due 2026-09-30 --tags consumer,kafka \
     --created 2026-01-05
-added  projects.acme-migration  project
+added  project.acme-migration  project
 
 wrote  projects/acme-migration/.para/state.toml
        projects/acme-migration/.para/config.toml
@@ -90,15 +91,15 @@ the tree is.
 result is a number with a baseline, a target, and a history:
 
 ```console
-$ para add projects.acme-migration.objectives.q1-growth --name 'Grow signups' \
+$ para add objective acme-migration.q1-growth --name 'Grow signups' \
     --description 'Move the top of the funnel.' --status in-progress --created 2026-01-05
-$ para add projects.acme-migration.objectives.q1-growth.key-results.signups \
+$ para add key-result acme-migration.q1-growth.signups \
     --name 'Weekly signups' --description 'Sign-ups per week.' \
     --type number --start 480 --target 2000 --due 2026-09-30 --created 2026-01-05
-$ para measure projects.acme-migration.objectives.q1-growth.key-results.signups 880 --at 2026-02-10
-$ para measure projects.acme-migration.objectives.q1-growth.key-results.signups 1120 \
+$ para measure acme-migration.q1-growth.signups 880 --at 2026-02-10
+$ para measure acme-migration.q1-growth.signups 1120 \
     --at 2026-03-02 --note 'post-launch bump'
-$ para note projects.acme-migration 'checked in with the ingest team'
+$ para note project acme-migration 'checked in with the ingest team'
 ```
 
 `--created` is here because the transcripts below quote real ages and a real
@@ -108,8 +109,8 @@ pace, and a tree made today has neither. Left off, everything is created now.
 underneath:
 
 ```console
-$ para show projects.acme-migration
-projects.acme-migration  project
+$ para show project acme-migration
+project  acme-migration
 Acme migration
   Rebuild the consumer so it stops falling over under replay load.
 
@@ -135,35 +136,38 @@ printed — two more things have been added since, an area and a resource, so th
 to flatten:
 
 ```console
-$ para add areas.health --name Health --description 'Staying in one piece.' --created 2026-01-05
-$ para add resources.rust --name Rust --description 'Notes on the language.' \
+$ para add area health --name Health --description 'Staying in one piece.' --created 2026-01-05
+$ para add resource rust --name Rust --description 'Notes on the language.' \
     --tags rust,reference --created 2026-01-05
 $ para list --sort attention
-areas.health                                                      area        —            59 days ago
-projects.acme-migration.objectives.q1-growth                      objective   in-progress  59 days ago
-resources.rust                                                    resource    —            59 days ago
-projects.acme-migration.objectives.q1-growth.key-results.signups  key-result  on-track     3 days ago
-projects.acme-migration                                           project     in-progress  today
+area        health                            —            59 days ago
+objective   acme-migration.q1-growth          in-progress  59 days ago
+resource    rust                              —            59 days ago
+key-result  acme-migration.q1-growth.signups  on-track     3 days ago
+project     acme-migration                    in-progress  today
 showing 5 of 5
 ```
+
+The noun is its own column now, so a mixed-kind listing scans as one table rather than five
+differently-shaped strings.
 
 **Ask what needs attention.** `review` groups by *why*. The thresholds are configuration, and a
 check nobody configures never fires:
 
 ```console
-$ para add projects.website --name Website --description 'A refresh.' \
+$ para add project website --name Website --description 'A refresh.' \
     --due 2026-02-20 --created 2026-02-01
-$ para set projects.website --status blocked --note 'waiting on the brand review'
+$ para set project website --status blocked --note 'waiting on the brand review'
 $ para config set area.stale-after 30
 $ para config set project.stale-after 14
 $ para review
 stale (2)
-  areas.health      59 days       area.stale-after 30
-  projects.website  32 days       project.stale-after 14
+  area.health      59 days       area.stale-after 30
+  project.website  32 days       project.stale-after 14
 blocked (1)
-  projects.website  32 days
+  project.website  32 days
 overdue (1)
-  projects.website  13 days over  due 2026-02-20
+  project.website  13 days over  due 2026-02-20
 ```
 
 **Look at what is on disk.** Nothing above is hidden in a database:
@@ -172,7 +176,7 @@ overdue (1)
 $ cat projects/acme-migration/README.md
 ---
 kind: "project"
-locator: "projects.acme-migration"
+locator: "project.acme-migration"
 name: "Acme migration"
 description: "Rebuild the consumer so it stops falling over under replay load."
 status: "in-progress"
@@ -199,8 +203,8 @@ of that directory's own history — and `MEASUREMENTS.csv` are generated whole.
 para renders its scope into a one-line rule file that an agent reads:
 
 ```console
-$ para add skills.signups-report --name 'Signups report' \
-    --description 'when asked for the weekly signups number' --scope projects.acme-migration
+$ para add skill signups-report --name 'Signups report' \
+    --description 'when asked for the weekly signups number' --scope project.acme-migration
 $ cat .agents/rules/para-signups-report.md
 ---
 generated_from: "para-signups-report"
@@ -236,7 +240,7 @@ Apple M-series laptop. Reproduce with `go test ./internal/scale/ -run TestScaleT
 | `para rebuild` — idempotent, writes nothing | 0.46 s |
 | `para doctor` — deep scan of the whole tree | 0.98 s |
 | `para list` — whole tree, 2,420 rows | 0.33 s |
-| `para list projects.<one>` — 6 rows | 0.001 s |
+| `para list project <one>` — 6 rows | 0.001 s |
 | any single mutation | **2–10 files, whatever the size of the tree** |
 
 The last row is the one that matters and the only one asserted as a test rather than reported as a
