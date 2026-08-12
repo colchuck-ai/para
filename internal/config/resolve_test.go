@@ -464,8 +464,10 @@ func plant(t *testing.T, files map[string]string) string {
 // puts nothing between a skill's own config.toml and the root, and
 // .agents/skills/ is not a place with policy of its own.
 func TestChainRefusesABareSkillsLocator(t *testing.T) {
-	if _, err := Chain(parseLoc(t, "skills")); err == nil {
-		t.Error("Chain(skills) = nil error, want a refusal — .agents/skills/ is not a level")
+	_, err := Chain(parseLoc(t, "skills"))
+	var perr *paraerr.Error
+	if !errors.As(err, &perr) || perr.Kind != paraerr.KindValidation {
+		t.Errorf("Chain(skills) = %v, want a KindValidation refusal — .agents/skills/ is not a level", err)
 	}
 	if _, err := Chain(parseLoc(t, "skills.a.b")); err == nil {
 		t.Error("Chain(skills.a.b) = nil error, want a refusal — skills is one level only")

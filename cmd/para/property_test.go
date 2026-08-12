@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
@@ -257,6 +258,148 @@ func TestRemoveKeepFilesRestoresThePreParaDirectory(t *testing.T) {
 	}
 	if len(rep.Findings) != 1 {
 		t.Errorf("doctor reported %d findings, want exactly the kept directory", len(rep.Findings))
+	}
+}
+
+// addressRoundTrip is one noun+chain pair to check both directions of the
+// address round trip for (Phase 22 task 4).
+type addressRoundTrip struct {
+	noun  string
+	chain string // "" for the bucket
+	path  string // root-relative, "/"-joined, R3's own table
+	// skipShow is the one case R17 promises but the walk cannot yet answer
+	// (para-a3p: .agents/skills/ has no container entity to `show`, unlike
+	// the projects/areas/resources buckets, which do) — path.go still has
+	// to prove the R3 path Locator.Path() derives, so only the `show
+	// --json` half is skipped here.
+	skipShow bool
+}
+
+// addressRoundTrips is one entity or bucket per noun and every arity R4
+// fixes: project and skill (bucket, or exactly one segment), area and
+// resource (bucket, one segment, or nested), objective (fixed at two),
+// key-result (fixed at three), and container (two or three segments,
+// reached only through a project's or objective's own container — R15
+// refuses adding one directly).
+var addressRoundTrips = []addressRoundTrip{
+	{noun: "project", path: "projects"},
+	{noun: "project", chain: "acme", path: "projects/acme"},
+	{noun: "objective", chain: "acme.q1-growth", path: "projects/acme/objectives/q1-growth"},
+	{noun: "key-result", chain: "acme.q1-growth.signups", path: "projects/acme/objectives/q1-growth/key-results/signups"},
+	{noun: "area", path: "areas"},
+	{noun: "area", chain: "health", path: "areas/health"},
+	{noun: "area", chain: "health.training", path: "areas/health/training"},
+	{noun: "resource", path: "resources"},
+	{noun: "resource", chain: "papers", path: "resources/papers"},
+	{noun: "resource", chain: "papers.kafka", path: "resources/papers/kafka"},
+	{noun: "skill", path: ".agents/skills", skipShow: true},
+	{noun: "skill", chain: "signups-report", path: ".agents/skills/para-signups-report"},
+	{noun: "container", chain: "acme.objectives", path: "projects/acme/objectives"},
+	{noun: "container", chain: "acme.q1-growth.key-results", path: "projects/acme/objectives/q1-growth/key-results"},
+}
+
+// TestAddressRoundTripsAtTheBinaryLevel is the plan's Phase 22 task 4. Phase
+// 17 property-tested the Address <-> Locator conversion at the unit level
+// (internal/address/convert_test.go, over generated addresses); this joins
+// it at the binary level, over one built tree covering every noun and
+// arity R4 fixes, driven through the real CLI rather than the pure
+// conversion functions alone.
+//
+// Two directions, for every case in addressRoundTrips: `para path <noun>
+// [<chain>]` against the path R3's table derives (Address -> Locator ->
+// Path, the direction `add` and `path` take), and `para show <noun>
+// [<chain>] --json`'s `locator` key against the address that was typed
+// (Path -> Locator, via the real on-disk walk and tree.KindAt -> Locator ->
+// Address, via address.String — the direction `show`, `list`, and every
+// other read command take). Driving the built binary rather than calling
+// internal/address directly is what caught a real bug this task fixed:
+// Locator.Path() refused the one-segment "skills" locator outright, so
+// `para path skill` failed before this task's fix even though
+// address.Address{Noun: Skill}.ToLocator() itself was correct — the two
+// halves of the round trip agreed with each other and both disagreed with
+// R3.
+func TestAddressRoundTripsAtTheBinaryLevel(t *testing.T) {
+	if !testHooksEnabled {
+		t.Skip("needs -tags para_testhooks; run `make test`")
+	}
+
+	// EvalSymlinks first: on macOS, t.TempDir() returns a path under /var
+	// that is itself a symlink to /private/var, and the subprocess's own
+	// os.Getwd() resolves it — so an unresolved root would fail every case
+	// below on a path difference that has nothing to do with addressing.
+	tmp, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolving the temp dir: %v", err)
+	}
+	root := filepath.Join(tmp, "brain")
+	if out, code := runParaIn(t, filepath.Dir(root), nil, "init", "brain"); code != 0 {
+		t.Fatalf("init: exit %d:\n%s", code, out)
+	}
+	for _, args := range [][]string{
+		{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+		{"add", "objective", "acme.q1-growth", "--name", "Q1", "--description", "Move the funnel."},
+		{
+			"add", "key-result", "acme.q1-growth.signups",
+			"--name", "Signups", "--type", "ratio", "--start", "1/10", "--target", "9/10",
+		},
+		{"add", "area", "health", "--name", "Health", "--description", "Staying in one piece."},
+		{"add", "area", "health.training", "--name", "Training", "--description", "The weekly plan."},
+		{"add", "resource", "papers", "--name", "Papers", "--description", "Things to read."},
+		{"add", "resource", "papers.kafka", "--name", "Kafka", "--description", "The talks."},
+		{"add", "skill", "signups-report", "--name", "Signups report", "--description", "when asked"},
+	} {
+		if out, code := runPara(t, root, nil, args...); code != 0 {
+			t.Fatalf("%v: exit %d:\n%s", args, code, out)
+		}
+	}
+
+	for _, c := range addressRoundTrips {
+		name := c.noun + " (bucket)"
+		if c.chain != "" {
+			name = c.noun + " " + c.chain
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			pathArgs := []string{"path", c.noun}
+			if c.chain != "" {
+				pathArgs = append(pathArgs, c.chain)
+			}
+			out, code := runPara(t, root, nil, pathArgs...)
+			if code != 0 {
+				t.Fatalf("%v: exit %d:\n%s", pathArgs, code, out)
+			}
+			want := filepath.Join(root, filepath.FromSlash(c.path)) + "\n"
+			if out != want {
+				t.Fatalf("%v = %q, want %q", pathArgs, out, want)
+			}
+			if c.skipShow {
+				return
+			}
+
+			showArgs := []string{"show", c.noun}
+			if c.chain != "" {
+				showArgs = append(showArgs, c.chain)
+			}
+			showArgs = append(showArgs, "--json")
+			out, code = runPara(t, root, nil, showArgs...)
+			if code != 0 {
+				t.Fatalf("%v: exit %d:\n%s", showArgs, code, out)
+			}
+			var got struct {
+				Locator string `json:"locator"`
+			}
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("%v: unreadable --json (%v):\n%s", showArgs, err, out)
+			}
+			wantAddr := c.noun
+			if c.chain != "" {
+				wantAddr += "." + c.chain
+			}
+			if got.Locator != wantAddr {
+				t.Fatalf("%v locator = %q, want %q", showArgs, got.Locator, wantAddr)
+			}
+		})
 	}
 }
 

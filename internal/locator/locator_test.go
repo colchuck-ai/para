@@ -179,7 +179,7 @@ func TestPath(t *testing.T) {
 			"archive/areas/health/training", false,
 		},
 		{"skill exception", Locator{"skills", "signups-report"}, ".agents/skills/para-signups-report", false},
-		{"skills alone illegal", Locator{"skills"}, "", true},
+		{"skill bucket", Locator{"skills"}, ".agents/skills", false},
 		{"skills nested illegal", Locator{"skills", "foo", "bar"}, "", true},
 		{"empty locator", Locator{}, "", true},
 	}

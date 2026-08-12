@@ -119,10 +119,19 @@ func (r Resolution) Str() (string, bool) {
 // A skill's chain is its own config.toml and then the root, with nothing in
 // between, because .agents/ is not in the PARA tree (§7, §8.1) — there is no
 // `skills` level to consult even though the locator has a `skills` segment.
+//
+// The bare skill bucket (R3's ".agents/skills/", which Locator.Path() itself
+// now resolves) is refused here rather than treated as a level: unlike
+// projects/areas/resources, whose bucket directories are containers with
+// their own config.toml (§8.1), .agents/skills/ is never one — there is
+// nothing there for a chain to consult, bucket or not.
 func Chain(loc locator.Locator) ([]Level, error) {
 	var levels []Level
 
 	if loc.Bucket() == "skills" {
+		if len(loc) == 1 {
+			return nil, paraerr.New(paraerr.KindValidation, "skill has no config level of its own")
+		}
 		rel, err := loc.Path()
 		if err != nil {
 			return nil, err
