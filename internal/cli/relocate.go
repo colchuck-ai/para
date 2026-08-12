@@ -8,9 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mutate"
 	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/tree"
 )
 
 // dryRunLine closes a rehearsal. §19 gives `--dry-run` to exactly the operations
@@ -19,31 +21,45 @@ import (
 // the absence of a `wrote` block.
 const dryRunLine = "dry-run: nothing was written"
 
+// newMoveCmd implements `para move <noun> <from-chain> <to-chain>` (R14):
+// the noun spoken once, because §18.3 makes move same-kind only — a second
+// noun could only ever repeat the first or be a refusal, so there is no
+// spelling left for "change kind" to parse as (R14's decision log).
+//
+// Neither chain is "."-resolvable: unlike show's or set's noun-taking
+// argument, move's chains have no single-token slot "." could occupy
+// without contradicting "noun spoken once" — the destination was never
+// "."-resolvable to begin with (it names something that must not exist),
+// and losing it from the source is what one shared noun costs.
 func newMoveCmd() *cobra.Command {
 	var dryRun bool
 	var archived archivedFlag
 	cmd := &cobra.Command{
-		Use:   "move <from> <to>",
+		Use:   "move <noun> <from-chain> <to-chain>",
 		Short: "move an entity, with its subtree",
 		Long: "Move an entity to another place in the tree.\n\n" +
 			"One rename, plus the work a hand-`mv` cannot do: README frontmatter\n" +
 			"throughout the subtree, both parents' journals, and every skill scope\n" +
 			"entry naming the old locator or anything beneath it.\n\n" +
-			"Same-kind only, and it will not cross the archive boundary in either\n" +
-			"direction — that is `para archive` and `para unarchive`.",
-		Args: cobra.ExactArgs(2),
+			"Same-kind only — the noun is given once, for both chains — and it\n" +
+			"will not cross the archive boundary in either direction: --archived\n" +
+			"means both ends are archived, and that is `para archive` and\n" +
+			"`para unarchive`.",
+		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			env, cwd, err := openEnv(cmd)
+			env, _, err := openEnv(cmd)
 			if err != nil {
 				return err
 			}
-			src, err := resolveLocatorArg(env.Root, cwd, args[0])
+			noun, fromChain, toChain := args[0], args[1], args[2]
+			if err := checkArchivedSide(env.Root, archived.value, noun, fromChain); err != nil {
+				return err
+			}
+			src, err := chainToLocator(noun, fromChain, archived.value, false)
 			if err != nil {
 				return err
 			}
-			// The destination is deliberately not "."-resolvable: "." names
-			// something that exists (§14), and a destination must not.
-			dst, err := locator.Parse(args[1])
+			dst, err := chainToLocator(noun, toChain, archived.value, false)
 			if err != nil {
 				return err
 			}
@@ -57,6 +73,41 @@ func newMoveCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	archived.register(cmd)
 	return cmd
+}
+
+// checkArchivedSide is R9's own worked example: if the side --archived
+// claims for the source does not exist but the other side does, the flag
+// almost certainly has the wrong value, and saying so by name —
+// "project.acme-migration is live" — is friendlier than PlanMove's own
+// "does not exist", which would be equally true of a source that is simply
+// missing on both sides. It answers nothing when neither side resolves or
+// when the claimed side is actually there, leaving those cases to
+// PlanMove's own checks.
+func checkArchivedSide(root string, archived bool, noun, chain string) error {
+	claimed, err := chainToLocator(noun, chain, archived, false)
+	if err != nil {
+		return nil
+	}
+	if exists, err := tree.Exists(root, claimed); err != nil || exists {
+		return nil
+	}
+	other, err := chainToLocator(noun, chain, !archived, false)
+	if err != nil {
+		return nil
+	}
+	otherExists, err := tree.Exists(root, other)
+	if err != nil || !otherExists {
+		return nil
+	}
+	addr, err := address.String(other)
+	if err != nil {
+		addr = other.String()
+	}
+	side := "live"
+	if !archived {
+		side = "archived"
+	}
+	return paraerr.Newf(paraerr.KindValidation, "--archived means both ends are archived; %s is %s", addr, side)
 }
 
 func newArchiveCmd() *cobra.Command {
@@ -157,10 +208,10 @@ func runRelocation(cmd *cobra.Command, plan *mutate.Relocation, dryRun bool) err
 // relocationLines is §26's shape for the three relocating verbs: the transition
 // on the first line, and every consequence indented under it.
 //
-//	archived  areas.health → archive.areas.health   (3 descendants moved with it)
+//	archived  area.health → archive.area.health   (3 descendants moved with it)
 //	          stub archive/areas/health/ became the entity
 func relocationLines(r *mutate.Relocation) []string {
-	head := fmt.Sprintf("%s  %s → %s", r.Verb, r.From, r.To)
+	head := fmt.Sprintf("%s  %s → %s", r.Verb, entityLocatorString(r.From), entityLocatorString(r.To))
 	if r.Descendants > 0 {
 		head += fmt.Sprintf("   (%s moved with it)", count(r.Descendants, "descendant"))
 	}
@@ -174,13 +225,13 @@ func relocationLines(r *mutate.Relocation) []string {
 	for _, stub := range r.StubsCreated {
 		// The parenthetical names the live counterpart, which is the reason the
 		// stub exists at all: the parent did not come along (§1.6).
-		add("created stub %s (parent %s is live)", stubDir(stub), stub[1:])
+		add("created stub %s (parent %s is live)", stubDir(stub), entityLocatorString(stub[1:]))
 	}
 	if len(r.StubAdopted) > 0 {
 		add("stub %s became the entity", stubDir(r.StubAdopted))
 	}
 	for _, loc := range r.Reinstated {
-		add("reinstated %s", loc)
+		add("reinstated %s", entityLocatorString(loc))
 	}
 	for _, stub := range r.StubsDemoted {
 		add("%s became a stub", stubDir(stub))
@@ -189,7 +240,7 @@ func relocationLines(r *mutate.Relocation) []string {
 		add("removed stub %s", stubDir(stub))
 	}
 	for _, rw := range r.ScopeRewrites {
-		add("rewrote %s in %s", count(rw.Entries, "scope entry"), rw.Skill)
+		add("rewrote %s in %s", count(rw.Entries, "scope entry"), entityLocatorString(rw.Skill))
 	}
 	return lines
 }
