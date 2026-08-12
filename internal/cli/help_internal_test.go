@@ -66,6 +66,54 @@ func TestFlagUsageCarriesNoBackquotes(t *testing.T) {
 	})
 }
 
+// TestAddAndSetHelpListTheNouns is R27: `para add --help` and `para set
+// --help` list the nouns, since neither shows its per-noun flags until one
+// is named. unset is checked too — it dispatches on the noun exactly the
+// same way (P19.5) — though R27's own text names only add and set.
+func TestAddAndSetHelpListTheNouns(t *testing.T) {
+	cmds := map[string]*cobra.Command{
+		"add":   newAddCmd(),
+		"set":   newSetCmd(),
+		"unset": newUnsetCmd(),
+	}
+	// Derived from addableNounWords() rather than a second hand-written
+	// list: TestAddDispatchesOnNoun already holds that function's six
+	// nouns to a hardcoded, independently-checked list, so drift between
+	// kindmeta and *that* test is caught there — this test's own job is
+	// narrower, whether the help text agrees with what the command
+	// actually computes.
+	wantLine := "Nouns: " + strings.Join(addableNounWords(), ", ") + "."
+	for name, cmd := range cmds {
+		t.Run(name, func(t *testing.T) {
+			if !strings.Contains(cmd.Long, wantLine) {
+				t.Errorf("%s --help does not contain %q; Long = %q", name, wantLine, cmd.Long)
+			}
+		})
+	}
+}
+
+// TestRootHelpUnchangedInShape confirms R27 only touches add's and set's
+// own help — the root's still lists the nineteen top-level commands and
+// says nothing about nouns, which belong to the two commands that dispatch
+// on one.
+func TestRootHelpUnchangedInShape(t *testing.T) {
+	root := newRootCmd()
+	if strings.Contains(root.Long, "Nouns:") {
+		t.Errorf("root --help mentions nouns; that belongs to add/set/unset's own help, not the root's")
+	}
+	for _, name := range []string{"add", "set", "show", "config"} {
+		found := false
+		for _, cmd := range root.Commands() {
+			if cmd.Name() == name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("root --help's command tree has no %q", name)
+		}
+	}
+}
+
 // TestEveryVerbInTheDesignIsACommand holds §13's list, which is the command
 // surface itself: eighteen verbs and config's four shapes.
 func TestEveryVerbInTheDesignIsACommand(t *testing.T) {
