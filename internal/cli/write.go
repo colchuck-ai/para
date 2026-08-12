@@ -11,7 +11,6 @@ import (
 	"github.com/colchuck-ai/para/internal/clock"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/krvalue"
-	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mutate"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/tree"
@@ -83,6 +82,25 @@ func (f *fieldFlags) register(cmd *cobra.Command) {
 	}
 }
 
+// registerForKind is add's own registration (R3, task P19.3): only the
+// fields kindmeta.Has(kind, field) gives kind, in AllFields order — so a
+// project's --help shows seven flags and a key-result's nine, instead of
+// every command offering all eleven and refusing the wrong ones at
+// mutate-time. atCreation is always true here: add is the one command that
+// may set a RequiredFixed field at all.
+func (f *fieldFlags) registerForKind(cmd *cobra.Command, kind kindmeta.Kind) {
+	f.values = map[kindmeta.Field]*string{}
+	for _, field := range kindmeta.AllFields() {
+		if !kindmeta.Has(kind, field) {
+			continue
+		}
+		var v string
+		f.values[field] = &v
+		cmd.Flags().StringVar(&v, string(field), "", fieldHelp[field])
+		_ = cmd.RegisterFlagCompletionFunc(string(field), completeFieldValue(field, true))
+	}
+}
+
 // collect turns the flags actually given into a Fields. A flag left alone is
 // absent rather than empty, which is the distinction §15's no-op rule and
 // `unset` both rest on.
@@ -102,31 +120,89 @@ func (f *fieldFlags) collect(cmd *cobra.Command) mutate.Fields {
 	return out
 }
 
+// newAddCmd implements `para add <noun> <chain>` (R3, R15): one subcommand
+// per addressable noun, dispatching on the noun the way §25 amended R2's own
+// argument turns "which fields, which help, which refusals" into a lookup
+// instead of a mutate-time surprise. `container` is not among them — R15
+// refuses it because a container is created eagerly by its parent (§18.1)
+// and never directly.
 func newAddCmd() *cobra.Command {
-	var f fieldFlags
-	var archived archivedFlag
 	cmd := &cobra.Command{
-		Use:   "add <locator>",
+		Use:   "add <noun> <chain> --name … [--field …]",
 		Short: "create an entity",
-		Long: "Create the entity a locator names.\n\n" +
+		Long: "Create the entity a noun and a chain name — one subcommand per noun, so\n" +
+			"`para add <noun> --help` shows exactly that kind's own fields.\n\n" +
 			"A project is created with its objectives/ container and an objective\n" +
 			"with its key-results/, because a uniform shape is what lets an agent or\n" +
 			"a human look somewhere and trust that absence means none.\n\n" +
 			"The new entity's journal starts empty — `created` is a field, not an\n" +
-			"event — and the parent logs that its set of children changed.",
-		Args: cobra.ExactArgs(1),
+			"event — and the parent logs that its set of children changed.\n\n" +
+			"Nouns: " + strings.Join(addableNounWords(), ", ") + ".",
+		// Without a RunE, an unmatched first argument (a typo, or R15's
+		// refused "container") falls through to cobra printing this
+		// command's own help and exiting 0 — a silent no-op indistinguishable
+		// from success. This RunE only ever runs for that fallthrough case:
+		// every recognized noun is its own subcommand and cobra dispatches to
+		// it directly, never reaching here.
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := archived.check("nothing is created under archive/"); err != nil {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			if args[0] == kindmeta.KindContainer.String() {
+				return paraerr.New(paraerr.KindValidation,
+					"container is refused: a container is created eagerly by its parent and never directly")
+			}
+			return paraerr.Newf(paraerr.KindValidation,
+				"%q is not a noun add can create (one of: %s)", args[0], strings.Join(addableNounWords(), ", "))
+		},
+	}
+	for _, kind := range kindmeta.AllKinds() {
+		cmd.AddCommand(newAddNounCmd(kind))
+	}
+	return cmd
+}
+
+// addableNounWords is R2's seven words minus container, the six add
+// actually registers a subcommand for (R15) — used both for the noun list
+// in its help and for naming what a bad noun should have been.
+func addableNounWords() []string {
+	kinds := kindmeta.AllKinds()
+	words := make([]string, len(kinds))
+	for i, k := range kinds {
+		words[i] = k.String()
+	}
+	return words
+}
+
+// newAddNounCmd is one noun's `add` subcommand: its own chain arity (via
+// chainToLocator, P19.1), its own field flags (via fieldFlags.registerForKind,
+// this task), and its own --archived refusal (R8, carried over from the
+// single command P19.2 registered it on).
+func newAddNounCmd(kind kindmeta.Kind) *cobra.Command {
+	var f fieldFlags
+	var archived archivedFlag
+	const archivedWhy = "nothing is created under archive/"
+
+	cmd := &cobra.Command{
+		Use:   kind.String() + " <chain> --name … [--field …]",
+		Short: "create a " + kind.String(),
+		Long: "Create the " + kind.String() + " the chain names.\n\n" +
+			"\".\" is deliberately not accepted: it resolves to something that\n" +
+			"already exists, and add is for something that does not.",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := archived.check(archivedWhy); err != nil {
 				return err
 			}
 			env, _, err := openEnv(cmd)
 			if err != nil {
 				return err
 			}
-			// "." is deliberately not accepted here: it resolves to something
-			// that already exists (§14), and `add` is for something that does
-			// not.
-			loc, err := locator.Parse(args[0])
+			var chain string
+			if len(args) == 1 {
+				chain = args[0]
+			}
+			loc, err := chainToLocator(kind.String(), chain, false, false)
 			if err != nil {
 				return err
 			}
@@ -138,8 +214,8 @@ func newAddCmd() *cobra.Command {
 			return nil
 		},
 	}
-	f.register(cmd)
-	archived.registerRefused(cmd, "nothing is created under archive/")
+	f.registerForKind(cmd, kind)
+	archived.registerRefused(cmd, archivedWhy)
 	return cmd
 }
 

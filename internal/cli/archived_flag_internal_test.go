@@ -42,6 +42,11 @@ func TestArchivedFlagRegisteredOnTheThirteen(t *testing.T) {
 // refuse --archived with their own named reason rather than cobra's generic
 // "unknown flag" — proven by registering it and having RunE refuse before
 // ever touching a filesystem, so no tree fixture is needed here.
+//
+// add is not a case below: since P19.3 it dispatches on the noun, and
+// --archived is registered per noun subcommand rather than on the now
+// childless-of-its-own-flags top-level `add` — TestAddRefusesArchived in
+// add_internal_test.go covers it against newAddNounCmd directly.
 func TestArchivedFlagRefusedOnTheThree(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -49,12 +54,6 @@ func TestArchivedFlagRefusedOnTheThree(t *testing.T) {
 		args    []string
 		wantErr string
 	}{
-		{
-			name:    "add",
-			ctor:    newAddCmd,
-			args:    []string{"projects.acme", "--archived", "--name", "Acme"},
-			wantErr: "nothing is created under archive/",
-		},
 		{
 			name:    "archive",
 			ctor:    newArchiveCmd,
