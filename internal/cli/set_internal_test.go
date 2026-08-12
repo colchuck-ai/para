@@ -201,6 +201,27 @@ func mustAddViaCLI(t *testing.T, noun, id string) {
 	}
 }
 
+// TestSetOutputUsesTheDottedAddress is a regression test found while
+// implementing P19.8: output.go's changeLines (shared by set and unset)
+// printed res.Locator raw — the old plural-bucket form — rather than
+// through entityLocatorString, unnoticed because no existing test checked
+// set's stdout content, only that the command succeeded.
+func TestSetOutputUsesTheDottedAddress(t *testing.T) {
+	chdirToTestTree(t)
+	mustAddViaCLI(t, "project", "acme")
+
+	out, err := execSet([]string{"project", "acme", "--description", "updated"})
+	if err != nil {
+		t.Fatalf("set project acme --description updated: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "project.acme") {
+		t.Errorf("set output = %q, want it to contain %q", out, "project.acme")
+	}
+	if strings.Contains(out, "projects.acme") {
+		t.Errorf("set output = %q, still has the old plural-bucket form", out)
+	}
+}
+
 // TestSetDotResolvesAgainstCwdAndChecksKind is R16's "." carried into a
 // noun-dispatched command: the noun is fixed by the subcommand, so "."
 // cannot occupy an argument slot the way it does for show/note — it can

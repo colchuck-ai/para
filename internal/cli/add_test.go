@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,5 +45,16 @@ func TestAddProjectEndToEnd(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "projects", "acme", "objectives")); err != nil {
 		t.Errorf("projects/acme/objectives was not created: %v", err)
+	}
+
+	// R24: the confirmation line names the entity in the dotted address
+	// form, not the old plural-bucket locator string — a regression found
+	// while implementing P19.8, since this test previously checked only
+	// the exit code and the filesystem, never stdout.
+	if got := addOut.String(); !strings.Contains(got, "project.acme") {
+		t.Errorf("add project acme: stdout = %q, want it to contain %q", got, "project.acme")
+	}
+	if strings.Contains(addOut.String(), "projects.acme") {
+		t.Errorf("add project acme: stdout = %q, still has the old plural-bucket form", addOut.String())
 	}
 }

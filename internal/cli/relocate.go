@@ -110,18 +110,23 @@ func checkArchivedSide(root string, archived bool, noun, chain string) error {
 	return paraerr.Newf(paraerr.KindValidation, "--archived means both ends are archived; %s is %s", addr, side)
 }
 
+// newArchiveCmd implements `para archive <noun> <chain>` (R3, entity-only
+// per R17). "." works: the source is live by definition (that is what
+// this command refuses --archived for), so it may be where you stand.
 func newArchiveCmd() *cobra.Command {
 	var dryRun bool
 	var archived archivedFlag
 	cmd := &cobra.Command{
-		Use:   "archive <locator>",
+		Use:   "archive <noun> <chain>",
 		Short: "move an entity into the archive",
 		Long: "Archive an entity: `projects/acme` becomes `archive/projects/acme`.\n\n" +
 			"The whole subtree goes in one move, and a live ancestor that stays\n" +
 			"behind gets a stub — a bare directory recording where the thing came\n" +
 			"from. No field changes: status says how something ended, the archive\n" +
 			"says where it lives.",
-		Args: cobra.ExactArgs(1),
+		// One arg when "." stands in for the whole noun-and-chain pair
+		// (R16), two otherwise.
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := archived.check("the source is live by definition"); err != nil {
 				return err
@@ -130,7 +135,7 @@ func newArchiveCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, _, err := parseAddressArgs(env.Root, cwd, args, entityArity, false)
 			if err != nil {
 				return err
 			}
@@ -146,29 +151,39 @@ func newArchiveCmd() *cobra.Command {
 	return cmd
 }
 
+// newUnarchiveCmd implements `para unarchive <noun> <chain>` (R3,
+// entity-only per R17). "." is refused (entityArityNoDot): it resolves
+// against cwd, and you cannot stand in the thing being pulled out of the
+// archive.
 func newUnarchiveCmd() *cobra.Command {
 	var dryRun bool
 	var archived archivedFlag
 	cmd := &cobra.Command{
-		Use:   "unarchive <locator>",
+		Use:   "unarchive <noun> <chain>",
 		Short: "bring an entity back out of the archive",
 		Long: "Unarchive an entity, and cascade upward.\n\n" +
 			"Every archived ancestor it needs comes back as a live entity; one that\n" +
 			"is already live is adopted rather than duplicated. An archived sibling\n" +
 			"stays archived, and the ancestor's archive directory is left behind as\n" +
 			"a stub to record its ancestry — the mirror of what `archive` leaves.",
-		Args: cobra.ExactArgs(1),
+		// One arg admits "." through to parseAddressArgs so its own named
+		// refusal fires ("." is not accepted here) instead of cobra's
+		// generic arity error — entityArityNoDot refuses it regardless of
+		// how many args follow, so allowing the count costs nothing.
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := archived.check("the source is archived by definition"); err != nil {
 				return err
 			}
-			env, _, err := openEnv(cmd)
+			env, cwd, err := openEnv(cmd)
 			if err != nil {
 				return err
 			}
-			// Not "."-resolvable either: "." resolves to the directory you are
-			// standing in, and you cannot stand in the thing you are pulling out.
-			loc, err := locator.Parse(args[0])
+			// The chain itself names the live address (R10's "archive."
+			// prefix is never typed) — Archived: true is what tells
+			// chainToLocator to prepend it, the same way every other
+			// archived-side address is built.
+			loc, _, err := parseAddressArgs(env.Root, cwd, args, entityArityNoDot, true)
 			if err != nil {
 				return err
 			}
@@ -267,6 +282,10 @@ func count(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
+// newRemoveCmd implements `para remove <noun> <chain>` (R3, entity-only per
+// R17). Container is not refused here specifically: Env.relocatable (via
+// PlanRemove) already refuses it, the same way it does for move and
+// archive/unarchive, so this command needs no CLI-level check of its own.
 func newRemoveCmd() *cobra.Command {
 	var (
 		dryRun    bool
@@ -275,7 +294,7 @@ func newRemoveCmd() *cobra.Command {
 		archived  archivedFlag
 	)
 	cmd := &cobra.Command{
-		Use:   "remove <locator>",
+		Use:   "remove <noun> <chain>",
 		Short: "delete an entity and everything beneath it",
 		Long: "Delete an entity and its whole subtree.\n\n" +
 			"It confirms first, naming what will go; --force skips the prompt and\n" +
@@ -283,13 +302,15 @@ func newRemoveCmd() *cobra.Command {
 			"--keep-files leaves your content and deletes para's footprint: every\n" +
 			".para/, every ACTIVITY.md, every MEASUREMENTS.csv, and the frontmatter\n" +
 			"block from every README.md — keeping the body.",
-		Args: cobra.ExactArgs(1),
+		// One arg when "." stands in for the whole noun-and-chain pair
+		// (R16), two otherwise.
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openEnv(cmd)
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, _, err := parseAddressArgs(env.Root, cwd, args, entityArity, archived.value)
 			if err != nil {
 				return err
 			}
@@ -323,7 +344,7 @@ func newRemoveCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printResult(out, []string{fmt.Sprintf("removed  %s", plan.Locator)}, res)
+			printResult(out, []string{fmt.Sprintf("removed  %s", entityLocatorString(plan.Locator))}, res)
 			return nil
 		},
 	}
@@ -337,7 +358,7 @@ func newRemoveCmd() *cobra.Command {
 // removalLines names the blast radius §19 requires the confirmation to name:
 // what is going, how much of it there is, and whether your content survives.
 func removalLines(r *mutate.Removal) []string {
-	head := fmt.Sprintf("remove  %s  %s", r.Locator, r.Kind)
+	head := fmt.Sprintf("remove  %s  %s", entityLocatorString(r.Locator), r.Kind)
 	if n := len(r.Descendants); n > 0 {
 		head += fmt.Sprintf("   (%s)", count(n, "descendant"))
 	}

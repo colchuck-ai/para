@@ -227,7 +227,7 @@ func newAddNounCmd(kind kindmeta.Kind) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printResult(cmd.OutOrStdout(), []string{fmt.Sprintf("added  %s  %s", res.Locator, res.Kind)}, res)
+			printResult(cmd.OutOrStdout(), []string{fmt.Sprintf("added  %s  %s", entityLocatorString(res.Locator), res.Kind)}, res)
 			return nil
 		},
 	}
@@ -368,37 +368,72 @@ func summariseSet(res mutate.Result) []string {
 	return changeLines(res)
 }
 
+// newNoteCmd implements `para note <noun> <chain> <text>` (R3, entity-only
+// per R17). container is refused explicitly: unlike move/remove/archive/
+// unarchive, Env.Note's own e.load does not itself refuse a container — a
+// container is a legitimate journal subject structurally (§3.1's `note`
+// event may land on "any entity or container") — but §13's argument table
+// still groups note with the entity-required commands, so typing the noun
+// by hand must be refused here, at the one point nothing else covers it.
 func newNoteCmd() *cobra.Command {
 	var at string
 	var archived archivedFlag
 	cmd := &cobra.Command{
-		Use:   "note <locator> <text>",
+		Use:   "note <noun> <chain> <text>",
 		Short: "record a note against an entity",
 		Long: "Record a note.\n\n" +
 			"One of the two verbs that move the clock, which is why it is a verb of\n" +
 			"its own rather than a field: `attention` is the newest note or\n" +
 			"measurement, and every staleness check in `para review` reads it.",
-		Args: cobra.ExactArgs(2),
+		// Exactly two shapes: "." <text> (the whole noun-and-chain pair
+		// collapsed to one token, R16) or <noun> <chain> <text>. Neither
+		// RangeArgs nor ExactArgs can express that disjunction — both admit
+		// <noun> <text> with the chain missing, which parseAddressArgs would
+		// then silently take the text as the chain, leaving nothing for
+		// env.Note's own text argument — so the shape is checked directly.
+		Args: noteArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if args[0] == address.Container.String() {
+				return paraerr.New(paraerr.KindValidation,
+					"container is refused: it holds name, description, and created and nothing you would note against")
+			}
 			env, cwd, err := openEnv(cmd)
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, rest, err := parseAddressArgs(env.Root, cwd, args, entityArity, archived.value)
 			if err != nil {
 				return err
 			}
-			res, err := env.Note(loc, args[1], at)
+			res, err := env.Note(loc, rest[0], at)
 			if err != nil {
 				return err
 			}
-			printResult(cmd.OutOrStdout(), []string{fmt.Sprintf("noted  %s", res.Locator)}, res)
+			printResult(cmd.OutOrStdout(), []string{fmt.Sprintf("noted  %s", entityLocatorString(res.Locator))}, res)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&at, "at", "", "when it happened, in progressive precision; defaults to now")
 	archived.register(cmd)
 	return cmd
+}
+
+// noteArgs is `note <noun> <chain> <text>`'s arity (R16): exactly two args
+// when "." replaces the noun-and-chain pair, exactly three otherwise with a
+// real noun in the first slot. Two shapes cobra's own validators cannot
+// tell apart from a valid one, so both are refused here rather than
+// reaching RunE, where either would leave an argument silently absorbed by
+// the wrong slot: <noun> <text> (a genuinely missing chain, the text taking
+// its place) and ". <extra> <text>" (a stray third argument, the middle one
+// taking the text's place and the real text silently dropped).
+func noteArgs(cmd *cobra.Command, args []string) error {
+	if len(args) == 2 && args[0] == "." {
+		return nil
+	}
+	if len(args) == 3 && args[0] != "." {
+		return nil
+	}
+	return paraerr.Newf(paraerr.KindUsage, `%s takes "<noun> <chain> <text>" or ". <text>", not %d argument(s)`, cmd.Name(), len(args))
 }
 
 // newMeasureCmd implements `para measure <chain> <value>` (R13): the one

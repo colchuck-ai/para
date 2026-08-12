@@ -105,8 +105,7 @@ func TestMoveArchivedFlagWrongSideIsNamed(t *testing.T) {
 	}
 }
 
-// archiveArea archives an area through the real `archive` command, which
-// still takes the old single-locator form (P19.8 has not run yet) — used
+// archiveArea archives an area through the real `archive` command — used
 // here only to put a real archived entity on disk for TestMoveArchivedBothEnds.
 func archiveArea(t *testing.T, id string) {
 	t.Helper()
@@ -114,8 +113,8 @@ func archiveArea(t *testing.T, id string) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"areas." + id})
+	cmd.SetArgs([]string{"area", id})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("archive areas.%s: %v (%s)", id, err, out.String())
+		t.Fatalf("archive area %s: %v (%s)", id, err, out.String())
 	}
 }

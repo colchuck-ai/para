@@ -111,11 +111,12 @@ func printResult(out io.Writer, summary []string, res mutate.Result) {
 // changeLines is §26's `set` output: one line per field that changed, naming
 // the locator once and the transition in full.
 //
-//	projects.acme-migration  status in-progress → blocked
+//	project.acme-migration  status in-progress → blocked
 func changeLines(res mutate.Result) []string {
 	var lines []string
+	loc := entityLocatorString(res.Locator)
 	for _, c := range res.Changes {
-		lines = append(lines, fmt.Sprintf("%s  %s %s", res.Locator, c.Field, transition(c.From, c.To)))
+		lines = append(lines, fmt.Sprintf("%s  %s %s", loc, c.Field, transition(c.From, c.To)))
 	}
 	return lines
 }

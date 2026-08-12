@@ -65,13 +65,13 @@ func TestArchivedFlagRefusedOnTheThree(t *testing.T) {
 		{
 			name:    "archive",
 			ctor:    newArchiveCmd,
-			args:    []string{"projects.acme", "--archived"},
+			args:    []string{"project", "acme", "--archived"},
 			wantErr: "the source is live by definition",
 		},
 		{
 			name:    "unarchive",
 			ctor:    newUnarchiveCmd,
-			args:    []string{"archive.projects.acme", "--archived"},
+			args:    []string{"project", "acme", "--archived"},
 			wantErr: "the source is archived by definition",
 		},
 	}
