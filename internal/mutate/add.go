@@ -32,7 +32,7 @@ func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
 		// whether a live counterpart exists and whether a stub is owed, which
 		// is machinery `archive` owns.
 		return Result{}, paraerr.Newf(paraerr.KindValidation,
-			"%s is in the archive — create it live and `para archive` it", loc)
+			"%s is in the archive — create it live and `para archive` it", relocateAddr(loc))
 	}
 
 	exists, err := tree.Exists(e.Root, loc)
@@ -40,7 +40,7 @@ func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
 		return Result{}, err
 	}
 	if exists {
-		return Result{}, paraerr.Newf(paraerr.KindConflict, "%s already exists", loc)
+		return Result{}, paraerr.Newf(paraerr.KindConflict, "%s already exists", relocateAddr(loc))
 	}
 	parentExists, err := tree.ParentExists(e.Root, loc)
 	if err != nil {
@@ -182,8 +182,8 @@ func (e *Env) shallowestMissing(loc locator.Locator) (string, error) {
 			return "", err
 		}
 		if !exists {
-			return loc[:i].String(), nil
+			return relocateAddr(loc[:i]), nil
 		}
 	}
-	return loc[:len(loc)-1].String(), nil
+	return relocateAddr(loc[:len(loc)-1]), nil
 }

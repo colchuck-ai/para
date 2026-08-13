@@ -305,7 +305,7 @@ func TestMoveRefusals(t *testing.T) {
 		},
 		{
 			name: "destination parent missing", src: "areas.health.training", dst: "areas.missing.training",
-			kind: paraerr.KindNotFound, message: "areas.missing does not exist",
+			kind: paraerr.KindNotFound, message: "area.missing does not exist",
 		},
 		{
 			name: "a container is not a subject", src: "projects.acme.objectives", dst: "areas.objectives-of-acme",
@@ -480,7 +480,7 @@ func TestArchiveRefusesWhenTheArchivedCounterpartExists(t *testing.T) {
 
 	_, err := env(t, root).PlanArchive(loc(t, "projects.acme"))
 	wantKind(t, err, paraerr.KindConflict)
-	wantMessage(t, err, "archive.projects.acme already exists")
+	wantMessage(t, err, "archive.project.acme already exists")
 }
 
 // --- unarchive --------------------------------------------------------------
@@ -671,7 +671,7 @@ func TestUnarchiveRefusals(t *testing.T) {
 	}{
 		{
 			name: "the id is taken", loc: "archive.projects.old-migration",
-			kind: paraerr.KindConflict, message: "projects.old-migration exists; rename it or leave this archived",
+			kind: paraerr.KindConflict, message: "project.old-migration exists; rename it or leave this archived",
 		},
 		{
 			name: "a stub is not an entity", loc: "archive.areas.health",
@@ -714,7 +714,7 @@ func TestUnarchiveRefusesWhenTheLiveParentIsGone(t *testing.T) {
 
 	_, err = env(t, root).PlanUnarchive(loc(t, "archive.areas.health.training"))
 	wantKind(t, err, paraerr.KindNotFound)
-	wantMessage(t, err, "areas.health does not exist — create it first")
+	wantMessage(t, err, "area.health does not exist — create it first")
 }
 
 // --- remove -----------------------------------------------------------------

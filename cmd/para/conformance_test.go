@@ -160,7 +160,7 @@ var spec26Coverage = map[string]covered{
 		"relocate.txtar", "exec para unarchive area health.training\ncmp stdout $WORK/want-unarchive.txt",
 	},
 	`para unarchive project old-migration`: {
-		"relocate.txtar", "! exec para unarchive project old-migration\nstderr '^error: projects\\.old-migration exists; rename it or leave this archived$'",
+		"relocate.txtar", "! exec para unarchive project old-migration\nstderr '^error: project\\.old-migration exists; rename it or leave this archived$'",
 	},
 
 	`para review --stale --behind`: {

@@ -30,7 +30,7 @@ func (e *Env) PlanMove(src, dst locator.Locator) (*Relocation, error) {
 	}
 	if dstKind == kindmeta.KindContainer {
 		return nil, paraerr.Newf(paraerr.KindValidation,
-			"%s names a container — a container is part of its parent's shape, not a destination", dst)
+			"%s names a container — a container is part of its parent's shape, not a destination", relocateAddr(dst))
 	}
 
 	// Same-kind only, and it is checked before anything about the destination's
@@ -49,14 +49,14 @@ func (e *Env) PlanMove(src, dst locator.Locator) (*Relocation, error) {
 	if src.IsArchived() != dst.IsArchived() {
 		if dst.IsArchived() {
 			return nil, paraerr.Newf(paraerr.KindValidation,
-				"%s is in the archive — that is `para archive`, not `para move`", dst)
+				"%s is in the archive — that is `para archive`, not `para move`", relocateAddr(dst))
 		}
 		return nil, paraerr.Newf(paraerr.KindValidation,
-			"%s is in the archive — that is `para unarchive`, not `para move`", src)
+			"%s is in the archive — that is `para unarchive`, not `para move`", relocateAddr(src))
 	}
 
 	if strings.HasPrefix(dst.String(), src.String()+".") {
-		return nil, paraerr.Newf(paraerr.KindValidation, "%s is inside %s", dst, src)
+		return nil, paraerr.Newf(paraerr.KindValidation, "%s is inside %s", relocateAddr(dst), relocateAddr(src))
 	}
 
 	exists, err := tree.Exists(e.Root, dst)
@@ -64,14 +64,14 @@ func (e *Env) PlanMove(src, dst locator.Locator) (*Relocation, error) {
 		return nil, err
 	}
 	if exists {
-		return nil, paraerr.Newf(paraerr.KindConflict, "%s already exists", dst)
+		return nil, paraerr.Newf(paraerr.KindConflict, "%s already exists", relocateAddr(dst))
 	}
 	parentExists, err := tree.ParentExists(e.Root, dst)
 	if err != nil {
 		return nil, err
 	}
 	if !parentExists {
-		return nil, paraerr.Newf(paraerr.KindNotFound, "%s does not exist — create it first", dst[:len(dst)-1])
+		return nil, paraerr.Newf(paraerr.KindNotFound, "%s does not exist — create it first", relocateAddr(dst[:len(dst)-1]))
 	}
 
 	srcPath, err := tree.ResolvePath(e.Root, src)

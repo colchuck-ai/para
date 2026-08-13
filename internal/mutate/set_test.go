@@ -147,7 +147,7 @@ func TestSetRefusals(t *testing.T) {
 		{
 			name: "a locator that names nothing", loc: "projects.missing",
 			fields: fields("status", "done"),
-			want:   "projects.missing does not exist",
+			want:   "project.missing does not exist",
 		},
 		{
 			name: "an unknown priority", loc: "projects.acme",

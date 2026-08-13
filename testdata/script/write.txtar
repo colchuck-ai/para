@@ -65,13 +65,8 @@ grep '^Use the \*\*Commit style\*\* skill' .agents/rules/para-commit-style.md
 
 # §26's four prose refusals, each naming the problem, plus a fifth this task
 # adds: a wrong-arity chain for a noun besides project's (P22.3).
-# The messages below that read `projects.acme-migration…` rather than
-# `project.acme-migration` are internal/mutate surfacing the raw internal
-# Locator rather than the address form (para-ca7, tracked separately from
-# this phase) — the arity and reserved-word refusals come from
-# internal/address instead and are already in the new form.
 ! exec para add project acme-migration --name Again --description Again.
-stderr 'projects.acme-migration already exists'
+stderr 'project.acme-migration already exists'
 ! exec para add project acme-migration.nested --name A --description B
 stderr 'project takes no chain \(the bucket\) or exactly one segment, not a chain of 2'
 ! exec para add project objectives --name A --description B

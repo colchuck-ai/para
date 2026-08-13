@@ -161,7 +161,7 @@ func (e *Env) bucketPlans() ([]*plan, error) {
 		}
 		id, ok := bucketIdentity[loc.String()]
 		if !ok {
-			return nil, paraerr.Newf(paraerr.KindInternal, "init: no identity for the bucket %s", loc)
+			return nil, paraerr.Newf(paraerr.KindInternal, "init: no identity for the bucket %s", relocateAddr(loc))
 		}
 		subj, err := e.subjectAt(loc, kindmeta.KindContainer)
 		if err != nil {

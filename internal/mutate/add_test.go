@@ -129,7 +129,7 @@ func TestAddRefusals(t *testing.T) {
 			// §26: `para add projects.acme-migration` again.
 			name: "an existing locator", loc: "projects.acme-migration",
 			fields: fields("name", "Again", "description", "Again."),
-			want:   "projects.acme-migration already exists",
+			want:   "project.acme-migration already exists",
 		},
 		{
 			// §26: `para add projects.a.b` — a project cannot nest.
@@ -146,7 +146,7 @@ func TestAddRefusals(t *testing.T) {
 		{
 			name: "a missing parent", loc: "projects.missing.objectives.q1",
 			fields: fields("name", "Q1", "description", "Q1."),
-			want:   "projects.missing does not exist",
+			want:   "project.missing does not exist",
 		},
 		{
 			name: "a missing required field", loc: "projects.other",

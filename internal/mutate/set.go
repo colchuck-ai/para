@@ -173,7 +173,7 @@ func (e *Env) load(loc locator.Locator) (*subject, error) {
 		return nil, err
 	}
 	if !exists {
-		return nil, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", loc)
+		return nil, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", relocateAddr(loc))
 	}
 	return e.open(loc)
 }

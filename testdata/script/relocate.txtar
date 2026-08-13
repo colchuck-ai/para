@@ -137,12 +137,8 @@ grep '"op":"unarchived","child":"health"' archive/areas/.para/logs/20260305T1700
 # not: the reinstated ancestor carried no subtree (§1.6, §5.4).
 grep '"archive.area.health.nutrition"' .agents/skills/para-sleep-hygiene/.para/state.toml
 
-# Known gap (para-ca7, tracked separately, not this task's to fix):
-# `internal/mutate/archive.go`'s collision refusal formats a raw internal
-# Locator rather than converting it to the dotted address form, so this line
-# still reads the old plural-bucket spelling rather than "project.old-migration".
 ! exec para unarchive project old-migration
-stderr '^error: projects\.old-migration exists; rename it or leave this archived$'
+stderr '^error: project\.old-migration exists; rename it or leave this archived$'
 
 # Unarchiving the last thing beneath a stub takes the stub with it: a stub that
 # records nothing records nothing (§1.6).
@@ -152,11 +148,9 @@ exec para unarchive area fitness.spin
 stdout '^            removed stub archive/areas/fitness/$'
 ! exists archive/areas/fitness
 
-# Skills have no status, no off switch, and no archiving verb (§1.7). Same
-# para-ca7 gap as above: the message still names the skill in the old plural
-# form ("skills.training-plan").
+# Skills have no status, no off switch, and no archiving verb (§1.7).
 ! exec para archive skill training-plan
-stderr 'a skill cannot be archived'
+stderr '^error: a skill cannot be archived — `para remove skill\.training-plan` is how a skill stops applying$'
 
 # --- `para remove` (§18.4, §19) ---------------------------------------------
 

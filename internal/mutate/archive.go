@@ -29,7 +29,7 @@ func archived(loc locator.Locator) locator.Locator {
 // derived from the path (§1.6).
 func (e *Env) PlanArchive(loc locator.Locator) (*Relocation, error) {
 	if loc.IsArchived() {
-		return nil, paraerr.Newf(paraerr.KindValidation, "%s is already archived", loc)
+		return nil, paraerr.Newf(paraerr.KindValidation, "%s is already archived", relocateAddr(loc))
 	}
 	kind, err := e.relocatable(loc, "archive", "archived")
 	if err != nil {
@@ -40,7 +40,7 @@ func (e *Env) PlanArchive(loc locator.Locator) (*Relocation, error) {
 		// either. A skill that exists applies; one you want gone is one you
 		// remove, and removing it takes its derived rule with it (§5.3).
 		return nil, paraerr.Newf(paraerr.KindValidation,
-			"a skill cannot be archived — `para remove %s` is how a skill stops applying", loc)
+			"a skill cannot be archived — `para remove %s` is how a skill stops applying", relocateAddr(loc))
 	}
 
 	dst := archived(loc)
@@ -50,7 +50,7 @@ func (e *Env) PlanArchive(loc locator.Locator) (*Relocation, error) {
 	}
 	if exists {
 		return nil, paraerr.Newf(paraerr.KindConflict,
-			"%s already exists — rename one of them first", dst)
+			"%s already exists — rename one of them first", relocateAddr(dst))
 	}
 
 	srcPath, err := tree.ResolvePath(e.Root, loc)
@@ -159,12 +159,12 @@ func (r *Relocation) planAdoption(srcPath, dstPath string, src, dst locator.Loca
 // which nothing needs reinstating.
 func (e *Env) PlanUnarchive(loc locator.Locator) (*Relocation, error) {
 	if !loc.IsArchived() {
-		return nil, paraerr.Newf(paraerr.KindValidation, "%s is not archived", loc)
+		return nil, paraerr.Newf(paraerr.KindValidation, "%s is not archived", relocateAddr(loc))
 	}
 	if len(loc) < 3 {
 		// archive/ and archive/projects/ are the archive's own containers, not
 		// things that came from anywhere (§6, §8.2).
-		return nil, paraerr.Newf(paraerr.KindValidation, "%s is part of the archive itself", loc)
+		return nil, paraerr.Newf(paraerr.KindValidation, "%s is part of the archive itself", relocateAddr(loc))
 	}
 	kind, err := e.relocatable(loc, "unarchive", "unarchived")
 	if err != nil {
@@ -180,7 +180,7 @@ func (e *Env) PlanUnarchive(loc locator.Locator) (*Relocation, error) {
 		// §1.6, and §26's spelling: the id is taken by something live, so there
 		// is no place to put this. Only the entity named gets this answer; an
 		// ancestor whose id is taken is adopted below.
-		return nil, paraerr.Newf(paraerr.KindConflict, "%s exists; rename it or leave this archived", dst)
+		return nil, paraerr.Newf(paraerr.KindConflict, "%s exists; rename it or leave this archived", relocateAddr(dst))
 	}
 
 	r := &Relocation{
@@ -253,7 +253,7 @@ func (r *Relocation) planCascade(dst locator.Locator) error {
 			// never reinstated: archive/areas/ is the archive's container, not an
 			// archived copy of areas/.
 			if !liveExists {
-				return paraerr.Newf(paraerr.KindNotFound, "%s does not exist", l.live)
+				return paraerr.Newf(paraerr.KindNotFound, "%s does not exist", relocateAddr(l.live))
 			}
 			levels = append(levels, l)
 			continue
@@ -267,7 +267,7 @@ func (r *Relocation) planCascade(dst locator.Locator) error {
 				// Neither side has an entity here: the live parent was removed
 				// after its descendant was archived, leaving the stub pointing at
 				// nothing. There is nothing to reinstate and nowhere to land.
-				return paraerr.Newf(paraerr.KindNotFound, "%s does not exist — create it first", l.live)
+				return paraerr.Newf(paraerr.KindNotFound, "%s does not exist — create it first", relocateAddr(l.live))
 			}
 			l.reinstate = true
 		}
