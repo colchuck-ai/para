@@ -16,8 +16,13 @@ import (
 // empty chain as a bucket too.
 var buckets = []string{"projects", "areas", "resources", "archive"}
 
-// IsBucket reports whether loc names one of §1.1's four buckets or one of
-// the three mirrors of them the archive holds (§1.6).
+// IsBucket reports whether loc names one of §1.1's four buckets, one of the
+// three mirrors of them the archive holds (§1.6), or the skill bucket
+// (para-a3p): `.agents/skills/` sits outside §1.1's four and has no archived
+// mirror — skills cannot be archived — but it is a container with its own
+// state.toml now, the same way the other three are, so a bare directory
+// found sitting directly inside it is exactly the same "loose filing"
+// doctor's `untracked` finding already catches for the original four.
 //
 // It lived in kindmeta beside IsContainer until Phase 17 task P17.6 deleted
 // IsContainer: speaking the noun makes container inference unnecessary for
@@ -31,7 +36,7 @@ var buckets = []string{"projects", "areas", "resources", "archive"}
 func IsBucket(loc locator.Locator) bool {
 	switch len(loc) {
 	case 1:
-		return slices.Contains(buckets, loc[0])
+		return slices.Contains(buckets, loc[0]) || loc[0] == "skills"
 	case 2:
 		// The archive mirrors the three buckets that hold things, and only
 		// those three: an archive of the archive names nothing (§1.6).

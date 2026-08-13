@@ -460,15 +460,31 @@ func plant(t *testing.T, files map[string]string) string {
 	return root
 }
 
-// A bare `skills` locator names no skill, so it names no level either: §7
-// puts nothing between a skill's own config.toml and the root, and
-// .agents/skills/ is not a place with policy of its own.
-func TestChainRefusesABareSkillsLocator(t *testing.T) {
-	_, err := Chain(parseLoc(t, "skills"))
-	var perr *paraerr.Error
-	if !errors.As(err, &perr) || perr.Kind != paraerr.KindValidation {
-		t.Errorf("Chain(skills) = %v, want a KindValidation refusal — .agents/skills/ is not a level", err)
+// The skill bucket is a container in its own right now (para-a3p), the same
+// way projects/areas/resources are, so naming it directly gives a normal
+// two-level chain (itself, then the root) — even though it carries no
+// config.toml of its own (§7), the same way an unset project's does not
+// refuse either. An individual skill's own chain still skips it (§7: "there
+// is no `skills` level to consult"), and a chain two segments past the
+// bucket is still refused — skill's arity is exactly one, and Locator.Path()
+// says so.
+func TestChainTreatsTheSkillBucketAsALevelButNotAnIndividualSkillsChain(t *testing.T) {
+	levels, err := Chain(parseLoc(t, "skills"))
+	if err != nil {
+		t.Fatalf("Chain(skills) = %v, want the bucket's own two-level chain", err)
 	}
+	if len(levels) != 2 || levels[0].File != ".agents/skills/.para/config.toml" {
+		t.Errorf("Chain(skills) = %+v, want [skill bucket, root]", levels)
+	}
+
+	levels, err = Chain(parseLoc(t, "skills.report"))
+	if err != nil {
+		t.Fatalf("Chain(skills.report) = %v", err)
+	}
+	if len(levels) != 2 || levels[0].File != ".agents/skills/para-report/.para/config.toml" {
+		t.Errorf("Chain(skills.report) = %+v, want [skill's own config.toml, root] with no bucket level between them", levels)
+	}
+
 	if _, err := Chain(parseLoc(t, "skills.a.b")); err == nil {
 		t.Error("Chain(skills.a.b) = nil error, want a refusal — skills is one level only")
 	}

@@ -267,12 +267,6 @@ type addressRoundTrip struct {
 	noun  string
 	chain string // "" for the bucket
 	path  string // root-relative, "/"-joined, R3's own table
-	// skipShow is the one case R17 promises but the walk cannot yet answer
-	// (para-a3p: .agents/skills/ has no container entity to `show`, unlike
-	// the projects/areas/resources buckets, which do) — path.go still has
-	// to prove the R3 path Locator.Path() derives, so only the `show
-	// --json` half is skipped here.
-	skipShow bool
 }
 
 // addressRoundTrips is one entity or bucket per noun and every arity R4
@@ -292,7 +286,7 @@ var addressRoundTrips = []addressRoundTrip{
 	{noun: "resource", path: "resources"},
 	{noun: "resource", chain: "papers", path: "resources/papers"},
 	{noun: "resource", chain: "papers.kafka", path: "resources/papers/kafka"},
-	{noun: "skill", path: ".agents/skills", skipShow: true},
+	{noun: "skill", path: ".agents/skills"},
 	{noun: "skill", chain: "signups-report", path: ".agents/skills/para-signups-report"},
 	{noun: "container", chain: "acme.objectives", path: "projects/acme/objectives"},
 	{noun: "container", chain: "acme.q1-growth.key-results", path: "projects/acme/objectives/q1-growth/key-results"},
@@ -372,9 +366,6 @@ func TestAddressRoundTripsAtTheBinaryLevel(t *testing.T) {
 			want := filepath.Join(root, filepath.FromSlash(c.path)) + "\n"
 			if out != want {
 				t.Fatalf("%v = %q, want %q", pathArgs, out, want)
-			}
-			if c.skipShow {
-				return
 			}
 
 			showArgs := []string{"show", c.noun}

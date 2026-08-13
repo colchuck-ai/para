@@ -79,7 +79,7 @@ grep '"kind":"child","op":"added","child":"resources"' archive/.para/logs/202603
 exec para doctor
 stdout '^clean$'
 exec para rebuild
-stdout '^nothing to rewrite \(8 places up to date\)$'
+stdout '^nothing to rewrite \(9 places up to date\)$'
 
 # The tree is usable straight away.
 exec para add project acme --name 'Acme' --description 'Rebuild the consumer.'
