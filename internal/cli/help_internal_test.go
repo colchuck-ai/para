@@ -114,6 +114,21 @@ func TestRootHelpUnchangedInShape(t *testing.T) {
 	}
 }
 
+// TestRootHelpDescribesTheNounAndChainGrammar is the one place Phase 22's
+// sweep missed: the root's own prose, unlike every subcommand's, was never
+// transcribed off the old locator model. It must speak R1's model — a noun
+// and a short id-chain — rather than a single dotted locator string, and it
+// must not still carry a worked example in the old plural-bucket form.
+func TestRootHelpDescribesTheNounAndChainGrammar(t *testing.T) {
+	root := newRootCmd()
+	if !strings.Contains(root.Long, "a noun and a short id-chain") {
+		t.Errorf("root --help does not describe the noun+chain address model; Long = %q", root.Long)
+	}
+	if strings.Contains(root.Long, "projects.acme") || strings.Contains(root.Long, "every locator in the tree") {
+		t.Errorf("root --help still carries an old-grammar locator example; Long = %q", root.Long)
+	}
+}
+
 // TestEveryVerbInTheDesignIsACommand holds §13's list, which is the command
 // surface itself: eighteen verbs and config's four shapes.
 func TestEveryVerbInTheDesignIsACommand(t *testing.T) {
