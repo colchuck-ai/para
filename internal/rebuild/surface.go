@@ -19,18 +19,18 @@ import (
 // the surface a second opinion about its own bytes.
 //
 // The one thing that is genuinely different about it is that turning it *off*
-// leaves files behind. Every other projection has a knob that decides its
-// contents; `emit.claude` decides whether eight files and a directory exist at
-// all, so this file carries the only two removals in the package.
+// leaves a file behind. Every other projection has a knob that decides its
+// contents; `emit.claude` decides whether para's block is present in a file it
+// shares with everyone else, so this file carries the package's residue logic.
 
-// residue is what a subject has on disk that truth no longer justifies: a file
-// nothing generates any more, or a file para wrote part of and no longer would.
+// residue is what a subject has on disk that truth no longer justifies: a
+// block-scoped file para wrote part of and no longer would (§2.2, §9, §6.1).
 //
-// There are two, and the difference between them is the whole of why this is
-// not one rule. A CLAUDE.md with `emit.claude` off is a file para owns end to
-// end, so it goes (§6.1). A .gitattributes with `emit.gitattributes` off is a
-// file para owns a *block* inside (§2.2, §9), so the block goes and the file
-// stays — shorter, and carrying every line the repository put there.
+// CLAUDE.md and .gitattributes are the same rule now, not two: both are files
+// para owns a *block* inside, and turning their key off means taking the block
+// out — the file stays, shorter, carrying every line the repository put
+// there, unless the block was its only content, in which case removing it
+// leaves nothing and the file goes (R6).
 func (e *Env) residue(in render.In) ([]Artifact, error) {
 	claude, err := e.claudeResidue(in)
 	if err != nil {
@@ -43,35 +43,45 @@ func (e *Env) residue(in render.In) ([]Artifact, error) {
 	return append(claude, git...), nil
 }
 
-// claudeResidue is a CLAUDE.md left at one of the eight locations by turning
-// `emit.claude` off: a whole file nothing generates any more (§6.1).
+// claudeResidue is para's block sitting in a CLAUDE.md at one of the eight
+// locations with `emit.claude` off — the file as it should be once the block
+// comes out, or a removal when taking it out leaves nothing (R5-R7).
 func (e *Env) claudeResidue(in render.In) ([]Artifact, error) {
 	if !render.HasAgents(in.Locator) || render.HasClaude(in.Locator, in.Config) {
+		// Not one of the eight locations, or the key is on — in which case
+		// render.For already has this file and deriving it twice would be two
+		// opinions about it.
 		return nil, nil
 	}
 	path, err := claudePath(in.Locator)
 	if err != nil {
 		return nil, err
 	}
-	data, err := e.read(path)
-	if err != nil {
+	a, err := e.blockResidue(path, claudeBlockRemover(path))
+	if err != nil || !a.Stale() {
 		return nil, err
 	}
-	if data == nil {
-		return nil, nil
+	return []Artifact{a}, nil
+}
+
+// claudeBlockRemover closes WithoutClaudeBlock over the one path it needs and
+// the two callers on the write side (residue and the constant-cost surface
+// refresh) do not — CLAUDE.md's path, unlike .gitattributes's, is not a
+// package constant.
+func claudeBlockRemover(path string) func([]byte) ([]byte, bool, error) {
+	return func(existing []byte) ([]byte, bool, error) {
+		return render.WithoutClaudeBlock(path, existing)
 	}
-	return []Artifact{{Path: path, Existing: data, Present: true}}, nil
 }
 
 // gitAttributesResidue is para's block sitting in a .gitattributes with
-// `emit.gitattributes` off — the file as it should be once the block comes out.
+// `emit.gitattributes` off — the file as it should be once the block comes out,
+// or a removal when taking it out leaves nothing (R5-R7).
 //
-// It is an artifact whose Wanted is true and whose bytes are *shorter*, not a
-// removal, and only render decides what those bytes are. The off case lives
-// here rather than in render.For because For runs before anything has been read
-// from disk, and whether there is a block to remove is a question about the
-// file: with the key off and no file there, para has nothing to shorten and no
-// reason to create one.
+// The off case lives here rather than in render.For because For runs before
+// anything has been read from disk, and whether there is a block to remove is
+// a question about the file: with the key off and no file there, para has
+// nothing to shorten and no reason to create one.
 func (e *Env) gitAttributesResidue(in render.In) ([]Artifact, error) {
 	if len(in.Locator) != 0 || in.Config.EmitGitattributes {
 		// Not the root, or the key is on — in which case render.For already
@@ -82,44 +92,73 @@ func (e *Env) gitAttributesResidue(in render.In) ([]Artifact, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := e.read(path)
-	if err != nil {
+	a, err := e.blockResidue(path, render.WithoutGitAttributesBlock)
+	if err != nil || !a.Stale() {
 		return nil, err
 	}
-	if data == nil {
-		return nil, nil
-	}
-	shortened, found, err := render.WithoutGitAttributesBlock(data)
+	return []Artifact{a}, nil
+}
+
+// blockResidue is the one rule behind claudeResidue, gitAttributesResidue, and
+// claudeArtifact's off branch (R5-R7): read what is at path, take para's block
+// out through remove, and return the artifact apply already knows how to act
+// on — a removal when taking the block out leaves nothing (R6), a shortened
+// write when it leaves something (R5), or an artifact that compares equal to
+// itself (Stale() false) when there is no file there or no block to take
+// (R7). It never returns a nil artifact: claudeArtifact needs exactly one per
+// location, stale or not, and residue's two callers filter on Stale()
+// themselves rather than each repeating the no-op shape.
+//
+// remove is WithoutClaudeBlock or WithoutGitAttributesBlock, each already
+// closed over the markers and the path its file's block lives at — the one
+// thing this function does not need to know, because render owns what the
+// markers are.
+func (e *Env) blockResidue(path string, remove func([]byte) ([]byte, bool, error)) (Artifact, error) {
+	existing, err := e.read(path)
 	if err != nil {
-		return nil, err
+		return Artifact{}, err
+	}
+	if existing == nil {
+		return Artifact{Path: path}, nil
+	}
+	shortened, found, err := remove(existing)
+	if err != nil {
+		return Artifact{}, err
 	}
 	if !found {
-		// Somebody else's .gitattributes, or one para has already shortened.
-		return nil, nil
+		// Somebody else's file, or one para has already shortened: there is
+		// nothing to remove, so the target is what is already there.
+		return Artifact{Path: path, Existing: existing, Derived: existing, Present: true, Wanted: true}, nil
 	}
-	return []Artifact{{Path: path, Derived: shortened, Existing: data, Present: true, Wanted: true}}, nil
+	if len(shortened) == 0 {
+		return Artifact{Path: path, Existing: existing, Present: true}, nil
+	}
+	return Artifact{Path: path, Derived: shortened, Existing: existing, Present: true, Wanted: true}, nil
 }
 
 // WriteGitAttributes brings the root's .gitattributes into line with
-// `emit.gitattributes` and reports whether it wrote it.
+// `emit.gitattributes` and reports what it wrote and what it removed — a
+// removal is reachable now that an emptied block-scoped file is deleted
+// rather than left behind (R6), so unlike a plain write list this cannot drop
+// the second return value the way a caller only expecting a write could.
 //
 // It is the write path's half of the same rule gitAttributesResidue is
 // rebuild's half of, and it is one file at one known location — so a `config
 // set` of the key can finish the job rather than leaving a tree that needs a
 // rebuild, which is what every other config key that decides a file's contents
 // already does (§6.1's precedent, §2.3's cost test).
-func (e *Env) WriteGitAttributes() (wrote []string, err error) {
+func (e *Env) WriteGitAttributes() (wrote, removed []string, err error) {
 	cfg, err := e.Resolver.RenderConfig(nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	path, err := render.GitAttributes.Path(render.In{})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	data, err := e.read(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var artifacts []Artifact
@@ -127,15 +166,14 @@ func (e *Env) WriteGitAttributes() (wrote []string, err error) {
 		in := render.In{Config: cfg, Existing: map[string][]byte{path: data}}
 		derived, err := render.GitAttributes.Render(in)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		artifacts = []Artifact{{Path: path, Derived: derived, Existing: data, Present: data != nil, Wanted: true}}
 	} else if artifacts, err = e.gitAttributesResidue(render.In{Config: cfg}); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	wrote, _, err = e.apply(artifacts, false)
-	return wrote, err
+	return e.apply(artifacts, false)
 }
 
 // ClaudeSurface derives the CLAUDE.md at every one of the eight locations that
@@ -180,7 +218,12 @@ func (e *Env) ClaudeSurface() ([]Artifact, error) {
 }
 
 // claudeArtifact is one location's CLAUDE.md: the bytes it should hold, or —
-// when the surface is off there — the fact that it should not exist.
+// when the surface is off there — the file with para's block taken out of it
+// (R5-R7), through the same blockResidue rule `rebuild.Run`'s residue uses.
+// `add skill` and `config set emit.claude` reach this through
+// WriteClaudeSurface, so a foreign CLAUDE.md must survive them exactly as it
+// survives a full `rebuild` — the bug para-0o6 reports is this path taking a
+// whole file that held content para never wrote.
 //
 // The config is still asked for per location even though the two `emit.claude`
 // keys answer with the root's value wherever they are asked (see
@@ -197,17 +240,21 @@ func (e *Env) claudeArtifact(loc locator.Locator, rules []string) (Artifact, err
 	if err != nil {
 		return Artifact{}, err
 	}
+
+	if !render.HasClaude(loc, cfg) {
+		return e.blockResidue(path, claudeBlockRemover(path))
+	}
+
 	existing, err := e.read(path)
 	if err != nil {
 		return Artifact{}, err
 	}
-	a := Artifact{Path: path, Existing: existing, Present: existing != nil}
-
-	if !render.HasClaude(loc, cfg) {
-		return a, nil
+	a := Artifact{Path: path, Existing: existing, Present: existing != nil, Wanted: true}
+	in := render.In{Locator: loc, Config: cfg, Rules: rules}
+	if existing != nil {
+		in.Existing = map[string][]byte{path: existing}
 	}
-	a.Wanted = true
-	if a.Derived, err = render.Claude.Render(render.In{Locator: loc, Config: cfg, Rules: rules}); err != nil {
+	if a.Derived, err = render.Claude.Render(in); err != nil {
 		return Artifact{}, err
 	}
 	return a, nil

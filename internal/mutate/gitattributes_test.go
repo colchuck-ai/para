@@ -12,23 +12,25 @@ import (
 )
 
 // TestConfigSetEmitGitattributesOffRemovesTheBlock: a command that finishes
-// successfully must not leave doctor red. Turning the key off shortens the file
-// in the same command, exactly as turning `emit.claude` off removes the eight
-// CLAUDE.md files in the command that turns it off.
+// successfully must not leave doctor red. Turning the key off takes the block
+// out in the same command, exactly as turning `emit.claude` off removes para's
+// block from the eight CLAUDE.md files in the command that turns it off. This
+// file holds nothing but the block, so taking it out empties the file, and an
+// empty file is deleted (R6) rather than left behind.
 func TestConfigSetEmitGitattributesOffRemovesTheBlock(t *testing.T) {
 	root := treeWithSkill(t)
 	e := env(t, root)
 
 	res := setClaude(t, e, root, "emit.gitattributes", ptoml.Bool(false))
 
-	if !slices.Contains(res.Wrote, ".gitattributes") {
-		t.Errorf("wrote %v, want .gitattributes among them", res.Wrote)
+	if !slices.Contains(res.Removed, ".gitattributes") {
+		t.Errorf("removed %v, want .gitattributes among them", res.Removed)
 	}
-	if slices.Contains(res.Removed, ".gitattributes") {
-		t.Errorf("removed %v; para owns the block, not the file", res.Removed)
+	if slices.Contains(res.Wrote, ".gitattributes") {
+		t.Errorf("wrote %v; the block was its only content, so it should be gone", res.Wrote)
 	}
-	if got := read(t, root, ".gitattributes"); got != "" {
-		t.Errorf(".gitattributes = %q, want it emptied", got)
+	if exists(t, root, ".gitattributes") {
+		t.Error(".gitattributes survived a removal that emptied it")
 	}
 	assertClean(t, root)
 }

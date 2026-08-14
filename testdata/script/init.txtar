@@ -140,20 +140,20 @@ stderr 'error: project\.nope does not exist'
 #
 # Phase 13 left this as a debt: turning the key off wrote a config file and left
 # §9's block in a file nothing removed and nothing reported. Para owns the block
-# and the repository owns every other line (§2.2), so the repair is a shorter
-# file rather than a deleted one — and it happens in the command that turns the
-# key off, because a command that succeeds and leaves `doctor` red is not a
-# command that finished.
+# and the repository owns every other line (§2.2) — and here the block is the
+# whole file, so taking it out empties the file and it is deleted (R6) in the
+# same command that turns the key off, because a command that succeeds and
+# leaves `doctor` red is not a command that finished.
 grep '^# para:begin' .gitattributes
 exec para config set emit.gitattributes false
-stdout '^ +\.gitattributes$'
-! grep 'para:begin' .gitattributes
+stdout '^removed +\.gitattributes$'
+! exists .gitattributes
 exec para doctor
 stdout '^clean$'
 exec para rebuild
 stdout '^nothing to rewrite'
 
-# Back on, and the block returns to a file that no longer has one.
+# Back on, and the block returns in a fresh file — R6 deleted the old one.
 exec para config set emit.gitattributes true
 stdout '^ +\.gitattributes$'
 grep '^# para:begin' .gitattributes

@@ -84,7 +84,8 @@ func (e *Env) refreshSurface(res Result) (Result, error) {
 // has just rewritten the config.toml its own resolver cached, so asking that
 // one would answer with the value the command was called to change.
 func (e *Env) refreshGitAttributes(res Result) (Result, error) {
-	wrote, err := rebuild.NewEnv(e.Root).WriteGitAttributes()
+	wrote, removed, err := rebuild.NewEnv(e.Root).WriteGitAttributes()
 	res.Wrote = append(res.Wrote, wrote...)
+	res.Removed = append(res.Removed, removed...)
 	return res, err
 }

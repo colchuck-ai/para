@@ -64,6 +64,11 @@ func uniquePaths(paths []string) []string {
 // its own word — `linked …/para-signups-report → ../../.agents/skills/…` — for
 // the good reason that a link is the one thing para writes whose content is a
 // path rather than bytes.
+//
+// Both verbs are reachable for CLAUDE.md and .gitattributes now that
+// `emit.claude` and `emit.gitattributes` off shorten a block-scoped file
+// rather than always deleting it (§6.1, §9): a block taken out of an otherwise
+// non-empty file is a write, and one that empties the file is a removal.
 func printEffects(out io.Writer, res mutate.Result) {
 	printWrote(out, res.Wrote)
 	printLabelled(out, "removed", res.Removed)

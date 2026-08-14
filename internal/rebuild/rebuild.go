@@ -95,7 +95,9 @@ type Result struct {
 	// slash-separated path — the form §23 prints.
 	Changed []string
 	// Removed names every generated file deleted because nothing generates it
-	// any more: a CLAUDE.md left by turning `emit.claude` off (§6.1). It is
+	// any more: a block-scoped file (CLAUDE.md or .gitattributes, §2.2, §6.1,
+	// §9) whose block was its only content, left behind by turning its
+	// `emit.*` key off and then emptied by taking the block out (R6). It is
 	// separate from Changed because the two need different words — "rewrote"
 	// beside a file that is gone would be a lie.
 	Removed []string
@@ -330,9 +332,10 @@ type Artifact struct {
 	// differs from every possible answer.
 	Present bool
 	// Wanted reports whether the file should exist. It is false for residue —
-	// a CLAUDE.md left behind by turning `emit.claude` off (§6.1) — and that is
-	// the same question §10 asks, read the other way: what would be written now
-	// is nothing, and a file that is there differs from nothing.
+	// a block-scoped file (CLAUDE.md or .gitattributes, §2.2, §9) whose block
+	// was its only content, so taking the block out leaves nothing (R6) — and
+	// that is the same question §10 asks, read the other way: what would be
+	// written now is nothing, and a file that is there differs from nothing.
 	//
 	// §10's finding set is closed and has no row for residue, which is the
 	// argument for folding it into `stale-projection` rather than inventing a

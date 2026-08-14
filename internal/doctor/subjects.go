@@ -384,17 +384,16 @@ func (s *scan) checkStale(sub rebuild.Subject) error {
 // out, and the others follow its shape.
 func staleDetail(a rebuild.Artifact) string {
 	if !a.Wanted {
-		// Residue: the file is there and nothing generates it any more (§6.1).
-		// §10 has no row for that and does not need one — "differs from what
-		// would be written now" covers it, since what would be written now is
-		// nothing, and `rebuild` is the same repair that row already promises.
-		//
-		// The sentence is mirror's, because the mirror says it about itself in
-		// the same report and about the same cause. CLAUDE.md is the only file
-		// that can be residue today; `emit.gitattributes` looks like a second
-		// and is not, because para owns a block inside that file rather than
-		// the file (§9) — so turning it off shortens a file rather than
-		// removing one, and this branch stays the one case it names.
+		// Residue: a block-scoped file whose block was its only content, so
+		// removing it left nothing (R6). §10 has no row for that and does not
+		// need one — "differs from what would be written now" covers it, since
+		// what would be written now is nothing, and `rebuild` is the same
+		// repair that row already promises.
+		if baseName(a.Path) == ".gitattributes" {
+			return residueDetail("gitattributes")
+		}
+		// CLAUDE.md: the sentence is mirror's, because the mirror says it about
+		// itself in the same report and about the same cause (R13, unchanged).
 		return mirror.ResidueDetail
 	}
 	if !a.Present {
@@ -413,16 +412,21 @@ func staleDetail(a rebuild.Artifact) string {
 	case "README.md", "SKILL.md":
 		return "differs from state.toml"
 	case "CLAUDE.md":
-		return "differs from the derived rules"
-	case ".gitattributes":
 		// Which of the two ways this file can drift is visible in the bytes
-		// themselves: with `emit.gitattributes` off, what para would write no
-		// longer has a block in it. Saying so is the same courtesy the residue
+		// themselves: with `emit.claude` off, what para would write no longer
+		// has a block in it (R12). Saying so is the same courtesy the residue
 		// line pays — the repair is `rebuild` either way, but the cause is a
 		// config key rather than a hand edit, and the reader should not have to
 		// go and check which.
+		if _, found, err := render.WithoutClaudeBlock(a.Path, a.Derived); err == nil && !found {
+			return blockOffDetail("claude")
+		}
+		return "differs from the derived rules"
+	case ".gitattributes":
+		// Same courtesy, same cause, same sentence (R12) — see the CLAUDE.md
+		// case above.
 		if _, found, err := render.WithoutGitAttributesBlock(a.Derived); err == nil && !found {
-			return "still holds para's block; emit.gitattributes is off"
+			return blockOffDetail("gitattributes")
 		}
 		return "differs from what para would write"
 	default:
@@ -431,6 +435,23 @@ func staleDetail(a rebuild.Artifact) string {
 		}
 		return "differs from what para would write"
 	}
+}
+
+// blockOffDetail is R12's sentence, shared rather than duplicated per file:
+// CLAUDE.md and .gitattributes say exactly the same thing about themselves for
+// exactly the same reason — the key named is off and this copy still holds the
+// block that should come out — so one sentence with the key as a variable, not
+// two constants that could drift apart.
+func blockOffDetail(key string) string {
+	return fmt.Sprintf("still holds para's block; emit.%s is off", key)
+}
+
+// residueDetail is R13's sentence for a block-scoped file that no longer
+// exists because its block was the whole of it: mirror.ResidueDetail spells
+// it out for CLAUDE.md, and this is the same sentence for any other
+// block-scoped file, with the key as a variable rather than a second constant.
+func residueDetail(key string) string {
+	return fmt.Sprintf("should not exist; emit.%s is off", key)
 }
 
 func baseName(rel string) string {

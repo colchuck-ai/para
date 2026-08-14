@@ -10,6 +10,7 @@ import (
 	"github.com/colchuck-ai/para/internal/clock"
 	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/doctor"
+	"github.com/colchuck-ai/para/internal/mdfile"
 	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/mutate"
 	"github.com/colchuck-ai/para/internal/ptoml"
@@ -311,6 +312,53 @@ func TestSkillMutationOnATreeWithTheSurfaceOffWritesNothingExtra(t *testing.T) {
 	}
 	if lstatExists(root, ".claude") {
 		t.Error(".claude/ was created with emit.claude off")
+	}
+}
+
+// TestSkillMutationWithTheSurfaceOffPreservesAForeignClaudeFile is para-0o6
+// itself: a skill mutation refreshes the surface through WriteClaudeSurface
+// (§6.1), which used to treat any CLAUDE.md at a bare-off location as pure
+// residue and delete it outright — including content para never wrote. A
+// foreign CLAUDE.md must survive a skill mutation exactly as it survives a
+// full `rebuild`.
+func TestSkillMutationWithTheSurfaceOffPreservesAForeignClaudeFile(t *testing.T) {
+	root := treeWithSkill(t)
+	foreign := "<!-- BEGIN BEADS INTEGRATION -->\nSee `bd prime` for workflow context.\n<!-- END BEADS INTEGRATION -->\n"
+	writeFiles(t, root, map[string]string{"CLAUDE.md": foreign})
+
+	res, err := env(t, root).Note(loc(t, "skills.report"), "still useful", "")
+	if err != nil {
+		t.Fatalf("Note: %v", err)
+	}
+
+	if slices.Contains(res.Removed, "CLAUDE.md") {
+		t.Errorf("Removed = %v, want CLAUDE.md left alone", res.Removed)
+	}
+	if got := read(t, root, "CLAUDE.md"); got != foreign {
+		t.Errorf("CLAUDE.md =\n%s\nwant it byte-identical to\n%s", got, foreign)
+	}
+}
+
+// TestConfigSetEmitClaudeOffShortensAForeignClaudeFile is the `config set`
+// half of the same bug: turning `emit.claude` off after it was on must take
+// only para's block out of a CLAUDE.md that also holds foreign content, not
+// delete the file (R5).
+func TestConfigSetEmitClaudeOffShortensAForeignClaudeFile(t *testing.T) {
+	root := treeWithSkill(t)
+	setClaude(t, env(t, root), root, config.KeyEmitClaude, ptoml.Bool(true))
+	foreign := "<!-- BEGIN BEADS INTEGRATION -->\nSee `bd prime` for workflow context.\n<!-- END BEADS INTEGRATION -->\n"
+	writeFiles(t, root, map[string]string{"CLAUDE.md": foreign + read(t, root, "CLAUDE.md")})
+
+	res := setClaude(t, env(t, root), root, config.KeyEmitClaude, ptoml.Bool(false))
+
+	if slices.Contains(res.Removed, "CLAUDE.md") {
+		t.Errorf("Removed = %v, want CLAUDE.md shortened rather than deleted", res.Removed)
+	}
+	if got := read(t, root, "CLAUDE.md"); got != foreign {
+		t.Errorf("CLAUDE.md =\n%s\nwant only the foreign block\n%s", got, foreign)
+	}
+	if strings.Contains(read(t, root, "CLAUDE.md"), mdfile.BeginMarker) {
+		t.Error("CLAUDE.md still holds para's block after emit.claude turned off")
 	}
 }
 
