@@ -365,9 +365,32 @@ somewhere you can look.
 ### 2.1 The rule
 
 > **Para owns frontmatter. Humans own bodies.** No exceptions. Files that are wholly generated —
-> `ACTIVITY.md`, `MEASUREMENTS.csv`, `CLAUDE.md`, rule files — have no human-authored body to own.
+> `ACTIVITY.md`, `MEASUREMENTS.csv`, rule files — have no human-authored body to own.
 
 ### 2.2 Every generated file
+
+Two independent questions sort a generated file, and they decide different things.
+
+**Whether the file is a pure projection of `.para/` state, with no room for anyone else's content, is
+the *body* question.** It decides whether there is human-owned prose for para to leave alone, and
+nothing else — not merge posture, not delete-versus-shorten. Letting it decide those too would measure
+where the bytes come *from*, when the property that actually decides them is who else writes to the
+*path*.
+
+**Whether any tool other than para writes to this path is the *interop* question, and it is the one
+that decides merge posture and delete-versus-shorten.** If yes, para owns a marker-delimited block and
+never the whole file: appending its block to whatever is there, shortening to just the block on
+removal, and deleting only when shortening would leave nothing. If no, para owns the file outright and
+either a `merge=ours` posture or an outright removal is safe, because nothing else has a stake in the
+bytes.
+
+`AGENTS.md` landed on the block-and-append side by accident: it has human prose, so nobody had to ask
+the interop question to get its treatment right. `CLAUDE.md` did not — it has no prose of its own, so
+the body question alone put it beside `ACTIVITY.md` and gave it `merge=ours`, and that was wrong: a
+tool as ordinary as an issue tracker's own setup command writes a marker-delimited block to the same
+path, and `merge=ours` silently discarded it on every merge. Applied, the interop question sorts every
+row without exception: `AGENTS.md`, `.gitattributes`, and `CLAUDE.md` are shared paths and get blocks;
+everything else is a path para alone writes, and keeps what it has.
 
 | File | Generated from | Human-owned part | Merge posture (§9) |
 | --- | --- | --- | --- |
@@ -375,7 +398,7 @@ somewhere you can look.
 | `ACTIVITY.md` | the entity's own journal (§3.5) | none | `merge=ours` |
 | `MEASUREMENTS.csv` | measurement events in the journal (§4.4) | none | `merge=ours` |
 | `AGENTS.md` (root + 4 buckets + `archive/{projects,areas,resources}`) | a delimited para-owned block | everything outside the markers (§6) | normal; your prose is at stake |
-| `CLAUDE.md` | wholly — `@AGENTS.md` plus one `@` import per derived rule (§6.1) | none | `merge=ours` |
+| `CLAUDE.md` | a delimited para-owned block | everything outside the markers (§6) | normal; your prose is at stake |
 | `.claude/skills/para-X` | wholly — one mirror per skill, if `emit.claude` (§6.1) | none | `merge=ours` in `copy` mode; n/a for a symlink |
 | `SKILL.md` | frontmatter ← the skill's `state.toml` | the body, plus `scripts/`, `references/`, anything else in the directory | normal; your prose is at stake |
 | `.agents/rules/para-X.md` | wholly ← the skill's `state.toml` | none | `merge=ours` |
@@ -831,18 +854,31 @@ emit.claude = true
 
 The flag is named for the surface, not for a file, because it emits more than one thing.
 
-**`CLAUDE.md`** is wholly para's, and it is a pointer file — no prose of its own. It carries
-`@AGENTS.md` plus one `@` import per derived rule file:
+**`CLAUDE.md`** is marker-scoped, the same split §6 already gives `AGENTS.md` — because `CLAUDE.md` is
+a path other tools write to as readily as para does, and a whole-file claim on a shared path is wrong
+regardless of how little of the file para's half turns out to be. Para owns the block between the
+markers and never touches a byte outside them; inside, it is a pointer file with no prose of its own,
+carrying `@AGENTS.md` plus one `@` import per derived rule file:
 
 ```markdown
+<!-- para:begin — generated, do not edit; run `para rebuild` -->
 @AGENTS.md
 @.agents/rules/para-signups-report.md
 @.agents/rules/para-commit-style.md
+<!-- para:end -->
 ```
 
 Rules reach Claude Code by import rather than by being copied or linked anywhere. The import list
 regenerates from the same scope walk that produces the rules (§5.4), so adding or removing a skill
 keeps it correct with no separate bookkeeping, and there is no second copy of a rule to drift.
+
+**`emit.claude` changes what it answers, not what it does.** Before, the flag answered "does
+`CLAUDE.md` exist" — a whole-file question that only made sense when para believed it was the file's
+only writer. Marker-scoped, it answers "is para's block present". The two questions have the same
+answer in a tree where para is the only writer, which is why turning the flag on or off there is
+unobservable at the file-presence level — an emptied file is deleted (§9 records the general rule,
+which `emit.gitattributes` follows too). Where something else has written to the path, they diverge:
+turning the flag off removes only para's lines, and whatever else was there stays.
 
 **Skills are mirrored into `.claude/skills/`**, because an import cannot express a directory that
 ships scripts and references. *How* they are mirrored is a second knob:
@@ -1060,9 +1096,12 @@ The one thing para writes for git's benefit is `.gitattributes`, on by default a
 # wholly generated: any side is as good as any other, because `para rebuild` produces the truth
 **/ACTIVITY.md          merge=ours linguist-generated=true
 **/MEASUREMENTS.csv     merge=ours linguist-generated=true
-**/CLAUDE.md            merge=ours linguist-generated=true
 .agents/rules/**/*.md   merge=ours linguist-generated=true
 ```
+
+`CLAUDE.md` and `AGENTS.md` carry no line here, and for the same reason: git attributes are per-file
+and cannot be scoped to a marker range, so no whole-file attribute is correct for a path para shares
+with something else (§2.2).
 
 Two arguments, both narrow enough to be safe:
 
@@ -1078,8 +1117,16 @@ for a `core.symlinks=false` checkout (§6.1). Copied skills, being ordinary gene
 `merge=ours` line above.
 
 **Partly generated files are deliberately left to conflict normally** — `README.md`, `SKILL.md`,
-`AGENTS.md`. Their human-authored bodies are at stake, and no automatic rule may choose between two
-people's prose.
+`AGENTS.md`, `CLAUDE.md`. Their human-authored bodies are at stake, and no automatic rule may choose
+between two people's prose.
+
+**Turning a block-scoped file's flag off deletes the file once the block's removal empties it.** This
+applies uniformly to `CLAUDE.md` (`emit.claude`) and `.gitattributes` (`emit.gitattributes`). The
+alternative — leave a zero-byte file behind — sounds safer but isn't: a file with nothing in it carries
+no information, so deleting it destroys nothing, while *not* deleting it means every tree that ever
+turns the flag off accumulates an empty file nothing will remove. Deletion happens only when removing
+para's block leaves the file empty; a file still holding a third party's content is only ever
+shortened, never deleted, whatever the flag says.
 
 The resolution procedure, which belongs in `AGENTS.md`'s generated block so an agent knows it:
 **resolve the truth files and the journals, then run `para rebuild`.** Never hand-resolve a
@@ -1188,10 +1235,10 @@ Settled in the session that produced this half. Nothing structural is open.
 - **Areas and resources lose their status field** — location is archival state.
 - **`AGENTS.md` only at root, the four buckets, and `archive/{projects,areas,resources}`**, with a
   delimited para-owned block.
-- **`emit.claude` is one flag for one concern** — Claude Code compatibility, off by default. It emits
-  `CLAUDE.md` (pointing at `AGENTS.md` and `@`-importing every derived rule) and one symlink per skill
-  into `.claude/skills/`. Rules travel by import, not by symlink, so the only mirrored things are the
-  ones an import cannot express (§6.1).
+- **`emit.claude` is one flag for one concern** — Claude Code compatibility, off by default. It writes
+  a block into `CLAUDE.md` (pointing at `AGENTS.md` and `@`-importing every derived rule) and one
+  symlink per skill into `.claude/skills/`. Rules travel by import, not by symlink, so the only
+  mirrored things are the ones an import cannot express (§6.1).
 - **`emit.claude-skills` chooses `symlink` (default) or `copy`.** Symlink cannot drift and does not
   double the bytes; copy is the escape hatch where links do not survive checkout. **Per-machine
   auto-detection was rejected** — it would make the tree's shape depend on which machine last ran
@@ -1232,6 +1279,7 @@ and a future reader deserves both sides.
 | Git is a precondition. | It is not, and para never invokes git. | Nothing. v2's precondition guarded a projection-merge problem that `merge=ours` now answers. |
 | One `entity.md` per entity, fields in its frontmatter. | Two truth files — `state.toml` and `config.toml` — and a generated `README.md`. | Three files where there was one, and a `config.toml` that is usually empty. Bought: policy separable from identity at any level of the tree, and a README body that is yours. |
 | Nouns partition the command surface: `para <noun> <verb> <locator>`. | The noun is restored, but as an argument after the verb, not a leading sub-command: `para <verb> <noun> <chain>`. | A seventeen-word reserved list, stubs no longer addressable, and one lookahead rule in `list`. Bought: per-kind flags, per-kind help, per-kind completion, and a kind filter on `list`. |
+| `CLAUDE.md` wholly generated, no body to own. | `CLAUDE.md` marker-scoped, exactly like `AGENTS.md`. | A marker pair in a pointer file, and `emit.claude` no longer implies the file's absence. Bought: composability with every other tool that writes to the same path, and no silent `merge=ours` loss. |
 
 **This one has an intermediate step the other rows don't.** v4 first reversed v2's row above to a bare
 `para <verb> <locator>` — no noun at all — recorded in §25 as "Verb-first with locators, not
@@ -1241,6 +1289,10 @@ as a sub-command choosing among per-noun verbs; this amendment's noun follows th
 argument, because the locator still carries the kind for the machine — the noun's job is partitioning
 the help, the flags, and the completions for a reader, which §25 never weighed when it dropped the
 noun the first time.
+
+**The `CLAUDE.md` row is not a v2 reversal either — v2 predates Claude Code compatibility (§11), so
+there is no v2 position to reverse.** It sits in this table anyway because the shape — what changed,
+what it costs, what it buys — is the same shape as every other row.
 
 Kept from v2 without amendment, so nobody re-litigates them: location is kind; kind, id, parent, and
 locator all derived from the path and written nowhere else; one locator form; setting a field to its current value writes nothing; pushing
