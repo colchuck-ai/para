@@ -143,7 +143,7 @@ func buildSpecs() []Spec {
 		{
 			Key: KeyEmitClaude, Type: TypeBool,
 			def: ptoml.Bool(false), hasDef: true,
-			Doc: "emit the Claude Code compatibility surface: CLAUDE.md and the .claude/skills mirror",
+			Doc: "emit the Claude Code compatibility surface: a block in CLAUDE.md and the .claude/skills mirror",
 		},
 		{
 			Key: KeyEmitClaudeSkills, Type: TypeEnum, Enum: []string{"symlink", "copy"},

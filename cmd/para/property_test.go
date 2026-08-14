@@ -12,6 +12,7 @@ import (
 
 	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/render"
 )
 
 // This file is the plan's Phase 14 task 2, the four properties carried forward
@@ -258,6 +259,125 @@ func TestRemoveKeepFilesRestoresThePreParaDirectory(t *testing.T) {
 	}
 	if len(rep.Findings) != 1 {
 		t.Errorf("doctor reported %d findings, want exactly the kept directory", len(rep.Findings))
+	}
+}
+
+// foreignClaudeContent is what a third-party tool's own marker-delimited block
+// looks like in CLAUDE.md — the exact shape para-0o6 observed (beads' `bd
+// setup claude` writes one) — with rel folded in so a location's content is
+// never confusable with another's.
+func foreignClaudeContent(rel string) string {
+	return "<!-- BEGIN THIRD PARTY INTEGRATION -->\n" +
+		"Team rule for " + rel + ": run `make check` before every commit.\n" +
+		"<!-- END THIRD PARTY INTEGRATION -->\n"
+}
+
+// assertForeignClaudeSurvives checks that every location's CLAUDE.md still
+// starts with the exact bytes it was seeded with in foreign (keyed by path
+// relative to root). It is a prefix check rather than an equality check
+// because para's own block, once emit.claude is on, is appended after it.
+func assertForeignClaudeSurvives(t *testing.T, root string, foreign map[string]string, when string) {
+	t.Helper()
+	for rel, want := range foreign {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatalf("%s: reading %s: %v", when, rel, err)
+		}
+		if !strings.HasPrefix(string(data), want) {
+			t.Errorf("%s: %s does not still start with the foreign content it was seeded with:\ngot:\n%s\nwant prefix:\n%s",
+				when, rel, data, want)
+		}
+	}
+}
+
+// TestClaudeForeignContentSurvivesWipeAndRebuildAtAllEightLocations is R17: a
+// third party's content outside para's markers in CLAUDE.md is byte-identical
+// across wipe -> rebuild, at the root and all seven bucket locations, in both
+// emit.claude states. Eight locations and not just the root, because upToRoot
+// (internal/render/claude.go:62) makes the bucket files' block content differ
+// from the root's, and a block-splice bug that only shows up where the prefix
+// is non-empty is exactly what this property exists to catch.
+//
+// The two subtests are not symmetric in what they exercise. With the surface
+// on, CLAUDE.md is rewritten at every checkpoint, so the prefix check is
+// actually exercising AppendDelimited/ReplaceDelimited's splice. With the
+// surface off, HasClaude is false and CLAUDE.md is never touched at all — that
+// subtest instead proves doctor and wipeProjections+rebuild leave a
+// third-party-only file alone at all eight locations, which is the state
+// para-0o6's report first reproduced the bug in (§ R11).
+func TestClaudeForeignContentSurvivesWipeAndRebuildAtAllEightLocations(t *testing.T) {
+	if !testHooksEnabled {
+		t.Skip("needs -tags para_testhooks; run `make test`")
+	}
+
+	for _, emitClaude := range []bool{false, true} {
+		name := "emit.claude off"
+		if emitClaude {
+			name = "emit.claude on"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := filepath.Join(t.TempDir(), "brain")
+			if out, code := runParaIn(t, filepath.Dir(root), nil, "init", "brain"); code != 0 {
+				t.Fatalf("init: exit %d:\n%s", code, out)
+			}
+			for _, args := range [][]string{
+				{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+				{"add", "skill", "commit-style", "--name", "Commit style", "--description", "when writing a commit message"},
+			} {
+				if out, code := runPara(t, root, nil, args...); code != 0 {
+					t.Fatalf("%v: exit %d:\n%s", args, code, out)
+				}
+			}
+
+			// Seed every one of the eight locations' CLAUDE.md with a third
+			// party's own content, before emit.claude is ever turned on — the
+			// order para-0o6's report reproduced the bug in.
+			foreign := map[string]string{}
+			for _, loc := range render.AgentsLocations() {
+				segs := append(slices.Clone(loc), "CLAUDE.md")
+				rel := filepath.Join([]string(segs)...)
+				content := foreignClaudeContent(rel)
+				writeFileAt(t, filepath.Join(root, rel), content)
+				foreign[rel] = content
+			}
+			assertDoctorClean(t, root, "after seeding foreign CLAUDE.md content, emit.claude off")
+			assertForeignClaudeSurvives(t, root, foreign, "after seeding, before emit.claude is touched")
+
+			if emitClaude {
+				out, code := runPara(t, root, nil, "config", "set", "emit.claude", "true")
+				if code != 0 {
+					t.Fatalf("config set emit.claude true: exit %d:\n%s", code, out)
+				}
+				assertDoctorClean(t, root, "after turning emit.claude on over foreign content")
+				assertForeignClaudeSurvives(t, root, foreign, "right after turning emit.claude on")
+			}
+
+			// Force every CLAUDE.md's block to be rewritten: adding a skill
+			// changes the derived-rule set and therefore every import list
+			// (§6.1: "a skill mutation keeps every CLAUDE.md correct"). With
+			// emit.claude off this changes nothing about CLAUDE.md at all,
+			// which is exactly the other half of the property.
+			out, code := runPara(t, root, nil,
+				"add", "skill", "probe", "--name", "Probe", "--description", "forces every CLAUDE.md block to be rewritten")
+			if code != 0 {
+				t.Fatalf("add skill probe: exit %d:\n%s", code, out)
+			}
+			assertDoctorClean(t, root, "after a skill mutation")
+			assertForeignClaudeSurvives(t, root, foreign, "after a skill mutation rewrote every CLAUDE.md block")
+
+			// The wipe -> rebuild half of the property: wipeProjections no
+			// longer touches CLAUDE.md (R16), so this exercises every other
+			// renderer's write-from-nothing path while CLAUDE.md's own path is
+			// exercised by rebuild finding its content already correct.
+			wipeProjections(t, root)
+			out, code = runPara(t, root, nil, "rebuild")
+			if code != 0 {
+				t.Fatalf("rebuild: exit %d:\n%s", code, out)
+			}
+			assertDoctorClean(t, root, "after wiping projections and rebuilding")
+			assertForeignClaudeSurvives(t, root, foreign, "after wipe -> rebuild")
+		})
 	}
 }
 
@@ -781,6 +901,11 @@ func assertDoctorClean(t *testing.T, root, when string) {
 
 // wipeProjections deletes every wholly generated file in the tree, which is the
 // state §2.4 calls "a merge resolved truth and left the projections wrong".
+//
+// CLAUDE.md is not one of these: it is marker-scoped rather than wholly
+// generated (§6.1), so wiping it the way a wholly generated file is wiped
+// would delete third-party content it has no business touching. Its own
+// block-preservation property is asserted separately, at all eight locations.
 func wipeProjections(t *testing.T, root string) {
 	t.Helper()
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -788,7 +913,7 @@ func wipeProjections(t *testing.T, root string) {
 			return err
 		}
 		switch filepath.Base(path) {
-		case "ACTIVITY.md", "MEASUREMENTS.csv", "CLAUDE.md":
+		case "ACTIVITY.md", "MEASUREMENTS.csv":
 			return os.Remove(path)
 		}
 		return nil
