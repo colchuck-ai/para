@@ -5,6 +5,5 @@
 # wholly generated: any side is as good as any other, because `para rebuild` produces the truth
 **/ACTIVITY.md          merge=ours linguist-generated=true
 **/MEASUREMENTS.csv     merge=ours linguist-generated=true
-**/CLAUDE.md            merge=ours linguist-generated=true
 .agents/rules/**/*.md   merge=ours linguist-generated=true
 # para:end

@@ -234,11 +234,15 @@ created = "2026-01-01T00:00:00Z"
 
 -- brain/.agents/skills/.keep --
 -- want-root-claude.md --
+<!-- para:begin — generated, do not edit; run `para rebuild` -->
 @AGENTS.md
 @.agents/rules/para-signups-report.md
+<!-- para:end -->
 -- want-bucket-claude.md --
+<!-- para:begin — generated, do not edit; run `para rebuild` -->
 @AGENTS.md
 @../.agents/rules/para-signups-report.md
+<!-- para:end -->
 -- hand-edited.md --
 hand-edited
 -- materialised-link --

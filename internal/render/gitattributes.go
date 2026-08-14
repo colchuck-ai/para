@@ -41,7 +41,6 @@ const gitAttributesBlock = `# journals: order lives in the data, so keeping both
 # wholly generated: any side is as good as any other, because ` + "`para rebuild`" + ` produces the truth
 **/ACTIVITY.md          merge=ours linguist-generated=true
 **/MEASUREMENTS.csv     merge=ours linguist-generated=true
-**/CLAUDE.md            merge=ours linguist-generated=true
 .agents/rules/**/*.md   merge=ours linguist-generated=true
 `
 
@@ -56,7 +55,7 @@ func (gitAttributesRenderer) Render(in In) ([]byte, error) {
 	// normal case, not a damaged one.
 	out, err := mdfile.AppendDelimited(mdfile.HashMarkers, in.existing(path), []byte(gitAttributesBlock))
 	if err != nil {
-		return nil, damagedBlock(err)
+		return nil, damagedBlock(path, err)
 	}
 	return out, nil
 }
@@ -69,10 +68,13 @@ func (gitAttributesRenderer) Render(in In) ([]byte, error) {
 // a directory, and from `para rebuild`, which touches dozens of files. The repair
 // is named because it is not obvious: para cannot fix this itself, precisely
 // because fixing it means deciding where a block it did not write ends.
-func damagedBlock(err error) error {
+//
+// Both .gitattributes and CLAUDE.md can hold a damaged block, so the path is a
+// parameter rather than the constant it used to be.
+func damagedBlock(path string, err error) error {
 	return paraerr.Wrap(paraerr.KindValidation, err, fmt.Sprintf(
 		"%s holds para's begin marker with no matching end marker — restore the marker, or delete every line from the begin marker down and let para write the block again",
-		gitAttributesFile))
+		path))
 }
 
 // WithoutGitAttributesBlock returns existing with para's block taken out, and
@@ -92,9 +94,17 @@ func damagedBlock(err error) error {
 // an empty one it was given, and the safe reading is that every line it did not
 // write is the repository's.
 func WithoutGitAttributesBlock(existing []byte) ([]byte, bool, error) {
-	out, found, err := mdfile.RemoveDelimited(mdfile.HashMarkers, existing)
+	return withoutBlock(mdfile.HashMarkers, gitAttributesFile, existing)
+}
+
+// withoutBlock is WithoutGitAttributesBlock's and WithoutClaudeBlock's shared
+// remover: RemoveDelimited, damagedBlock on error, and the same (bytes, found,
+// error) shape either file returns. One rule about what a damaged block means,
+// so the two files cannot drift into disagreeing about it.
+func withoutBlock(m mdfile.Markers, path string, existing []byte) ([]byte, bool, error) {
+	out, found, err := mdfile.RemoveDelimited(m, existing)
 	if err != nil {
-		return nil, false, damagedBlock(err)
+		return nil, false, damagedBlock(path, err)
 	}
 	return out, found, nil
 }
