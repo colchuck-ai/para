@@ -27,6 +27,11 @@ applies to, or names none and applies to all of them, and that scope is rendered
 routing file under `.agents/rules/`, one per skill. Those files are generated: to change where a
 skill applies, change the skill.
 
+A skill's own directory is named `para-<id>` — `.agents/skills/para-<id>/` — so the
+`.claude/skills/` mirror can never collide with a skill some other tool installed there. The
+skill's address is unprefixed (`skill.<id>`); `para add skill` prints the directory's real
+path so the two are never guessed.
+
 Three rules before you edit anything here:
 
 - The frontmatter of a `README.md` or a `SKILL.md` is generated and the body below it is yours.

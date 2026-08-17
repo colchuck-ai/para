@@ -209,6 +209,7 @@ func newAddCmd() *cobra.Command {
 func newAddNounCmd(kind kindmeta.Kind) *cobra.Command {
 	var f fieldFlags
 	var archived archivedFlag
+	var dryRun bool
 	const archivedWhy = "nothing is created under archive/"
 
 	cmd := &cobra.Command{
@@ -216,7 +217,8 @@ func newAddNounCmd(kind kindmeta.Kind) *cobra.Command {
 		Short: "create " + withArticle(kind.String()),
 		Long: "Create the " + kind.String() + " the chain names.\n\n" +
 			"\".\" is deliberately not accepted: it resolves to something that\n" +
-			"already exists, and add is for something that does not.",
+			"already exists, and add is for something that does not." +
+			addLongSuffix(kind),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := archived.check(archivedWhy); err != nil {
@@ -234,17 +236,52 @@ func newAddNounCmd(kind kindmeta.Kind) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := env.Add(loc, f.collect(cmd))
+			fields := f.collect(cmd)
+			var res mutate.Result
+			if dryRun {
+				res, err = env.AddDryRun(loc, fields)
+			} else {
+				res, err = env.Add(loc, fields)
+			}
 			if err != nil {
 				return err
 			}
-			printResult(cmd.OutOrStdout(), []string{fmt.Sprintf("added  %s  %s", entityLocatorString(res.Locator), res.Kind)}, res)
+			out := cmd.OutOrStdout()
+			path, err := res.Locator.Path()
+			if err != nil {
+				return err
+			}
+			printResult(out, []string{
+				fmt.Sprintf("added  %s  %s", entityLocatorString(res.Locator), res.Kind),
+				fmt.Sprintf("path   %s", path),
+			}, res)
+			if dryRun {
+				fmt.Fprintln(out, dryRunLine)
+			}
 			return nil
 		},
 	}
 	f.registerForKind(cmd, kind, true)
 	archived.registerRefused(cmd, archivedWhy)
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	return cmd
+}
+
+// addLongSuffix is the one noun-specific addition to add's otherwise
+// generic --help text: a skill's directory is prefixed para- on disk (R3,
+// internal/locator's skills.<id> case) so the .claude/skills/ mirror can
+// never collide with a skill some other tool put there, while the address
+// itself stays unprefixed. Nothing about that split is guessable from the
+// command or its output otherwise, so it is named here rather than left to
+// the `path` line to explain on its own (para-z93).
+func addLongSuffix(kind kindmeta.Kind) string {
+	if kind != kindmeta.KindSkill {
+		return ""
+	}
+	return "\n\n" +
+		"A skill's directory is named para-<id> under .agents/skills/ — the\n" +
+		"address stays skill.<id>. The prefix namespaces the .claude/skills/\n" +
+		"mirror; `added` prints the real path so the two are never guessed."
 }
 
 // newSetCmd implements `para set <noun> <chain> --field value […]` (R3),

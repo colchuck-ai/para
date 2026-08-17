@@ -71,6 +71,7 @@ $ para add project acme-migration --name 'Acme migration' \
     --status in-progress --priority high --due 2026-09-30 --tags consumer,kafka \
     --created 2026-01-05
 added  project.acme-migration  project
+path   projects/acme-migration
 
 wrote  projects/acme-migration/.para/state.toml
        projects/acme-migration/.para/config.toml

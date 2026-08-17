@@ -228,6 +228,7 @@ skills live here
 
 -- want-add-project.txt --
 added  project.acme-migration  project
+path   projects/acme-migration
 
 wrote  projects/acme-migration/.para/state.toml
        projects/acme-migration/.para/config.toml
@@ -271,6 +272,7 @@ start = "480/9000"
 target = "2000/12000"
 -- want-add-skill.txt --
 added  skill.signups-report  skill
+path   .agents/skills/para-signups-report
 
 wrote  .agents/skills/para-signups-report/.para/state.toml
        .agents/skills/para-signups-report/.para/config.toml
