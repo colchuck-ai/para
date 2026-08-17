@@ -340,7 +340,7 @@ func TestEditingASkillRefreshesACopiedMirror(t *testing.T) {
 func TestSkillMutationOnATreeWithTheSurfaceOffWritesNothingExtra(t *testing.T) {
 	root := treeWithSkill(t)
 
-	res, err := env(t, root).Note(loc(t, "skills.report"), "still useful", "")
+	res, err := env(t, root).Note(loc(t, "skills.report"), "still useful", "", false)
 	if err != nil {
 		t.Fatalf("Note: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestSkillMutationWithTheSurfaceOffPreservesAForeignClaudeFile(t *testing.T)
 	foreign := "<!-- BEGIN BEADS INTEGRATION -->\nSee `bd prime` for workflow context.\n<!-- END BEADS INTEGRATION -->\n"
 	writeFiles(t, root, map[string]string{"CLAUDE.md": foreign})
 
-	res, err := env(t, root).Note(loc(t, "skills.report"), "still useful", "")
+	res, err := env(t, root).Note(loc(t, "skills.report"), "still useful", "", false)
 	if err != nil {
 		t.Fatalf("Note: %v", err)
 	}

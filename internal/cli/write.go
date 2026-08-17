@@ -425,6 +425,7 @@ func summariseSet(res mutate.Result) []string {
 // by hand must be refused here, at the one point nothing else covers it.
 func newNoteCmd() *cobra.Command {
 	var at string
+	var noAttention bool
 	var archived archivedFlag
 	cmd := &cobra.Command{
 		Use:   "note <noun> <chain> <text>",
@@ -432,7 +433,10 @@ func newNoteCmd() *cobra.Command {
 		Long: "Record a note.\n\n" +
 			"One of the two verbs that move the clock, which is why it is a verb of\n" +
 			"its own rather than a field: `attention` is the newest note or\n" +
-			"measurement, and every staleness check in `para review` reads it.",
+			"measurement, and every staleness check in `para review` reads it.\n\n" +
+			"--no-attention records the note without moving the clock: for something\n" +
+			"true about the entity that is not the recurring activity a stale-after\n" +
+			"threshold is watching for, so it cannot buy false silence from one.",
 		// Exactly two shapes: "." <text> (the whole noun-and-chain pair
 		// collapsed to one token, R16) or <noun> <chain> <text>. Neither
 		// RangeArgs nor ExactArgs can express that disjunction — both admit
@@ -453,7 +457,7 @@ func newNoteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := env.Note(loc, rest[0], at)
+			res, err := env.Note(loc, rest[0], at, noAttention)
 			if err != nil {
 				return err
 			}
@@ -462,6 +466,7 @@ func newNoteCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&at, "at", "", "when it happened, in progressive precision; defaults to now")
+	cmd.Flags().BoolVar(&noAttention, "no-attention", false, "record the note without moving the attention clock")
 	archived.register(cmd)
 	return cmd
 }

@@ -112,7 +112,7 @@ func printReview(out io.Writer, res review.Result) {
 		t.head(sectionHeading(s))
 		for _, item := range s.Items {
 			measure, threshold := cells(s.Group, item)
-			t.add(entityLocatorString(item.Entity.Locator), measure, threshold)
+			t.add(entityLocatorString(item.Entity.Locator), measure, threshold, attentionSource(item.Entity))
 		}
 	}
 	t.write(out)

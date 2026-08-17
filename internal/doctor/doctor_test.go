@@ -570,7 +570,7 @@ func TestStaleProjection(t *testing.T) {
 func TestStaleProjectionDatesAnOlderDay(t *testing.T) {
 	root := cleanTree(t)
 	e := mutate.NewEnv(root, clock.Fixed{At: now(t)})
-	if _, err := e.Note(loc(t, "projects.acme"), "an older note", "2026-02-01"); err != nil {
+	if _, err := e.Note(loc(t, "projects.acme"), "an older note", "2026-02-01", false); err != nil {
 		t.Fatalf("Note: %v", err)
 	}
 

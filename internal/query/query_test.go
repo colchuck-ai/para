@@ -344,7 +344,7 @@ func TestFilters(t *testing.T) {
 func TestMatchReadsJournalNoteBodies(t *testing.T) {
 	root := fixture(t)
 	w := writer(t, root)
-	if _, err := w.Note(loc(t, "areas.health"), "the physio said to stop running", ""); err != nil {
+	if _, err := w.Note(loc(t, "areas.health"), "the physio said to stop running", "", false); err != nil {
 		t.Fatal(err)
 	}
 	// A note attached to a change is as findable as a bare one: `note` is a

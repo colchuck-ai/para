@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/colchuck-ai/para/internal/clock"
+	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/krvalue"
 	"github.com/colchuck-ai/para/internal/locator"
@@ -186,7 +187,7 @@ func TestAttentionIsTheNewestNoteOrMeasurement(t *testing.T) {
 		t.Errorf("attention with no events: got %s, want created %s", got, now())
 	}
 
-	if _, err := w.Note(loc(t, "projects.acme-migration"), "still going", "2026-03-04"); err != nil {
+	if _, err := w.Note(loc(t, "projects.acme-migration"), "still going", "2026-03-04", false); err != nil {
 		t.Fatal(err)
 	}
 	if got := load(t, r, "projects.acme-migration").Attention; !got.Equal(now()) {
@@ -197,6 +198,66 @@ func TestAttentionIsTheNewestNoteOrMeasurement(t *testing.T) {
 	set(t, w, "projects.acme-migration", "priority", "low")
 	if got := load(t, r, "projects.acme-migration").Attention; !got.Equal(now()) {
 		t.Errorf("attention after a change: got %s, want %s", got, now())
+	}
+}
+
+// TestAttentionKindAndNoteNameWhatSetTheClock is §18.6/§20: a reader should be
+// able to tell what set attention — a note's own text, or "measurement" —
+// without opening ACTIVITY.md.
+func TestAttentionKindAndNoteNameWhatSetTheClock(t *testing.T) {
+	root := plantTree(t)
+	w := project(t, root)
+	r := reader(t, root)
+
+	// Nothing yet: attention is `created`, and there is no event to name.
+	got := load(t, r, "projects.acme-migration")
+	if got.AttentionKind != "" || got.AttentionNote != "" {
+		t.Errorf("with no events: AttentionKind=%q AttentionNote=%q, want both empty", got.AttentionKind, got.AttentionNote)
+	}
+
+	if _, err := w.Note(loc(t, "projects.acme-migration"), "waiting on the ingest team", "", false); err != nil {
+		t.Fatal(err)
+	}
+	got = load(t, r, "projects.acme-migration")
+	if got.AttentionKind != journal.KindNote || got.AttentionNote != "waiting on the ingest team" {
+		t.Errorf("after a note: AttentionKind=%q AttentionNote=%q, want note / the note text", got.AttentionKind, got.AttentionNote)
+	}
+
+	kr := "projects.acme-migration.objectives.q1-growth.key-results.signups"
+	if _, err := w.Measure(loc(t, kr), "880/11000", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	got = load(t, r, kr)
+	if got.AttentionKind != journal.KindMeasurement || got.AttentionNote != "" {
+		t.Errorf("after a measurement: AttentionKind=%q AttentionNote=%q, want measurement / empty", got.AttentionKind, got.AttentionNote)
+	}
+}
+
+// TestNoteNoAttentionDoesNotMoveAttention is para-c3u end to end: a note
+// recorded with --no-attention is real activity (it shows up in
+// AttentionNote were it read) but is not the attention-clock event, so a
+// stale-after threshold watching a specific recurring activity is not
+// satisfied by an unrelated note (§3.6, §18.6).
+func TestNoteNoAttentionDoesNotMoveAttention(t *testing.T) {
+	root := plantTree(t)
+	w := project(t, root)
+	r := reader(t, root)
+
+	if _, err := w.Note(loc(t, "projects.acme-migration"), "actually wrote an entry", "", false); err != nil {
+		t.Fatal(err)
+	}
+	tended := load(t, r, "projects.acme-migration").Attention
+
+	if _, err := w.Note(loc(t, "projects.acme-migration"), "retired the old beads IDs from the ported entries", "", true); err != nil {
+		t.Fatal(err)
+	}
+	got := load(t, r, "projects.acme-migration")
+	if !got.Attention.Equal(tended) {
+		t.Errorf("attention after a --no-attention note: got %s, want it unchanged at %s", got.Attention, tended)
+	}
+	if got.AttentionKind != journal.KindNote || got.AttentionNote != "actually wrote an entry" {
+		t.Errorf("AttentionKind=%q AttentionNote=%q, want the earlier attending note to still be named",
+			got.AttentionKind, got.AttentionNote)
 	}
 }
 

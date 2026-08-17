@@ -55,6 +55,27 @@ func TestAttention(t *testing.T) {
 			},
 			want: "note",
 		},
+		{
+			name:   "a no-attention note never moves it",
+			events: []Event{NewNoteNoAttention(noteAt, "retired the old beads IDs")},
+			want:   "created",
+		},
+		{
+			name: "a no-attention note loses to an older measurement that does count",
+			events: []Event{
+				NewMeasurement(measurementAt, "880/11000", ""),
+				NewNoteNoAttention(noteAt, "retired the old beads IDs"),
+			},
+			want: "measurement",
+		},
+		{
+			name: "an ordinary note after a no-attention one still moves it",
+			events: []Event{
+				NewNoteNoAttention(measurementAt, "retired the old beads IDs"),
+				NewNote(noteAt, "actually wrote an entry"),
+			},
+			want: "note",
+		},
 	}
 
 	instants := map[string]string{

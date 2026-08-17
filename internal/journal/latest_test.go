@@ -116,6 +116,35 @@ func TestAttentionAtAgreesWithAttentionOverTheWholeJournal(t *testing.T) {
 	}
 }
 
+// TestAttentionAtSkipsANoAttentionNoteLikeAttentionDoes is
+// TestAttentionAtAgreesWithAttentionOverTheWholeJournal's case for the one
+// event attribute (rather than kind) that changes whether it counts: a
+// no-attention note is the newest event by `at`, so a filter keyed on kind
+// alone would report it as attention and disagree with Attention, which skips
+// it.
+func TestAttentionAtSkipsANoAttentionNoteLikeAttentionDoes(t *testing.T) {
+	created := at(t, "2026-01-01T00:00:00Z")
+	events := []journal.Event{
+		journal.NewNote(at(t, "2026-01-05T00:00:00Z"), "actually wrote an entry"),
+		journal.NewNoteNoAttention(at(t, "2026-01-09T00:00:00Z"), "retired the old beads IDs"),
+	}
+
+	dir := t.TempDir()
+	for _, e := range events {
+		if _, err := journal.Append(dir, e, journal.DefaultRotateBytes); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := journal.AttentionAt(dir, created)
+	if err != nil {
+		t.Fatalf("AttentionAt: %v", err)
+	}
+	if want := journal.Attention(events, created); !got.Equal(want) {
+		t.Errorf("AttentionAt: got %s, want %s (the ordinary note, not the newer no-attention one)", got, want)
+	}
+}
+
 func TestAttentionAtFallsBackToCreated(t *testing.T) {
 	created := at(t, "2026-01-01T00:00:00Z")
 	dir := t.TempDir()

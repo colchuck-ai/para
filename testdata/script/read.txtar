@@ -191,7 +191,7 @@ stdout 'attention    2026-03-05        today'
 exec para show project late --local
 stdout 'attention    2026-03-04        1 day ago'
 exec para list --local
-stdout 'project\s+late\s+planned\s+1 day ago'
+stdout 'project\s+late\s+planned\s+note\s+1 day ago'
 
 # --- §23's `--json` ---------------------------------------------------------
 
@@ -330,19 +330,19 @@ created = "2026-01-01T00:00:00Z"
 2026-01-01  project.acme-migration                          created
 2026-01-01  key-result.acme-migration.q1-growth.signups     created
 -- want-list-direct.txt --
-objective  acme-migration.q1-growth  in-progress  59 days ago
+objective  acme-migration.q1-growth  in-progress  —  59 days ago
 showing 1 of 1
 -- want-list-kafka-reverse.txt --
-project  acme-migration  in-progress  31 days ago
+project  acme-migration  in-progress  note  31 days ago
 showing 1 of 1
 -- want-list-kafka.txt --
-project  acme-migration  in-progress  31 days ago
+project  acme-migration  in-progress  note  31 days ago
 showing 1 of 1
 -- want-list-overdue.txt --
-project  late  planned  63 days ago
+project  late  planned  —  63 days ago
 showing 1 of 1
 -- want-list-priority.txt --
-project  acme-migration  in-progress  31 days ago
+project  acme-migration  in-progress  note  31 days ago
 showing 1 of 1
 -- want-log-note.txt --
 2026-02-02T08:00:00Z  note    checked in with the ingest team
@@ -356,7 +356,7 @@ due          2026-09-30        in 209 days
 tags         kafka
 type         ratio
 created      2026-01-01
-attention    2026-01-03        61 days ago
+attention    2026-01-03        61 days ago   measurement
 reading      480/9000 → 880/11000 / 2000/12000
 progress     0.24
 pace         1.01
@@ -372,7 +372,7 @@ priority     high
 due          2026-09-30        in 209 days
 tags         consumer, kafka
 created      2026-01-01
-attention    2026-02-02        31 days ago
+attention    2026-02-02        31 days ago   note: checked in with the ingest team
 
 objectives
   q1-growth  Grow signups    in-progress
@@ -390,7 +390,7 @@ priority     high
 due          2026-09-30        in 209 days
 tags         consumer, kafka
 created      2026-01-01
-attention    2026-02-02        31 days ago
+attention    2026-02-02        31 days ago   note: checked in with the ingest team
              stale (project.stale-after 14, from .para/config.toml)
 
 objectives

@@ -63,8 +63,14 @@ type entityJSON struct {
 	DormantUnder    string `json:"dormant-under,omitempty"`
 	Attention       string `json:"attention,omitempty"`
 	AttentionDays   int    `json:"attention-days"`
-	Overdue         bool   `json:"overdue"`
-	DueDays         *int   `json:"due-days,omitempty"`
+	// AttentionKind and AttentionNote name what set Attention — "note" or
+	// "measurement", and a note's own text — without a caller re-deriving
+	// §3.6's clock over the journal itself to find out (§18.6, §20). Both are
+	// empty together when nothing has beaten `created` yet.
+	AttentionKind string `json:"attention-kind,omitempty"`
+	AttentionNote string `json:"attention-note,omitempty"`
+	Overdue       bool   `json:"overdue"`
+	DueDays       *int   `json:"due-days,omitempty"`
 
 	KeyResult *keyResultJSON `json:"key-result,omitempty"`
 }
@@ -104,6 +110,8 @@ func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 		Dormant:         e.Dormant(),
 		Attention:       utcOrEmpty(e.Attention),
 		AttentionDays:   env.DaysSince(e.Attention),
+		AttentionKind:   string(e.AttentionKind),
+		AttentionNote:   e.AttentionNote,
 		Overdue:         e.Overdue(),
 	}
 	if len(e.DormantUnder) > 0 {

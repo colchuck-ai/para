@@ -50,9 +50,9 @@ func TestListMixedKindColumnsAreAligned(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("list: exit %d, stderr = %q", code, stderr)
 	}
-	want := "project     acme                    in-progress  today\n" +
-		"objective   acme.q1-growth          in-progress  today\n" +
-		"key-result  acme.q1-growth.signups  —            today\n" +
+	want := "project     acme                    in-progress  —  today\n" +
+		"objective   acme.q1-growth          in-progress  —  today\n" +
+		"key-result  acme.q1-growth.signups  —            —  today\n" +
 		"showing 3 of 3\n"
 	if stdout != want {
 		t.Errorf("list =\n%q\nwant\n%q", stdout, want)
@@ -81,7 +81,7 @@ func TestListKindFilterWithScopeReturnsOnlyThatKind(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("list key-result project acme: exit %d, stderr = %q", code, stderr)
 	}
-	want := "key-result  acme.q1-growth.signups  —  today\n" +
+	want := "key-result  acme.q1-growth.signups  —  —  today\n" +
 		"showing 1 of 1\n"
 	if stdout != want {
 		t.Errorf("list key-result project acme =\n%q\nwant\n%q", stdout, want)
@@ -94,6 +94,36 @@ func TestListKindFilterWithScopeReturnsOnlyThatKind(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "acme.q1-growth.signups") || !strings.Contains(stdout, "other.q1.metric") {
 		t.Errorf("list key-result = %q, want both key-results tree-wide", stdout)
+	}
+}
+
+// TestListAttentionKindColumnNamesTheEvent is para-c3u: a reader should be
+// able to tell a note moved the clock from a measurement without opening
+// ACTIVITY.md, in `list`'s own terse row (§18.6, §20).
+func TestListAttentionKindColumnNamesTheEvent(t *testing.T) {
+	root := mixedKindTree(t)
+	mustRun(t, root, "note", "project", "acme", "still going")
+	mustRun(t, root, "measure", "acme.q1-growth.signups", "880/11000")
+
+	code, stdout, stderr := run(t, root, "list")
+	if code != 0 {
+		t.Fatalf("list: exit %d, stderr = %q", code, stderr)
+	}
+	lines := map[string]string{}
+	for _, line := range strings.Split(strings.TrimRight(stdout, "\n"), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			lines[fields[1]] = line
+		}
+	}
+	if !strings.Contains(lines["acme"], " note ") {
+		t.Errorf("acme's row = %q, want it to name note", lines["acme"])
+	}
+	if !strings.Contains(lines["acme.q1-growth.signups"], " measurement ") {
+		t.Errorf("the key-result's row = %q, want it to name measurement", lines["acme.q1-growth.signups"])
+	}
+	if !strings.Contains(lines["acme.q1-growth"], " — ") {
+		t.Errorf("the untouched objective's row = %q, want a dash", lines["acme.q1-growth"])
 	}
 }
 

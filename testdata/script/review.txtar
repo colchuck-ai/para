@@ -223,7 +223,7 @@ blocked (1)
 overdue (1)
   key-result.acme-migration.q1-growth.launch   32 days over  due 2026-02-01
 behind (1)
-  key-result.acme-migration.q1-growth.signups  pace 0.67     key-result.at-risk-pace 0.8
+  key-result.acme-migration.q1-growth.signups  pace 0.67     key-result.at-risk-pace 0.8  measurement
 skills (1)
   skill.signups-report                         63 days       review.cadence 30
 -- want-review-stale-behind.txt --
@@ -234,7 +234,7 @@ stale (5)
   objective.acme-migration.q1-growth           59 days    objective.stale-after 30
   key-result.acme-migration.q1-growth.launch   59 days    key-result.stale-after 30
 behind (1)
-  key-result.acme-migration.q1-growth.signups  pace 0.67  key-result.at-risk-pace 0.8
+  key-result.acme-migration.q1-growth.signups  pace 0.67  key-result.at-risk-pace 0.8  measurement
 -- want-review-scoped.txt --
 stale (2)
   area.fitness           63 days  area.stale-after 30
@@ -247,7 +247,7 @@ blocked (1)
 overdue (1)
   key-result.acme-migration.q1-growth.launch   32 days over  due 2026-02-01
 behind (1)
-  key-result.acme-migration.q1-growth.signups  pace 0.67     key-result.at-risk-pace 0.8
+  key-result.acme-migration.q1-growth.signups  pace 0.67     key-result.at-risk-pace 0.8  measurement
 skills (1)
   skill.signups-report                         63 days       review.cadence 30
 -- want-review-behind.json --
@@ -276,6 +276,7 @@ skills (1)
           "dormant": false,
           "attention": "2026-03-05T17:00:00Z",
           "attention-days": 0,
+          "attention-kind": "measurement",
           "overdue": false,
           "due-days": 209,
           "key-result": {

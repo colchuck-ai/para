@@ -581,16 +581,29 @@ human truth is this file, and neither is asked to be both.
 ### 3.6 One clock
 
 ```
-attention = the newest `at` among events of kind `note` or `measurement`, else `created`
+attention = the newest `at` among events of kind `note` or `measurement` that count, else `created`
 ```
 
-The rule is uniform across kinds, including the ones that cannot produce every event: a **skill**
-takes no measurements, so its `attention` is its newest `note`, else `created` — which is what
-`review --skills` measures `review.cadence` against (§20). A **container** has a journal too, but only
-`child` events land in it, so its `attention` is always `created`; nothing reads it.
+A `note` counts unless it was recorded with `--no-attention` (§18.6). Without that flag, `attention`
+cannot distinguish the activity a `stale-after` threshold is watching from any other truthful note: an
+area's threshold set to catch "have I journalled lately?" reads satisfied by a note about unrelated
+housekeeping in the same area, because the rule as stated is "the newest note or measurement, full
+stop." `--no-attention` is the escape hatch — a note that records something true about the entity
+without asserting the entity was tended. A `measurement` has no equivalent flag: a key-result's own
+reading is inherently the activity its clock exists to detect, so there is nothing for it to opt out of.
 
-That is the whole rule, and it is v2's unchanged. `change` events never count — **including status
-changes** — because if any entry reset the clock, `para set x --due 2027-01-01` would buy silence
+The rule is uniform across kinds, including the ones that cannot produce every event: a **skill**
+takes no measurements, so its `attention` is its newest attending `note`, else `created` — which is
+what `review --skills` measures `review.cadence` against (§20). A **container** has a journal too, but
+only `child` events land in it, so its `attention` is always `created`; nothing reads it. A
+**key-result** is not a special case either, and is worth stating precisely because it is the kind most
+likely to be assumed otherwise: its `stale-after` reads the same newest-attending-note-or-measurement
+clock every other kind does, not measurements alone. A `note` on a key-result moves its clock exactly as
+a `measure` does, `--no-attention` aside — nothing here has ever asked for a measurement-only key-result
+clock.
+
+That is the whole rule, unchanged from v2 apart from the flag. `change` events never count — **including
+status changes** — because if any entry reset the clock, `para set x --due 2027-01-01` would buy silence
 from every check. `child` events do not count either: filing an objective under a project is not the
 same as attending to the project, and v2 reached the same answer when adding an objective was a
 `change`.
@@ -1522,6 +1535,8 @@ skills       signups-report (from skill.signups-report, scope project)
   `progress`, `pace`, and a key-result's status are never stored (§2.5).
 - **`stale` names where its threshold came from**, because §7's chain resolution is only defensible if
   it is visible (§7). Same for any other resolved knob `show` reports.
+- **`attention` also names what set it** — `note` or `measurement`, and a note's own text — next to its
+  `days ago` (§3.6, §20), so a reader does not have to open `ACTIVITY.md` to find out.
 - **The `skills` line is `para rules` folded in** (§13.1): each entry names the skill and the scope
   entry that reached it, so "why is this rule in my context" is answerable without a second command.
 - `show` says when an entity is dormant under a terminal ancestor or lives under `archive/`, because
@@ -1568,6 +1583,9 @@ para list key-result project acme  # key-results inside project acme
   archived projects, `para list --archived` for the whole archive. Archived things are not hidden,
   they are simply somewhere else, which is the whole point of §1.6.
 - Terminal-status items are hidden unless `--all`.
+- **A row carries a bare `note`/`measurement` marker for what set `attention`** (§3.6, §20), or `—` when
+  nothing has beaten `created` yet — terser than `review`'s own column, to keep `list` at one row per
+  line.
 - **`list` and `show` print the noun as its own column**, not folded into the address, because the
   column is what makes a mixed-kind listing scannable:
 
@@ -1804,12 +1822,20 @@ Exactly the semantics of §1.6, and the verbs exist to make them unmistakable:
 
 ```bash
 para note area health.training "swapped the tempo block for intervals"
+para note area me.daily-entries "retired the old beads IDs from the ported entries" --no-attention
 para measure acme.q1-growth.signups 880/11000 --at 2026-01-03
 ```
 
 The two verbs that move the clock (§3.6), which is why they are verbs of their own rather than
 `set` on a field. `measure`'s value grammar follows the key-result's `type` and a mismatch is an
 error naming both. A duplicate `--at` on the same key-result is refused (§15.1).
+
+`note` alone takes `--no-attention`: it records the note exactly as normal — same journal, same
+`ACTIVITY.md` line — but the event carries a flag `attention` (§3.6) skips. It exists for a note that is
+true about the entity without being the recurring activity a `stale-after` threshold on it is watching
+for, so that recording it honestly cannot buy false silence from the check. `measure` has no equivalent
+flag: every verb that touches truth other than `note` and `measure` writes a `change` or `child` event,
+neither of which ever moved the clock, so `--no-attention` is `note`'s alone to need.
 
 Correcting a past event is appending a corrected one, or editing that one line of the journal by hand
 and running `rebuild`. There are no log-entry verbs, no entry ids to pass, and no re-timing flag.
@@ -1849,6 +1875,12 @@ para review [<noun> [<chain>]] [--stale | --blocked | --overdue | --behind | --s
 
 Grouped by reason, ordered within a group by distance past the threshold. Takes `--limit`, not
 `--sort` — the ordering is the point. Terminal items and archived things are excluded unless `--all`.
+
+**Every row names what set `attention`** — `note` or `measurement`, and a note's own text truncated to a
+recognisable length — so a reader can tell a threshold's clock apart from the elapsed count without
+opening `ACTIVITY.md`. `list` carries the same information as a bare kind marker in its own column,
+terser to keep one row per line; `show`'s `attention` line carries the same source `review` does, in
+full next to its own `days ago`.
 
 **What each group can contain**, since not everything with a journal is reviewable:
 

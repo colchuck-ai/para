@@ -81,6 +81,43 @@ func TestEncode_WorkedExample(t *testing.T) {
 	}
 }
 
+// TestEncode_NoAttentionNote pins the one field this codec has gained since
+// §3.1's worked examples were written: a note that opts out of the attention
+// clock (§3.6, §18.6) carries `no_attention` after `note`, and an ordinary
+// note — the overwhelming majority of every note ever written — carries
+// nothing new at all, which TestEncode_WorkedExample's unchanged "note" case
+// already pins.
+func TestEncode_NoAttentionNote(t *testing.T) {
+	e := NewNoteNoAttention(mustParseAt(t, "2026-01-04T17:40:00-08:00"), "retired the old beads IDs")
+	want := `{"at":"2026-01-04T17:40:00-08:00","kind":"note","note":"retired the old beads IDs","no_attention":true}` + "\n"
+	got, err := Encode(e)
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	if string(got) != want {
+		t.Errorf("Encode() = %q, want %q", got, want)
+	}
+}
+
+// TestDecode_NoteWithoutNoAttentionCounts is the backward-compatibility case
+// no_attention's omitempty exists for: every note ever written before this
+// field existed has no `no_attention` key at all, and it must decode exactly
+// as it always attended — a zero-value bool defaulting to "counts" is the only
+// reading that does not retroactively change what old journals mean.
+func TestDecode_NoteWithoutNoAttentionCounts(t *testing.T) {
+	line := []byte(`{"at":"2026-01-04T17:40:00-08:00","kind":"note","note":"waiting on the ingest team"}`)
+	e, err := Decode(line)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if e.NoAttention {
+		t.Errorf("Decode() of a pre-existing note set NoAttention, want false")
+	}
+	if !attends(e) {
+		t.Errorf("a decoded pre-existing note must still count toward attention")
+	}
+}
+
 func TestDecode_WorkedExample(t *testing.T) {
 	line := []byte(`{"at":"2026-01-01T08:15:02-08:00","kind":"change","field":"status","from":"planned","to":"in-progress","note":"kickoff done"}`)
 

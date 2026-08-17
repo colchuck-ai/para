@@ -88,6 +88,16 @@ type Entity struct {
 	HasCreated bool
 	// Attention is §3.6's clock: the newest note or measurement, else `created`.
 	Attention time.Time
+	// AttentionKind is the kind of the event that set Attention — journal.KindNote
+	// or journal.KindMeasurement — or empty when nothing beat `created` (§18.6,
+	// §20). It lets review and list say what the clock last saw without a reader
+	// opening ACTIVITY.md.
+	AttentionKind journal.Kind
+	// AttentionNote is the note's own text when AttentionKind is journal.KindNote,
+	// and empty otherwise — a measurement's value is not the kind of thing a
+	// reader distinguishes one measurement from another by, so only a note's
+	// text is carried.
+	AttentionNote string
 
 	// Deadline is the last instant the stored `due` admits, and PastDue whether
 	// Now is beyond it (§4.3, §17's `--overdue`).
@@ -241,11 +251,19 @@ func (e *Env) Derive(loc locator.Locator, kind kindmeta.Kind, dir string, state 
 	out.Deadline, out.HasDeadline = ptime.DeadlineOf(state.Due)
 	out.PastDue = out.HasDeadline && e.Now.After(out.Deadline)
 
-	attention, err := journal.AttentionAt(truth.LogsDir(dir), out.Created)
+	attentionEvent, ok, err := journal.AttentionEvent(truth.LogsDir(dir), out.Created)
 	if err != nil {
 		return Entity{}, err
 	}
-	out.Attention = attention
+	if ok {
+		out.Attention = attentionEvent.At
+		out.AttentionKind = attentionEvent.Kind
+		if attentionEvent.Kind == journal.KindNote {
+			out.AttentionNote = attentionEvent.Note
+		}
+	} else {
+		out.Attention = out.Created
+	}
 
 	if kind == kindmeta.KindKeyResult {
 		kr, err := e.keyResult(loc, state, dir, out)

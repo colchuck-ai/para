@@ -224,6 +224,131 @@ func TestShowSkillsCellUsesTheDottedAddress(t *testing.T) {
 	}
 }
 
+// TestShowAttentionLineNamesTheNoteThatSetIt is para-c3u: show's attention
+// line should say what set the clock, not just how long ago, so a reader can
+// tell it was a note (and which one) without opening ACTIVITY.md (§18.6, §20).
+func TestShowAttentionLineNamesTheNoteThatSetIt(t *testing.T) {
+	chdirToTestTree(t)
+	mustAddViaCLI(t, "project", "acme")
+
+	root := &cobra.Command{Use: "para"}
+	root.AddCommand(newNoteCmd())
+	var noteOut bytes.Buffer
+	root.SetOut(&noteOut)
+	root.SetErr(&noteOut)
+	root.SetArgs([]string{"note", "project", "acme", "waiting on the ingest team"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("note project acme: %v (%s)", err, noteOut.String())
+	}
+
+	out, err := execRead(newShowCmd(), []string{"project", "acme"})
+	if err != nil {
+		t.Fatalf("show project acme: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "note: waiting on the ingest team") {
+		t.Errorf("show output = %q, want the attention line to name the note", out)
+	}
+}
+
+// TestShowAttentionLineNamesAMeasurement is the measurement half of the same
+// case: a key-result's clock names "measurement", not the note text (there is
+// none to quote).
+func TestShowAttentionLineNamesAMeasurement(t *testing.T) {
+	chdirToTestTree(t)
+	mustAddViaCLI(t, "project", "acme")
+
+	root := &cobra.Command{Use: "para"}
+	root.AddCommand(newAddCmd())
+	var addOut bytes.Buffer
+	root.SetOut(&addOut)
+	root.SetErr(&addOut)
+	root.SetArgs([]string{
+		"add", "objective", "acme.q1", "--name", "Q1", "--description", "x",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("add objective acme.q1: %v (%s)", err, addOut.String())
+	}
+	root = &cobra.Command{Use: "para"}
+	root.AddCommand(newAddCmd())
+	root.SetOut(&addOut)
+	root.SetErr(&addOut)
+	root.SetArgs([]string{
+		"add", "key-result", "acme.q1.signups", "--name", "Signups",
+		"--type", "number", "--target", "100",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("add key-result acme.q1.signups: %v (%s)", err, addOut.String())
+	}
+
+	root = &cobra.Command{Use: "para"}
+	root.AddCommand(newMeasureCmd())
+	var measureOut bytes.Buffer
+	root.SetOut(&measureOut)
+	root.SetErr(&measureOut)
+	root.SetArgs([]string{"measure", "acme.q1.signups", "42"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("measure acme.q1.signups: %v (%s)", err, measureOut.String())
+	}
+
+	out, err := execRead(newShowCmd(), []string{"key-result", "acme.q1.signups"})
+	if err != nil {
+		t.Fatalf("show key-result acme.q1.signups: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "measurement") {
+		t.Errorf("show output = %q, want the attention line to name measurement", out)
+	}
+}
+
+// TestNoteNoAttentionFlagDoesNotMoveTheClock is para-c3u end to end through
+// the real `para note --no-attention` command: a note recorded with the flag
+// is real activity but must not become what `show`'s attention line names, and
+// an ordinary note recorded first must keep naming it.
+func TestNoteNoAttentionFlagDoesNotMoveTheClock(t *testing.T) {
+	chdirToTestTree(t)
+	mustAddViaCLI(t, "project", "acme")
+
+	root := &cobra.Command{Use: "para"}
+	root.AddCommand(newNoteCmd())
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"note", "project", "acme", "actually wrote an entry"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("note project acme: %v (%s)", err, out.String())
+	}
+
+	root = &cobra.Command{Use: "para"}
+	root.AddCommand(newNoteCmd())
+	out.Reset()
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{
+		"note", "project", "acme", "retired the old beads IDs from the ported entries", "--no-attention",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("note project acme --no-attention: %v (%s)", err, out.String())
+	}
+
+	shown, err := execRead(newShowCmd(), []string{"project", "acme"})
+	if err != nil {
+		t.Fatalf("show project acme: %v (%s)", err, shown)
+	}
+	if !strings.Contains(shown, "note: actually wrote an entry") {
+		t.Errorf("show output = %q, want the attention line to still name the earlier attending note", shown)
+	}
+	if strings.Contains(shown, "retired the old beads IDs") {
+		t.Errorf("show output = %q, want the --no-attention note not to be named as the attention source", shown)
+	}
+
+	logged, err := execRead(newLogCmd(), []string{"project", "acme", "--kind", "note", "--json"})
+	if err != nil {
+		t.Fatalf("log project acme --kind note --json: %v (%s)", err, logged)
+	}
+	if !strings.Contains(logged, `"no_attention": true`) {
+		t.Errorf("log --json = %q, want the --no-attention note's event to carry no_attention", logged)
+	}
+}
+
 // TestReviewOutputUsesTheDottedAddress is the same regression, found in
 // review's item rows.
 func TestReviewOutputUsesTheDottedAddress(t *testing.T) {
@@ -240,6 +365,59 @@ func TestReviewOutputUsesTheDottedAddress(t *testing.T) {
 	}
 	if strings.Contains(out, "projects.acme") {
 		t.Errorf("review output = %q, still has the old plural-bucket form", out)
+	}
+}
+
+// TestReviewStaleRowNamesTheNoteThatSetAttention is para-c3u: the stale
+// group's whole criterion is "no note or measurement within stale-after"
+// (§20), so its rows should say what the last one was, not just how long ago.
+func TestReviewStaleRowNamesTheNoteThatSetAttention(t *testing.T) {
+	chdirToTestTree(t)
+
+	root := &cobra.Command{Use: "para"}
+	root.AddCommand(newAddCmd())
+	var addOut bytes.Buffer
+	root.SetOut(&addOut)
+	root.SetErr(&addOut)
+	// created is backdated too: a note before created loses to the "a
+	// hand-edited created must not move attention backwards" guard (§3.6),
+	// so the note that is meant to set attention here has to land after it.
+	root.SetArgs([]string{
+		"add", "project", "acme", "--name", "Acme", "--description", "x", "--created", "2020-01-01",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("add project acme: %v (%s)", err, addOut.String())
+	}
+
+	root = &cobra.Command{Use: "para"}
+	root.AddCommand(newConfigCmd())
+	var cfgOut bytes.Buffer
+	root.SetOut(&cfgOut)
+	root.SetErr(&cfgOut)
+	root.SetArgs([]string{"config", "set", "project.stale-after", "3"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("config set project.stale-after: %v (%s)", err, cfgOut.String())
+	}
+
+	root = &cobra.Command{Use: "para"}
+	root.AddCommand(newNoteCmd())
+	var noteOut bytes.Buffer
+	root.SetOut(&noteOut)
+	root.SetErr(&noteOut)
+	root.SetArgs([]string{"note", "project", "acme", "waiting on the ingest team", "--at", "2020-02-01"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("note project acme: %v (%s)", err, noteOut.String())
+	}
+
+	out, err := execRead(newReviewCmd(), []string{"--stale"})
+	if err != nil {
+		t.Fatalf("review --stale: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "project.acme") {
+		t.Fatalf("review --stale = %q, want project.acme listed as stale", out)
+	}
+	if !strings.Contains(out, "note: waiting on the ingest team") {
+		t.Errorf("review --stale = %q, want the row to name the note that set attention", out)
 	}
 }
 

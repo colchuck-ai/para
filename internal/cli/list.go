@@ -76,7 +76,8 @@ func printList(out io.Writer, env *view.Env, res query.Result, read readFlags) {
 	zone := read.zone(env)
 	var t table
 	for _, e := range res.Entities {
-		t.add(e.Kind.String(), entityChain(e.Locator), statusCell(e), ago(env.DaysSinceIn(e.Attention, zone)))
+		t.add(e.Kind.String(), entityChain(e.Locator), statusCell(e),
+			attentionKindCell(e), ago(env.DaysSinceIn(e.Attention, zone)))
 	}
 	t.write(out)
 
@@ -100,6 +101,18 @@ func statusCell(e view.Entity) string {
 		return dash
 	}
 	return e.EffectiveStatus
+}
+
+// attentionKindCell names what set the attention clock — "note" or
+// "measurement" — or a dash when nothing has (attention is still `created`).
+// It is deliberately just the kind, not a snippet: a snippet's width would
+// break `list`'s one-row-per-line scannability, which is what `review` and
+// `show` exist to give more room to (§18.6, §20).
+func attentionKindCell(e view.Entity) string {
+	if e.AttentionKind == "" {
+		return dash
+	}
+	return string(e.AttentionKind)
 }
 
 // listOutput is `list --json`: the rows, and the three counts that explain them.

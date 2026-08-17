@@ -8,11 +8,46 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/query"
 	"github.com/colchuck-ai/para/internal/view"
 )
+
+// attentionSnippetLength is how much of a note's own text names it in show's
+// attention line and review's stale group (§18.6, §20) — enough to recognise
+// which note it was, not the whole thing; ACTIVITY.md remains where the full
+// text lives.
+const attentionSnippetLength = 50
+
+// attentionSource names what set the attention clock — "measurement", or a
+// note's own text truncated to attentionSnippetLength runes — so a reader can
+// tell a note moved it from a measurement, and which note, without opening
+// ACTIVITY.md. Empty when nothing has beaten `created` yet (AttentionKind is
+// empty), which is also true of a container and of an entity kind that keeps
+// no journal.
+func attentionSource(ent view.Entity) string {
+	switch ent.AttentionKind {
+	case journal.KindMeasurement:
+		return "measurement"
+	case journal.KindNote:
+		return "note: " + truncateRunes(ent.AttentionNote, attentionSnippetLength)
+	default:
+		return ""
+	}
+}
+
+// truncateRunes shortens s to at most n runes, marking the cut with an
+// ellipsis — by runes rather than bytes, so a multi-byte character never
+// splits into invalid UTF-8.
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
 
 // newShowCmd implements `para show <noun> [<chain>]` (R3, R17: a bare noun
 // is the bucket).
@@ -182,7 +217,11 @@ func fieldBlock(env *view.Env, s shown, zone *time.Location) []string {
 	}
 	add("type", ent.State.Type)
 	add("created", day(ent.Created, zone))
-	add("attention", day(ent.Attention, zone), ago(env.DaysSinceIn(ent.Attention, zone)))
+	attentionComputed := ago(env.DaysSinceIn(ent.Attention, zone))
+	if src := attentionSource(ent); src != "" {
+		attentionComputed += "   " + src
+	}
+	add("attention", day(ent.Attention, zone), attentionComputed)
 	if s.isStale {
 		// §16.1: "stale names where its threshold came from", because §7's
 		// chain resolution is only defensible if it is visible.

@@ -37,7 +37,7 @@ func TestActivityWrittenIncrementallyMatchesAFullRederivation(t *testing.T) {
 			return err
 		}},
 		{"2026-03-02", func(e *mutate.Env) error {
-			_, err := e.Note(loc(t, "areas.health"), "swapped the tempo block for intervals", "")
+			_, err := e.Note(loc(t, "areas.health"), "swapped the tempo block for intervals", "", false)
 			return err
 		}},
 		{"2026-03-04", func(e *mutate.Env) error {
@@ -45,7 +45,7 @@ func TestActivityWrittenIncrementallyMatchesAFullRederivation(t *testing.T) {
 			return err
 		}},
 		{"2026-03-05", func(e *mutate.Env) error {
-			_, err := e.Note(loc(t, "areas.health"), "second note the same week", "")
+			_, err := e.Note(loc(t, "areas.health"), "second note the same week", "", false)
 			return err
 		}},
 		{"2026-03-06", func(e *mutate.Env) error {
@@ -55,7 +55,7 @@ func TestActivityWrittenIncrementallyMatchesAFullRederivation(t *testing.T) {
 			return err
 		}},
 		{"2026-03-07", func(e *mutate.Env) error {
-			_, err := e.Note(loc(t, "areas.health"), "after the backdate", "")
+			_, err := e.Note(loc(t, "areas.health"), "after the backdate", "", false)
 			return err
 		}},
 	}

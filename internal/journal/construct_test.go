@@ -29,6 +29,15 @@ func TestNewNote(t *testing.T) {
 	}
 }
 
+func TestNewNoteNoAttention(t *testing.T) {
+	at := mustParseAt(t, "2026-01-04T17:40:00-08:00")
+	got := NewNoteNoAttention(at, "retired the old beads IDs from the ported entries")
+	want := Event{At: at, Kind: KindNote, Note: "retired the old beads IDs from the ported entries", NoAttention: true}
+	if got != want {
+		t.Errorf("NewNoteNoAttention() = %+v, want %+v", got, want)
+	}
+}
+
 func TestNewChild(t *testing.T) {
 	at := mustParseAt(t, "2026-01-05T11:00:00-08:00")
 	got := NewChild(at, ChildOpAdded, "q1-growth", "", "", "")

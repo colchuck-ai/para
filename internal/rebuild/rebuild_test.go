@@ -172,7 +172,7 @@ func TestRebuildIsIdempotent(t *testing.T) {
 	if _, err := e.Add(loc(t, "projects.acme"), fields("name", "Acme", "description", "Rebuild the consumer.")); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if _, err := e.Note(loc(t, "projects.acme"), "the ingest team is blocked", ""); err != nil {
+	if _, err := e.Note(loc(t, "projects.acme"), "the ingest team is blocked", "", false); err != nil {
 		t.Fatalf("Note: %v", err)
 	}
 
