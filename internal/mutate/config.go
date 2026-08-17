@@ -50,10 +50,10 @@ func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byt
 		config:          file,
 		onlyProjections: []render.Renderer{render.Activity},
 	}
-	wrote, err := apply(e, []*plan{p}, nil)
+	wrote, err := apply(e, []*plan{p}, nil, false)
 	res := Result{Locator: loc, Kind: subj.kind, Wrote: wrote}
 	if err == nil && config.AffectsClaudeSurface(key) {
-		return e.refreshSurface(res)
+		return e.refreshSurface(res, false, nil)
 	}
 	if err == nil && key == config.KeyEmitGitattributes {
 		res, err = e.refreshGitAttributes(res)
@@ -71,5 +71,5 @@ func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byt
 	// skipped the mirror; a returning branch here would have reintroduced it for
 	// one more key. `refreshSurface` returns directly because it has already
 	// synced the mirror itself.
-	return e.syncSurface(res, err)
+	return e.syncSurface(res, err, false, nil)
 }

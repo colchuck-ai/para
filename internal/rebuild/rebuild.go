@@ -173,7 +173,7 @@ func Run(env *Env, opts Options) (Result, error) {
 	// old bytes, so the command you run to repair a tree finished and `doctor`
 	// stayed red.
 	if len(opts.Scope) == 0 || scopeHoldsSkill(subjects) {
-		changes, err := env.SyncMirror(opts.DryRun, pending)
+		changes, err := env.SyncMirror(opts.DryRun, pending, nil)
 		res.Mirror = changes
 		if err != nil {
 			return res, err
@@ -370,7 +370,7 @@ func (e *Env) Derive(s Subject) ([]Artifact, error) {
 		// CLAUDE.md's import list is the one thing a renderer needs that is not
 		// in the subject's own truth (§6.1), and it is loaded only where that
 		// renderer is in the set.
-		if in.Rules, err = e.rules(); err != nil {
+		if in.Rules, err = e.rules(nil); err != nil {
 			return nil, err
 		}
 	}
@@ -403,18 +403,22 @@ func (e *Env) Derive(s Subject) ([]Artifact, error) {
 	return append(out, residue...), nil
 }
 
-// rules is CLAUDE.md's import list: one derived rule per skill that exists.
+// rules is CLAUDE.md's import list: one derived rule per skill that exists,
+// plus adding — the skills a caller has not written to disk yet but is about
+// to, so a rehearsal of adding a skill names its own rule in the same list a
+// real add would produce. RuleFilenames sorts and dedupes, so adding needs no
+// particular order relative to what tree.SkillIDs already returned.
 //
 // It asks the skills rather than listing .agents/rules/, because a rule is a
 // projection of a skill (§5.3) and §21.1 forbids deriving a projection from
 // one — the listing would import a rule this same rebuild is about to delete,
 // and would need a second pass to converge.
-func (e *Env) rules() ([]string, error) {
+func (e *Env) rules(adding []string) ([]string, error) {
 	ids, err := tree.SkillIDs(e.Root)
 	if err != nil {
 		return nil, err
 	}
-	return render.RuleFilenames(ids), nil
+	return render.RuleFilenames(append(ids, adding...)), nil
 }
 
 // load reads everything a subject's renderers need: its truth, its whole

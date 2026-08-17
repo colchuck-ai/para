@@ -64,6 +64,56 @@ func Append(dir string, e Event, rotateBytes int64) (string, error) {
 	return path, nil
 }
 
+// PlanAppend reports the file each of events would land in if appended, in
+// order, through Append — without writing anything. It is `--dry-run`'s read
+// of Append: a batch landing in one journal within a single mutation (`set`
+// changing several fields at once) can cross rotateBytes partway through, and
+// a caller cannot get that right by calling targetFile once and reusing the
+// answer, because Append's own decision for event N+1 depends on event N
+// having actually landed.
+//
+// PlanAppend simulates that instead of performing it: the first event's home
+// is decided from the real on-disk state exactly as Append would, and after
+// that each event's encoded length is added to a running total in place of an
+// actual write, so the same rotateBytes boundary trips at the same point a
+// real sequential run of Append calls would.
+func PlanAppend(dir string, events []Event, rotateBytes int64) ([]string, error) {
+	if len(events) == 0 {
+		return nil, nil
+	}
+	if rotateBytes <= 0 {
+		rotateBytes = DefaultRotateBytes
+	}
+
+	newest, err := newestFile(dir)
+	if err != nil {
+		return nil, err
+	}
+	var current string
+	var size int64
+	if newest != "" {
+		current = filepath.Join(dir, newest)
+		if size, err = fileSize(current); err != nil {
+			return nil, err
+		}
+	}
+
+	paths := make([]string, len(events))
+	for i, e := range events {
+		if current == "" || rotates(size, rotateBytes) {
+			current = filepath.Join(dir, ptime.JournalFilename(e.At))
+			size = 0
+		}
+		data, err := Encode(e)
+		if err != nil {
+			return nil, err
+		}
+		paths[i] = current
+		size += int64(len(data))
+	}
+	return paths, nil
+}
+
 // syncDir makes a newly created file's directory entry durable.
 //
 // Failures are ignored, exactly as writeset.syncDir ignores them and for the
@@ -94,11 +144,19 @@ func targetFile(dir string, e Event, rotateBytes int64) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if size <= rotateBytes {
+		if !rotates(size, rotateBytes) {
 			return filepath.Join(dir, newest), nil
 		}
 	}
 	return filepath.Join(dir, ptime.JournalFilename(e.At)), nil
+}
+
+// rotates is §3.4's boundary, the one rule targetFile and PlanAppend must
+// agree on bit for bit: a file rotates once it has grown past rotateBytes, not
+// once it reaches it — a file sized exactly at the threshold still takes the
+// next event.
+func rotates(size, rotateBytes int64) bool {
+	return size > rotateBytes
 }
 
 // newestFile returns the lexically last *.jsonl entry in dir. §3.4's fixed,

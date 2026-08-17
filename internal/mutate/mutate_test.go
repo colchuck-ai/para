@@ -115,7 +115,10 @@ func snapshot(t *testing.T, root string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil || d.IsDir() || d.Type()&fs.ModeSymlink != 0 {
+			// A symlink (the mirror's default mode, §6.1) is not followed:
+			// os.ReadFile on one pointing at a directory fails, and its target's
+			// content is not this tree's own file content anyway.
 			return err
 		}
 		data, err := os.ReadFile(path)

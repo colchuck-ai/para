@@ -198,6 +198,138 @@ func TestAppend_RotationNamesFileForItsOwnFirstEvent(t *testing.T) {
 	}
 }
 
+// TestPlanAppend_RotatesMidBatchLikeSequentialAppendsWould is the case a
+// caller cannot get right by calling targetFile once and reusing the answer:
+// a batch of events landing in the *same* journal within one mutation (e.g.
+// `set` changing several fields at once) must roll over exactly where a real
+// sequential run of Append calls would, including a second rotation inside
+// the same batch — not just the first.
+//
+// RotateBytes: 1 makes the boundary trivial to reason about without knowing
+// any event's exact encoded size: whatever lands in a file, that file is now
+// over the threshold, so the very next event always opens a new one.
+func TestPlanAppend_RotatesMidBatchLikeSequentialAppendsWould(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "logs")
+	base := mustParseAt(t, "2026-01-01T08:00:00-08:00")
+	events := []Event{
+		{At: base, Kind: KindNote, Note: "first"},
+		{At: base.Add(time.Minute), Kind: KindNote, Note: "second"},
+		{At: base.Add(2 * time.Minute), Kind: KindNote, Note: "third"},
+	}
+
+	planned, err := PlanAppend(dir, events, 1)
+	if err != nil {
+		t.Fatalf("PlanAppend: %v", err)
+	}
+	want := []string{
+		filepath.Join(dir, "20260101T160000Z.jsonl"),
+		filepath.Join(dir, "20260101T160100Z.jsonl"),
+		filepath.Join(dir, "20260101T160200Z.jsonl"),
+	}
+	if len(planned) != len(want) {
+		t.Fatalf("PlanAppend = %v, want %v", planned, want)
+	}
+	for i := range want {
+		if planned[i] != want[i] {
+			t.Errorf("planned[%d] = %q, want %q", i, planned[i], want[i])
+		}
+	}
+
+	// Nothing was created: the directory does not even exist yet.
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("PlanAppend created %s", dir)
+	}
+
+	// And a real sequential run, at the same threshold, agrees file for file —
+	// the plan is not merely plausible, it is what Append actually does.
+	// (Append itself never creates its directory — that is appendAll's job in
+	// production — so the test does it here instead.)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i, e := range events {
+		if got := mustAppend(t, dir, e, 1); got != want[i] {
+			t.Errorf("Append[%d] landed in %q, want %q", i, got, want[i])
+		}
+	}
+}
+
+// TestPlanAppend_StartsFromRealOnDiskStateWithoutWriting proves the planner
+// reads the newest file's actual size to decide the first event's home — the
+// part it cannot get from rotateBytes alone — and touches nothing while doing
+// it.
+func TestPlanAppend_StartsFromRealOnDiskStateWithoutWriting(t *testing.T) {
+	dir := t.TempDir()
+	base := mustParseAt(t, "2026-01-01T08:00:00-08:00")
+
+	seededPath := mustAppend(t, dir, Event{At: base, Kind: KindNote, Note: "seed"}, DefaultRotateBytes)
+	before, err := os.ReadFile(seededPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedSize, err := fileSize(seededPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A threshold at exactly the seeded size: the boundary test above already
+	// pins "at the threshold stays" for Append itself, so reusing that value
+	// here proves PlanAppend reads the same real size Append would have.
+	next := Event{At: base.Add(time.Minute), Kind: KindNote, Note: "next"}
+	planned, err := PlanAppend(dir, []Event{next}, seedSize)
+	if err != nil {
+		t.Fatalf("PlanAppend: %v", err)
+	}
+	if len(planned) != 1 || planned[0] != seededPath {
+		t.Fatalf("PlanAppend = %v, want [%s] (at the threshold, stays in the seeded file)", planned, seededPath)
+	}
+
+	after, err := os.ReadFile(seededPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("PlanAppend changed the seeded file's bytes")
+	}
+	if names := listJSONLNames(t, dir); len(names) != 1 {
+		t.Errorf("PlanAppend left %v, want exactly the one seeded file", names)
+	}
+}
+
+func TestPlanAppend_EmptyEventsReturnsNil(t *testing.T) {
+	dir := t.TempDir()
+	planned, err := PlanAppend(dir, nil, DefaultRotateBytes)
+	if err != nil {
+		t.Fatalf("PlanAppend: %v", err)
+	}
+	if planned != nil {
+		t.Errorf("PlanAppend(nil) = %v, want nil", planned)
+	}
+	if names := listJSONLNames(t, dir); len(names) != 0 {
+		t.Errorf("PlanAppend on an empty batch created %v", names)
+	}
+}
+
+// TestPlanAppend_OnAnAbsentDirMatchesFirstAppend proves the planner handles a
+// brand-new journal — no newest file to stat at all — the same way Append's
+// own first call does.
+func TestPlanAppend_OnAnAbsentDirMatchesFirstAppend(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "logs")
+	at := mustParseAt(t, "2026-01-01T08:08:01-08:00")
+
+	planned, err := PlanAppend(dir, []Event{{At: at, Kind: KindNote, Note: "first"}}, DefaultRotateBytes)
+	if err != nil {
+		t.Fatalf("PlanAppend: %v", err)
+	}
+	want := filepath.Join(dir, "20260101T160801Z.jsonl")
+	if len(planned) != 1 || planned[0] != want {
+		t.Fatalf("PlanAppend = %v, want [%s]", planned, want)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("PlanAppend on an absent dir created it")
+	}
+}
+
 // TestReadAll_OrdersByAtNotFilePosition builds two files where lexical
 // (chronological-by-name) file order disagrees with the events' own `at`
 // values, and asserts ReadAll still returns them ordered by `at` (§3.1).

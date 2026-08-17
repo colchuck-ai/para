@@ -69,7 +69,7 @@ func (e *Env) Measure(loc locator.Locator, value, at, note string) (Result, erro
 		return Result{}, err
 	}
 
-	wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil)
+	wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil, false)
 	return Result{Locator: loc, Kind: subj.kind, Wrote: wrote, Measured: measured}, err
 }
 

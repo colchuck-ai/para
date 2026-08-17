@@ -42,11 +42,20 @@ import (
 // `return e.syncSurface(...)` around whatever it already returned — one
 // expression per verb, which is harder to forget than a separate statement and
 // greppable when the set of verbs changes.
-func (e *Env) syncSurface(res Result, err error) (Result, error) {
+//
+// dryRun is a parameter rather than a second copy of this function for the
+// same reason apply's is: `add`'s rehearsal must ask the identical question a
+// real run does, or the two could name a different set of surface files for
+// no reason but having derived it twice.
+//
+// adding is refreshSurface's parameter of the same name — empty for every verb
+// but AddDryRun on a skill, which is the one case where the subject syncSurface
+// is refreshing the surface for does not exist on disk yet.
+func (e *Env) syncSurface(res Result, err error, dryRun bool, adding []string) (Result, error) {
 	if err != nil || res.Kind != kindmeta.KindSkill {
 		return res, err
 	}
-	return e.refreshSurface(res)
+	return e.refreshSurface(res, dryRun, adding)
 }
 
 // refreshSurface re-derives both halves of the surface and folds the writes,
@@ -59,10 +68,15 @@ func (e *Env) syncSurface(res Result, err error) (Result, error) {
 // against the old setting, which is the one bug this whole file exists to
 // prevent. Re-reading a handful of small files is the price, and the surface
 // refresh is a bounded piece of work anyway.
-func (e *Env) refreshSurface(res Result) (Result, error) {
+//
+// adding names the skill AddDryRun is rehearsing the creation of, so both
+// halves of the surface can answer as if it already existed without it
+// actually being written. Every other caller passes nil, because every other
+// caller's subject is already on disk by the time the surface is refreshed.
+func (e *Env) refreshSurface(res Result, dryRun bool, adding []string) (Result, error) {
 	env := rebuild.NewEnv(e.Root)
 
-	wrote, removed, err := env.WriteClaudeSurface()
+	wrote, removed, err := env.WriteClaudeSurface(dryRun, adding)
 	res.Wrote = append(res.Wrote, wrote...)
 	res.Removed = append(res.Removed, removed...)
 	if err != nil {
@@ -72,7 +86,7 @@ func (e *Env) refreshSurface(res Result) (Result, error) {
 	// The mirror after the pointer files, for the reason rebuild sequences them
 	// the same way: a copy-mode mirror reproduces files this mutation may have
 	// just rewritten.
-	changes, err := env.SyncMirror(false, nil)
+	changes, err := env.SyncMirror(dryRun, nil, adding)
 	res.Mirror = append(res.Mirror, changes...)
 	return res, err
 }

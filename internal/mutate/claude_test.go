@@ -240,6 +240,49 @@ func TestAddingASkillKeepsEveryClaudeMdCorrect(t *testing.T) {
 	assertClean(t, root)
 }
 
+// TestAddDryRunOnASkillWithClaudeSurfaceOnPreviewsTheWholeReach is
+// TestAddingASkillKeepsEveryClaudeMdCorrect's rehearsal: a dry run must report
+// the same eight CLAUDE.md rewrites and the same mirror link the immediately
+// following real add produces, even though the skill it is naming does not
+// exist on disk yet. Before the fix, AddDryRun's report of a skill add under
+// emit.claude was silently missing this whole reach — tree.SkillIDs never saw
+// the not-yet-written skill, so the CLAUDE.md diff came back empty and the
+// mirror never saw it as missing.
+func TestAddDryRunOnASkillWithClaudeSurfaceOnPreviewsTheWholeReach(t *testing.T) {
+	root := treeWithSkill(t)
+	setClaude(t, env(t, root), root, config.KeyEmitClaude, ptoml.Bool(true))
+	before := snapshot(t, root)
+
+	f := fields("name", "Commit style", "description", "when writing a commit message")
+	dry, err := env(t, root).AddDryRun(loc(t, "skills.commit-style"), f)
+	if err != nil {
+		t.Fatalf("AddDryRun: %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("AddDryRun wrote %v, want nothing", changed)
+	}
+
+	real, err := env(t, root).Add(loc(t, "skills.commit-style"), f)
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	assertEqual(t, "AddDryRun's Wrote", dry.Wrote, real.Wrote)
+	if !slices.Equal(dry.Mirror, real.Mirror) {
+		t.Errorf("AddDryRun's Mirror = %v, want %v", dry.Mirror, real.Mirror)
+	}
+	for _, rel := range claudeLocations {
+		if !slices.Contains(dry.Wrote, rel) {
+			t.Errorf("AddDryRun's Wrote = %v, want it to carry %s", dry.Wrote, rel)
+		}
+	}
+	if !slices.Contains(dry.Mirror, mirror.Change{
+		Verb: mirror.VerbLinked, Path: ".claude/skills/para-commit-style",
+		Target: "../../.agents/skills/para-commit-style",
+	}) {
+		t.Errorf("AddDryRun's Mirror = %v, want a link for the new skill", dry.Mirror)
+	}
+}
+
 // TestRemovingASkillPrunesItsMirror is Phase 13's task 4 on the write path:
 // `remove skills.x` takes the rule *and* the mirror with it (§18.2, §6.1).
 func TestRemovingASkillPrunesItsMirror(t *testing.T) {

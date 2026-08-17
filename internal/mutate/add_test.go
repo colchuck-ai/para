@@ -118,6 +118,78 @@ func TestAddRendersActivityWithTheCreatedLine(t *testing.T) {
 	}
 }
 
+// TestAddDryRunWritesNothingButReportsWhatAddWould is para-uk5: a rehearsal of
+// `add` on a project must report the identical file list a real Add returns
+// (§18.1's whole set, parent included), and touch nothing on disk while doing
+// it.
+func TestAddDryRunWritesNothingButReportsWhatAddWould(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	before := snapshot(t, root)
+
+	f := fields("name", "Acme migration", "description", "Rebuild the consumer.")
+	dry, err := e.AddDryRun(loc(t, "projects.acme-migration"), f)
+	if err != nil {
+		t.Fatalf("AddDryRun: %v", err)
+	}
+
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("AddDryRun wrote %v, want nothing", changed)
+	}
+	if _, err := os.Stat(filepath.Join(root, "projects", "acme-migration")); !os.IsNotExist(err) {
+		t.Errorf("AddDryRun created projects/acme-migration")
+	}
+
+	real, err := e.Add(loc(t, "projects.acme-migration"), f)
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	assertEqual(t, "AddDryRun's Wrote", dry.Wrote, real.Wrote)
+	assertEqual(t, "AddDryRun's Removed", dry.Removed, real.Removed)
+	if dry.Locator.String() != real.Locator.String() || dry.Kind != real.Kind {
+		t.Errorf("AddDryRun = (%v, %v), want (%v, %v)", dry.Locator, dry.Kind, real.Locator, real.Kind)
+	}
+}
+
+// TestAddDryRunOnASkillTouchesNeitherTheRuleNorTheMirror is the case
+// para-uk5's issue was filed over: a skill's write reaches beyond its own
+// directory into .agents/rules/ (§6.1).
+//
+// plantTree leaves emit.claude at its default (false), so this only proves the
+// surface-sync path is correctly a no-op when the surface is off — it does not
+// exercise refreshSurface/WriteClaudeSurface/SyncMirror at all, since
+// syncSurface's own early return short-circuits before them. That gap is
+// exactly what let AddDryRun under-report a skill add's reach with the surface
+// on; TestAddDryRunOnASkillWithClaudeSurfaceOnPreviewsTheWholeReach (claude_test.go)
+// covers that case.
+func TestAddDryRunOnASkillTouchesNeitherTheRuleNorTheMirror(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	before := snapshot(t, root)
+
+	var f mutate.Fields
+	f.Set(kindmeta.FieldName, "Signups report")
+	f.Set(kindmeta.FieldDescription, "when asked for the weekly signups number")
+
+	dry, err := e.AddDryRun(loc(t, "skills.signups-report"), f)
+	if err != nil {
+		t.Fatalf("AddDryRun: %v", err)
+	}
+	assertEqual(t, "AddDryRun's Wrote", dry.Wrote, []string{
+		".agents/skills/para-signups-report/.para/state.toml",
+		".agents/skills/para-signups-report/.para/config.toml",
+		".agents/skills/para-signups-report/SKILL.md",
+		".agents/skills/para-signups-report/ACTIVITY.md",
+		".agents/rules/para-signups-report.md",
+	})
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("AddDryRun wrote %v, want nothing", changed)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agents", "rules", "para-signups-report.md")); !os.IsNotExist(err) {
+		t.Errorf("AddDryRun created the rule file")
+	}
+}
+
 func TestAddRefusals(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -210,7 +210,7 @@ func (r *Removal) Apply() (Result, error) {
 		return res, err
 	}
 	if parent != nil {
-		wrote, err := apply(e, nil, []*plan{parent})
+		wrote, err := apply(e, nil, []*plan{parent}, false)
 		res.Wrote = append(res.Wrote, wrote...)
 		if err != nil {
 			return res, err
@@ -218,5 +218,5 @@ func (r *Removal) Apply() (Result, error) {
 	}
 	// A skill has no parent to log at (§1.4), so this is the only place its
 	// removal reaches the surface: the mirror goes with the rule (§6.1, §18.2).
-	return e.syncSurface(res, nil)
+	return e.syncSurface(res, nil, false, nil)
 }

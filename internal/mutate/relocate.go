@@ -170,11 +170,11 @@ func (r *Relocation) Apply() (Result, error) {
 		return res, err
 	}
 
-	wrote, err := apply(e, subjects, parents)
+	wrote, err := apply(e, subjects, parents, false)
 	res.Wrote = append(res.Wrote, wrote...)
 	// A skill's id is in its rule's filename and in its mirror's, so `move
 	// skills.a skills.b` changes both halves of the surface (§5.3, §6.1).
-	return e.syncSurface(res, err)
+	return e.syncSurface(res, err, false, nil)
 }
 
 // subjectPlans is everything the relocation rewrites: each moved entity in full,

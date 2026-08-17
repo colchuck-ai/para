@@ -186,12 +186,16 @@ func (e *Env) WriteGitAttributes() (wrote, removed []string, err error) {
 // skills.x` can keep every CLAUDE.md correct while touching a bounded, known
 // list — which is what makes this a legal thing for a mutation to call.
 //
+// adding is passed straight through to rules: it is only ever non-empty when
+// AddDryRun is rehearsing the addition of a skill, since a rehearsal writes
+// nothing and the skill it is adding is otherwise invisible to tree.SkillIDs.
+//
 // It loads no journals and no state: CLAUDE.md is a pointer file whose whole
 // content is derived from which skills exist (§6.1), so a full Derive over
 // eight subjects would read four files apiece to produce bytes that do not
 // depend on any of them.
-func (e *Env) ClaudeSurface() ([]Artifact, error) {
-	rules, err := e.rules()
+func (e *Env) ClaudeSurface(adding []string) ([]Artifact, error) {
+	rules, err := e.rules(adding)
 	if err != nil {
 		return nil, err
 	}
@@ -280,17 +284,21 @@ func (e *Env) locationDir(loc locator.Locator) (string, error) {
 }
 
 // WriteClaudeSurface derives the eight CLAUDE.md files and writes or removes
-// the ones that are not what they should be, reporting both lists.
+// the ones that are not what they should be, reporting both lists — or, under
+// dryRun, reports them and writes nothing (§21.1).
+//
+// adding is ClaudeSurface's parameter of the same name, threaded through so a
+// rehearsed skill add can name itself.
 //
 // It is the whole of what a skill mutation owes the surface's first half, and
 // it is separate from Run because Run re-derives a tree and this re-derives
 // eight files.
-func (e *Env) WriteClaudeSurface() (wrote, removed []string, err error) {
-	artifacts, err := e.ClaudeSurface()
+func (e *Env) WriteClaudeSurface(dryRun bool, adding []string) (wrote, removed []string, err error) {
+	artifacts, err := e.ClaudeSurface(adding)
 	if err != nil {
 		return nil, nil, err
 	}
-	return e.apply(artifacts, false)
+	return e.apply(artifacts, dryRun)
 }
 
 // SyncMirror brings `.claude/skills/` into line with the skills that exist, and
@@ -307,7 +315,13 @@ func (e *Env) WriteClaudeSurface() (wrote, removed []string, err error) {
 // truth; a dry run has written nothing, so in copy mode a mirror of a skill
 // whose SKILL.md is about to change still matches byte for byte and would be
 // reported as fine. See mirror.Inspect.
-func (e *Env) SyncMirror(dryRun bool, pending []string) ([]mirror.Change, error) {
+//
+// adding is a different rehearsal case: a skill AddDryRun is rehearsing the
+// creation of, which is not on disk to compare against at all. Appending it to
+// ids puts it in Inspect's `want` set, so a tree with emit.claude on reports it
+// StateMissing — the same verdict, and the same planned Change, a real add's
+// SyncMirror call would compute one line later, once the skill exists.
+func (e *Env) SyncMirror(dryRun bool, pending, adding []string) ([]mirror.Change, error) {
 	cfg, err := e.Resolver.RenderConfig(nil)
 	if err != nil {
 		return nil, err
@@ -316,6 +330,7 @@ func (e *Env) SyncMirror(dryRun bool, pending []string) ([]mirror.Change, error)
 	if err != nil {
 		return nil, err
 	}
+	ids = append(ids, adding...)
 	issues, err := mirror.Inspect(e.Root, cfg, ids, pending)
 	if err != nil {
 		return nil, err

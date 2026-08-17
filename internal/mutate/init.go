@@ -118,7 +118,7 @@ func (e *Env) Init(id Identity) (Result, error) {
 		return Result{}, err
 	}
 
-	wrote, err := apply(e, append(plans, rootPlan), nil)
+	wrote, err := apply(e, append(plans, rootPlan), nil, false)
 	return Result{Wrote: wrote}, err
 }
 

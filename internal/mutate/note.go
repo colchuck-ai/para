@@ -25,6 +25,6 @@ func (e *Env) Note(loc locator.Locator, text string, at string) (Result, error) 
 	}
 
 	events := []journal.Event{journal.NewNote(when, text)}
-	wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil)
-	return e.syncSurface(Result{Locator: loc, Kind: subj.kind, Wrote: wrote, NoteRecorded: true}, err)
+	wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil, false)
+	return e.syncSurface(Result{Locator: loc, Kind: subj.kind, Wrote: wrote, NoteRecorded: true}, err, false, nil)
 }

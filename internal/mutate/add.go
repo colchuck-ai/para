@@ -22,6 +22,33 @@ import (
 // existence; the **parent** logs `child added`, because the parent is the thing
 // that genuinely changed (§3.3).
 func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
+	return e.add(loc, f, false)
+}
+
+// AddDryRun rehearses Add (§19): every refusal, every derived byte, and the
+// eager child container are computed exactly as Add would, and nothing is
+// written — not the entity, not the parent's journal, not the CLAUDE.md or
+// `.claude/skills/` surface a skill's write would otherwise reach (§6.1).
+//
+// It shares add's whole body with Add rather than re-deriving any part of it,
+// because a rehearsal that computed its own answer would be rehearsing a
+// different computation than the one it stands in for.
+//
+// This is a third shape for "rehearse a mutation" next to rebuild's
+// Options.DryRun field and move/archive's PlanMove-then-branch (mutate/
+// relocate.go), and that is a deliberate trade, not an oversight: Add already
+// has roughly forty call sites across internal/{mutate,doctor,rebuild,review,
+// view,query,scale}'s own tests, all of them calling the two-argument, always-
+// writing form. A dryRun bool on Add itself, or replacing it with a plan value
+// callers branch on, would touch every one of those call sites for a rehearsal
+// none of them want. Two public methods sharing one private body costs an
+// extra name; either alternative costs an unrelated diff across seven
+// packages.
+func (e *Env) AddDryRun(loc locator.Locator, f Fields) (Result, error) {
+	return e.add(loc, f, true)
+}
+
+func (e *Env) add(loc locator.Locator, f Fields, dryRun bool) (Result, error) {
 	info, err := kindmeta.KindOf(loc)
 	if err != nil {
 		return Result{}, err
@@ -81,8 +108,18 @@ func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
 		return Result{}, err
 	}
 
-	wrote, err := apply(e, plans, parents(parent))
-	return e.syncSurface(Result{Locator: loc, Kind: info.Kind, Wrote: wrote}, err)
+	// A real run's syncSurface runs after apply has already written this entity,
+	// so tree.SkillIDs already sees it. A dry run writes nothing, so the new
+	// skill has to be named explicitly or the surface refresh would compute its
+	// answer as if this add had never happened (see rebuild.Env.SyncMirror's
+	// adding parameter).
+	var adding []string
+	if dryRun && info.Kind == kindmeta.KindSkill {
+		adding = []string{loc[len(loc)-1]}
+	}
+
+	wrote, err := apply(e, plans, parents(parent), dryRun)
+	return e.syncSurface(Result{Locator: loc, Kind: info.Kind, Wrote: wrote}, err, dryRun, adding)
 }
 
 // newState builds the entity's state.toml from the fields given, refusing a

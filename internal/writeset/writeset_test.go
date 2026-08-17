@@ -417,6 +417,152 @@ func diff(t *testing.T, before, after map[string]string) []string {
 	return changed
 }
 
+// TestPlanReportsWhatApplyWouldWithoutWriting is Plan's central claim: for the
+// same Mutation, it reports the identical ops Apply would, and it writes
+// nothing at all — not even a directory.
+func TestPlanReportsWhatApplyWouldWithoutWriting(t *testing.T) {
+	root := t.TempDir()
+	entity := filepath.Join(root, "areas", "health")
+	parent := filepath.Join(root, "areas")
+
+	before := snapshot(t, root)
+
+	m := writeset.Mutation{
+		Subjects: []writeset.Subject{{
+			Dir:    entity,
+			Dirs:   []string{truth.LogsDir(entity)},
+			Events: []journal.Event{journal.NewNote(at(t, "2026-03-05T09:00:00"), "hello")},
+			State:  []byte("name = \"Health\"\n"),
+			Config: []byte{},
+			Projections: []writeset.File{
+				{Path: filepath.Join(entity, "README.md"), Bytes: []byte("readme\n")},
+				{Path: filepath.Join(entity, "ACTIVITY.md"), Bytes: []byte("activity\n")},
+			},
+		}},
+		Parents: []writeset.Subject{{
+			Dir:         parent,
+			Events:      []journal.Event{journal.NewChild(at(t, "2026-03-05T09:00:00"), journal.ChildOpAdded, "health", "", "", "")},
+			Projections: []writeset.File{{Path: filepath.Join(parent, "ACTIVITY.md"), Bytes: []byte("parent activity\n")}},
+		}},
+	}
+
+	planned, err := writeset.Plan(m)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	if changed := diff(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("Plan wrote %v, want nothing", changed)
+	}
+	if _, err := os.Stat(truth.LogsDir(entity)); !os.IsNotExist(err) {
+		t.Errorf("Plan created %s", truth.LogsDir(entity))
+	}
+
+	applied, err := writeset.Apply(m)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	// Plan has nothing to say about OpMkdir (see planTruth's doc comment: a
+	// directory creation is not a file `wrote` ever prints), so the comparison
+	// is over the ops that actually land in a printed file list — exactly
+	// mutate.wrote's own filter.
+	if got, want := writeOps(planned), writeOps(applied); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("Plan's write/append ops =\n  %v\nwant Apply's own\n  %v", got, want)
+	}
+}
+
+// writeOps is a mutation's ops narrowed to the ones a printed file list would
+// show — the same filter mutate.wrote applies to Apply's and Plan's output
+// alike, reimplemented here rather than imported so this package's tests do
+// not reach into mutate.
+func writeOps(ops writeset.Ops) []string {
+	var out []string
+	for _, op := range ops {
+		if op.Kind != writeset.OpAppend && op.Kind != writeset.OpWrite {
+			continue
+		}
+		out = append(out, op.Kind.String()+" "+op.Path)
+	}
+	return out
+}
+
+// TestPlanAgreesWithApplyAcrossAMultiEventRotation is TestPlanReportsWhat...
+// stress-tested at the Mutation level rather than journal.PlanAppend's own
+// unit tests: several events landing in one subject's journal within a single
+// planned mutation, at a threshold that forces every one of them into its own
+// file, must name the same files a real Apply of an identical mutation would.
+func TestPlanAgreesWithApplyAcrossAMultiEventRotation(t *testing.T) {
+	root := t.TempDir()
+	entity := filepath.Join(root, "projects", "acme")
+	base := at(t, "2026-03-05T09:00:00")
+
+	newMutation := func() writeset.Mutation {
+		return writeset.Mutation{
+			Subjects: []writeset.Subject{{
+				Dir: entity,
+				Events: []journal.Event{
+					journal.NewChange(base, "status", "todo", "in-progress", ""),
+					journal.NewChange(base.Add(time.Minute), "priority", "p2", "p1", ""),
+					journal.NewChange(base.Add(2*time.Minute), "due", "", "2026-04-01", ""),
+				},
+				RotateBytes: 1, // every event past the first opens a new file
+			}},
+		}
+	}
+
+	planned, err := writeset.Plan(newMutation())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(planned) != 3 {
+		t.Fatalf("Plan produced %d ops, want 3 (one per event)", len(planned))
+	}
+
+	applied, err := writeset.Apply(newMutation())
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := planned.Paths(), applied.Paths(); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("Plan.Paths() =\n  %v\nwant Apply's own\n  %v", got, want)
+	}
+	// Confirms the rotation genuinely happened three ways, not that both
+	// sides made the same (possibly wrong) simplifying assumption.
+	seen := map[string]bool{}
+	for _, p := range applied.Paths() {
+		seen[p] = true
+	}
+	if len(seen) != 3 {
+		t.Errorf("Apply landed the three events in %d distinct files, want 3", len(seen))
+	}
+}
+
+func TestPlanWithNothingToWriteReturnsNoOps(t *testing.T) {
+	root := plantTree(t)
+	before := snapshot(t, root)
+
+	planned, err := writeset.Plan(writeset.Mutation{
+		Subjects: []writeset.Subject{{Dir: filepath.Join(root, "areas", "health")}},
+	})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(planned) != 0 {
+		t.Errorf("Plan = %v, want none", planned.Paths())
+	}
+	if changed := diff(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("Plan of an empty mutation changed %v", changed)
+	}
+}
+
+func TestPlanRejectsAMutationWithNoDirectory(t *testing.T) {
+	if _, err := writeset.Plan(writeset.Mutation{}); err == nil {
+		t.Error("Plan with no subject returned no error")
+	}
+	if _, err := writeset.Plan(writeset.Mutation{Subjects: []writeset.Subject{{}}}); err == nil {
+		t.Error("Plan with a subject that has no directory returned no error")
+	}
+}
+
 // TestApplyRotatesEachSubjectOnItsOwnThreshold pins log.rotate-bytes as a
 // per-subject value.
 //
