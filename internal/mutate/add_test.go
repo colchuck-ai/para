@@ -254,6 +254,55 @@ func TestAddRefusals(t *testing.T) {
 	}
 }
 
+// TestAddRefusesAPrePopulatedTargetDirectory is para-n8x: tree.Exists only
+// checks for .para/state.toml, so a directory planted at the target path by
+// anything else used to pass silently, and readmeBody would then adopt a
+// pre-existing README.md's whole content as this entity's body with no
+// warning. add must refuse instead — an empty or absent directory is still
+// fine, since that is the sanctioned add-then-copy order.
+func TestAddRefusesAPrePopulatedTargetDirectory(t *testing.T) {
+	f := fields("name", "Acme migration", "description", "Rebuild the consumer.")
+
+	t.Run("a foreign README.md", func(t *testing.T) {
+		root := plantTree(t)
+		e := env(t, root)
+		writeFiles(t, root, map[string]string{
+			"projects/acme-migration/README.md": "# My old notes\n\nSomething unrelated.\n",
+		})
+		before := snapshot(t, root)
+
+		_, err := e.Add(loc(t, "projects.acme-migration"), f)
+		errorContains(t, err, "project.acme-migration already has files at projects/acme-migration")
+
+		if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+			t.Errorf("Add wrote %v on refusal, want nothing touched", changed)
+		}
+	})
+
+	t.Run("an unrelated file", func(t *testing.T) {
+		root := plantTree(t)
+		e := env(t, root)
+		writeFiles(t, root, map[string]string{
+			"projects/acme-migration/notes.txt": "leftover content\n",
+		})
+
+		_, err := e.Add(loc(t, "projects.acme-migration"), f)
+		errorContains(t, err, "project.acme-migration already has files at projects/acme-migration")
+	})
+
+	t.Run("an existing but empty directory still succeeds", func(t *testing.T) {
+		root := plantTree(t)
+		e := env(t, root)
+		if err := os.MkdirAll(filepath.Join(root, "projects", "acme-migration"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := e.Add(loc(t, "projects.acme-migration"), f); err != nil {
+			t.Fatalf("Add: %v", err)
+		}
+	})
+}
+
 // TestAddKeyResultRequiresTypeAndTarget is §15's "req, fixed" row, and §26's
 // fourth refusal.
 func TestAddKeyResultRequiresTypeAndTarget(t *testing.T) {
@@ -359,4 +408,19 @@ func TestAddRefusesAScopeEntryInTheOldPluralLocatorForm(t *testing.T) {
 
 	_, err := e.Add(loc(t, "skills.signups-report"), f)
 	errorContains(t, err, "is not a noun")
+}
+
+// TestAddDryRunRefusesAPrePopulatedTargetDirectoryToo confirms para-n8x's
+// refusal composes with para-uk5's dry-run for free: it lives before apply's
+// dryRun branch, in the shared body both Add and AddDryRun call.
+func TestAddDryRunRefusesAPrePopulatedTargetDirectoryToo(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	writeFiles(t, root, map[string]string{
+		"projects/acme-migration/README.md": "# My old notes\n\nSomething unrelated.\n",
+	})
+
+	f := fields("name", "Acme migration", "description", "Rebuild the consumer.")
+	_, err := e.AddDryRun(loc(t, "projects.acme-migration"), f)
+	errorContains(t, err, "project.acme-migration already has files at projects/acme-migration")
 }

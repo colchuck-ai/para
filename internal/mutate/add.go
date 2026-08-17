@@ -1,6 +1,7 @@
 package mutate
 
 import (
+	"os"
 	"slices"
 	"strings"
 
@@ -81,12 +82,27 @@ func (e *Env) add(loc locator.Locator, f Fields, dryRun bool) (Result, error) {
 		return Result{}, paraerr.Newf(paraerr.KindNotFound, "%s does not exist — create it first", missing)
 	}
 
-	state, err := e.newState(info.Kind, f)
+	subj, err := e.subjectAt(loc, info.Kind)
 	if err != nil {
 		return Result{}, err
 	}
+	occupied, err := dirHasFiles(subj.dir)
+	if err != nil {
+		return Result{}, err
+	}
+	if occupied {
+		// tree.Exists only checks for .para/state.toml (§8.1), so a directory
+		// planted at this path by anything else — a stray cp, an add-then-copy
+		// sequence run out of order — passes that check and would otherwise be
+		// filled in silently: readmeBody (internal/render/readme.go) treats a
+		// pre-existing README.md's whole content as this entity's body once
+		// generated, with no warning that a foreign file was just absorbed.
+		return Result{}, paraerr.Newf(paraerr.KindConflict,
+			"%s already has files at %s — empty it first, or create the entity before copying files in",
+			relocateAddr(loc), e.rel(subj.dir))
+	}
 
-	subj, err := e.subjectAt(loc, info.Kind)
+	state, err := e.newState(info.Kind, f)
 	if err != nil {
 		return Result{}, err
 	}
@@ -197,6 +213,21 @@ func (e *Env) containerPlan(parentLoc locator.Locator, kind kindmeta.Kind, paren
 		Created:     stamp(e.Now),
 	}
 	return &plan{subj: subj, writeState: true, config: []byte{}, creating: true}, nil
+}
+
+// dirHasFiles reports whether dir exists and already contains an entry.
+// A missing directory and an existing-but-empty one are both fine — `add`
+// creates the former and fills the latter exactly as it always has; only
+// pre-existing content is the sharp edge (para-n8x).
+func dirHasFiles(dir string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return len(entries) > 0, nil
 }
 
 // shallowestMissing names the highest ancestor of loc that is not there, which
