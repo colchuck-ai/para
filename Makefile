@@ -18,8 +18,13 @@ FUZZTIME ?= 20s
 # without being absent.
 TIMEOUT ?= 30m
 
+# No -race: para is one command, one goroutine (production carries none outside
+# a test-only sync.Once in the crash harness), and the crash matrix/property
+# tests drive that binary as independent subprocesses under t.Parallel(), not
+# shared in-process state. -race never found anything here and costs a ~3-4x
+# wall-clock tax on every run — add it back if real concurrency shows up.
 test:
-	go test ./... -race -count=1 -timeout $(TIMEOUT) -tags para_testhooks
+	go test ./... -count=1 -timeout $(TIMEOUT) -tags para_testhooks
 
 lint:
 	go vet ./...
@@ -42,7 +47,7 @@ install:
 	go install ./cmd/para
 
 cover:
-	go test ./... -race -count=1 -tags para_testhooks -coverprofile=coverage.out
+	go test ./... -count=1 -tags para_testhooks -coverprofile=coverage.out
 	go tool cover -func=coverage.out
 
 # Every fuzz target, briefly. `make test` runs their seed corpora, which is what

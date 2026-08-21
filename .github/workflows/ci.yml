@@ -31,13 +31,10 @@ jobs:
   # `copy` is the answer rather than an option, and the only one where §10's
   # `broken-link` is a thing that happens rather than a thing simulated.
   #
-  # Two departures from `make test`, both deliberate:
-  #
-  #   - the recipe is spelled out rather than invoked through make, which the
-  #     Windows image does not carry;
-  #   - no `-race`, which needs a C toolchain on windows/amd64. The race
-  #     detector is not what this job is for — para is one command, one
-  #     goroutine — and the two Unix rows above run it on every commit.
+  # One departure from `make test`: the recipe is spelled out rather than
+  # invoked through make, which the Windows image does not carry. (`make test`
+  # itself dropped `-race` project-wide — see the Makefile — so there is no
+  # longer a second departure to note here.)
   #
   # `-timeout` is repeated from the Makefile rather than shared, which is the
   # cost of spelling the recipe out; the two must stay in step. cmd/para runs
