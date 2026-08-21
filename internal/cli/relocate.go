@@ -327,6 +327,16 @@ func newRemoveCmd() *cobra.Command {
 				for _, line := range removalDetail(plan) {
 					fmt.Fprintln(out, line)
 				}
+				res, err := plan.Apply(true)
+				if err != nil {
+					return err
+				}
+				// The exhaustive path list above is a rehearsal's own addition
+				// (removalDetail's doc comment); res's own effects are the same
+				// ones a real run would print — the parent's journal/ACTIVITY.md
+				// write, and a skill's surface change — through the identical
+				// apply()/syncSurface path a real run takes (para-ato).
+				printEffects(out, res)
 				fmt.Fprintln(out, dryRunLine)
 				return nil
 			}
@@ -340,7 +350,7 @@ func newRemoveCmd() *cobra.Command {
 				}
 			}
 
-			res, err := plan.Apply()
+			res, err := plan.Apply(false)
 			if err != nil {
 				return err
 			}

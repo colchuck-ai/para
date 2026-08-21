@@ -195,7 +195,36 @@ func (r Relocation) Empty() bool {
 // returning the operations already completed — exactly the ones a crash at that
 // point would have left behind.
 func Relocate(r Relocation) (Ops, error) {
+	return relocate(r, true)
+}
+
+// PlanRelocate reports what Relocate would do to r without touching a byte, for
+// `remove --dry-run` (§19). It shares Relocate's whole body rather than
+// re-deriving which dirs are already there, which destinations are occupied, and
+// which prunes are already gone — a rehearsal that answered those questions on
+// its own could name a different set of operations than the real run for no
+// reason but having computed it twice (the same reasoning Plan's doc comment
+// gives for Mutation).
+//
+// It never calls record: crashPoint exists to let the crash matrix kill the
+// process between two real writes, and a dry run performs none, so there is
+// nothing for a mid-mutation crash to interrupt.
+func PlanRelocate(r Relocation) (Ops, error) {
+	return relocate(r, false)
+}
+
+// relocate is Relocate's and PlanRelocate's shared body. perform decides
+// whether each step actually touches the filesystem; every decision about
+// *which* operations there are to perform is made identically either way.
+func relocate(r Relocation, perform bool) (Ops, error) {
 	var ops Ops
+	note := func(op Op) {
+		if perform {
+			ops = record(ops, op)
+			return
+		}
+		ops = append(ops, op)
+	}
 
 	for _, dir := range r.Dirs {
 		if isDir(dir) {
@@ -204,10 +233,12 @@ func Relocate(r Relocation) (Ops, error) {
 			// again is not an operation anyone performed.
 			continue
 		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", dir))
+		if perform {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", dir))
+			}
 		}
-		ops = record(ops, Op{Kind: OpMkdir, Path: dir})
+		note(Op{Kind: OpMkdir, Path: dir})
 	}
 
 	for _, m := range r.Moves {
@@ -219,19 +250,21 @@ func Relocate(r Relocation) (Ops, error) {
 		} else if !os.IsNotExist(err) {
 			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: checking %s", m.To))
 		}
-		if err := os.MkdirAll(filepath.Dir(m.To), 0o755); err != nil {
-			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", filepath.Dir(m.To)))
+		if perform {
+			if err := os.MkdirAll(filepath.Dir(m.To), 0o755); err != nil {
+				return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", filepath.Dir(m.To)))
+			}
+			if err := os.Rename(m.From, m.To); err != nil {
+				// A cross-device rename is the one failure worth naming, because
+				// the repair is not para's: a tree with a submount inside it cannot
+				// be relocated with rename(2), and copying instead would have to
+				// reproduce modes, times, and hard links to be a move rather than an
+				// approximation of one.
+				return ops, paraerr.Wrap(paraerr.KindInternal, err,
+					fmt.Sprintf("writeset: renaming %s to %s (a tree spanning two filesystems must be moved by hand, then `para rebuild`)", m.From, m.To))
+			}
 		}
-		if err := os.Rename(m.From, m.To); err != nil {
-			// A cross-device rename is the one failure worth naming, because
-			// the repair is not para's: a tree with a submount inside it cannot
-			// be relocated with rename(2), and copying instead would have to
-			// reproduce modes, times, and hard links to be a move rather than an
-			// approximation of one.
-			return ops, paraerr.Wrap(paraerr.KindInternal, err,
-				fmt.Sprintf("writeset: renaming %s to %s (a tree spanning two filesystems must be moved by hand, then `para rebuild`)", m.From, m.To))
-		}
-		ops = record(ops, Op{Kind: OpMove, From: m.From, Path: m.To})
+		note(Op{Kind: OpMove, From: m.From, Path: m.To})
 	}
 
 	// Deepest first, which is the only ordering among the prunes that matters.
@@ -256,10 +289,12 @@ func Relocate(r Relocation) (Ops, error) {
 			}
 			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: checking %s", path))
 		}
-		if err := os.RemoveAll(path); err != nil {
-			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: removing %s", path))
+		if perform {
+			if err := os.RemoveAll(path); err != nil {
+				return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: removing %s", path))
+			}
 		}
-		ops = record(ops, Op{Kind: OpPrune, Path: path})
+		note(Op{Kind: OpPrune, Path: path})
 	}
 
 	return ops, nil

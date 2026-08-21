@@ -168,7 +168,8 @@ exists projects/acme-migration/.para/state.toml
 stderr 'aborted'
 exists projects/acme-migration/.para/state.toml
 
-# --dry-run names every path and writes nothing.
+# --dry-run names every path and writes nothing — including the parent's
+# journal/ACTIVITY.md write a real removal also makes (para-ato).
 exec para remove project acme-migration --dry-run
 cmp stdout $WORK/want-remove-dry-run.txt
 exists projects/acme-migration/.para/state.toml
@@ -440,6 +441,8 @@ wrote  areas/health/training/.para/logs/20260305T170000Z.jsonl
 remove  project.acme-migration  project   (1 descendant)
         deletes projects/acme-migration/ and everything beneath it
         would delete  projects/acme-migration
+wrote  projects/.para/logs/20260305T170000Z.jsonl
+       projects/ACTIVITY.md
 dry-run: nothing was written
 -- want-kept-readme.txt --
 

@@ -314,6 +314,7 @@ func newSetNounCmd(kind kindmeta.Kind) *cobra.Command {
 		f        fieldFlags
 		archived archivedFlag
 		note     string
+		dryRun   bool
 	)
 	cmd := &cobra.Command{
 		Use:   kind.String() + " <chain> --field value […]",
@@ -334,17 +335,27 @@ func newSetNounCmd(kind kindmeta.Kind) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := env.Set(loc, f.collect(cmd), note)
+			var res mutate.Result
+			if dryRun {
+				res, err = env.SetDryRun(loc, f.collect(cmd), note)
+			} else {
+				res, err = env.Set(loc, f.collect(cmd), note)
+			}
 			if err != nil {
 				return err
 			}
-			printResult(cmd.OutOrStdout(), summariseSet(res), res)
+			out := cmd.OutOrStdout()
+			printResult(out, summariseSet(res), res)
+			if dryRun {
+				fmt.Fprintln(out, dryRunLine)
+			}
 			return nil
 		},
 	}
 	f.registerForKind(cmd, kind, false)
 	archived.register(cmd)
 	cmd.Flags().StringVar(&note, "note", "", "the reason, recorded with the change; required when setting status to blocked")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	return cmd
 }
 
@@ -374,6 +385,7 @@ func newUnsetCmd() *cobra.Command {
 // re-deriving it.
 func newUnsetNounCmd(kind kindmeta.Kind) *cobra.Command {
 	var archived archivedFlag
+	var dryRun bool
 	cmd := &cobra.Command{
 		Use:   kind.String() + " <chain> <field>...",
 		Short: "remove " + withArticle(kind.String()) + "'s stored fields",
@@ -395,15 +407,25 @@ func newUnsetNounCmd(kind kindmeta.Kind) *cobra.Command {
 			for _, name := range args[1:] {
 				fields = append(fields, kindmeta.Field(name))
 			}
-			res, err := env.Unset(loc, fields)
+			var res mutate.Result
+			if dryRun {
+				res, err = env.UnsetDryRun(loc, fields)
+			} else {
+				res, err = env.Unset(loc, fields)
+			}
 			if err != nil {
 				return err
 			}
-			printResult(cmd.OutOrStdout(), summariseSet(res), res)
+			out := cmd.OutOrStdout()
+			printResult(out, summariseSet(res), res)
+			if dryRun {
+				fmt.Fprintln(out, dryRunLine)
+			}
 			return nil
 		},
 	}
 	archived.register(cmd)
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	return cmd
 }
 
@@ -427,6 +449,7 @@ func newNoteCmd() *cobra.Command {
 	var at string
 	var noAttention bool
 	var archived archivedFlag
+	var dryRun bool
 	cmd := &cobra.Command{
 		Use:   "note <noun> <chain> <text>",
 		Short: "record a note against an entity",
@@ -457,16 +480,26 @@ func newNoteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := env.Note(loc, rest[0], at, noAttention)
+			var res mutate.Result
+			if dryRun {
+				res, err = env.NoteDryRun(loc, rest[0], at, noAttention)
+			} else {
+				res, err = env.Note(loc, rest[0], at, noAttention)
+			}
 			if err != nil {
 				return err
 			}
-			printResult(cmd.OutOrStdout(), []string{fmt.Sprintf("noted  %s", entityLocatorString(res.Locator))}, res)
+			out := cmd.OutOrStdout()
+			printResult(out, []string{fmt.Sprintf("noted  %s", entityLocatorString(res.Locator))}, res)
+			if dryRun {
+				fmt.Fprintln(out, dryRunLine)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&at, "at", "", "when it happened, in progressive precision; defaults to now")
 	cmd.Flags().BoolVar(&noAttention, "no-attention", false, "record the note without moving the attention clock")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	archived.register(cmd)
 	return cmd
 }

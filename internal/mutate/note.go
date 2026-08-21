@@ -21,7 +21,23 @@ import (
 // the order of a dozen call sites, not journal.NewNote's ~75, so threading the
 // bool through costs a small, one-time diff rather than protecting a call-site
 // count large enough to be worth a second public name.
+//
+// dryRun is not such a parameter: it is Add's second shape (add.go's own
+// AddDryRun, para-uk5), not noAttention's, because every one of Note's dozen
+// call sites wants the always-writing form and none of them wants to pass
+// `false` to get it (para-ato).
 func (e *Env) Note(loc locator.Locator, text string, at string, noAttention bool) (Result, error) {
+	return e.note(loc, text, at, noAttention, false)
+}
+
+// NoteDryRun rehearses Note (§19): nothing is written, not the journal entry
+// and not the CLAUDE.md/mirror surface a note against a skill would otherwise
+// reach.
+func (e *Env) NoteDryRun(loc locator.Locator, text string, at string, noAttention bool) (Result, error) {
+	return e.note(loc, text, at, noAttention, true)
+}
+
+func (e *Env) note(loc locator.Locator, text string, at string, noAttention, dryRun bool) (Result, error) {
 	if flatten(text) == "" {
 		return Result{}, paraerr.New(paraerr.KindUsage, "a note needs some text")
 	}
@@ -39,6 +55,6 @@ func (e *Env) Note(loc locator.Locator, text string, at string, noAttention bool
 		note = journal.NewNoteNoAttention(when, text)
 	}
 	events := []journal.Event{note}
-	wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil, false)
-	return e.syncSurface(Result{Locator: loc, Kind: subj.kind, Wrote: wrote, NoteRecorded: true}, err, false, nil)
+	wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil, dryRun)
+	return e.syncSurface(Result{Locator: loc, Kind: subj.kind, Wrote: wrote, NoteRecorded: true}, err, dryRun, nil, nil)
 }

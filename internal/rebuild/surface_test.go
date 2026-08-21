@@ -304,7 +304,7 @@ func TestClaudeSurfaceIsTheConstantCostRefresh(t *testing.T) {
 	claudeOn(t, root)
 	plantSkill(t, root, "signups-report", "Signups report")
 
-	artifacts, err := env(t, root).ClaudeSurface(nil)
+	artifacts, err := env(t, root).ClaudeSurface(nil, nil)
 	if err != nil {
 		t.Fatalf("ClaudeSurface: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestClaudeSurfaceAppendsBehindForeignContent(t *testing.T) {
 	foreign := "# Team notes\n\nRun `make check` before every commit.\n"
 	write(t, root, "projects/CLAUDE.md", foreign)
 
-	artifacts, err := env(t, root).ClaudeSurface(nil)
+	artifacts, err := env(t, root).ClaudeSurface(nil, nil)
 	if err != nil {
 		t.Fatalf("ClaudeSurface: %v", err)
 	}

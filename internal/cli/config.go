@@ -124,6 +124,7 @@ func (s scope) file() (rel, abs string, err error) {
 
 func newConfigSetCmd() *cobra.Command {
 	var at string
+	var dryRun bool
 	cmd := &cobra.Command{
 		Use:   "set <key> <value>",
 		Short: "set a config key, at the root by default",
@@ -146,17 +147,19 @@ func newConfigSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return writeLevel(cmd.OutOrStdout(), s, key, func(f *config.File) (bool, error) {
+			return writeLevel(cmd.OutOrStdout(), s, key, dryRun, func(f *config.File) (bool, error) {
 				return f.Set(key, value)
 			})
 		},
 	}
 	cmd.Flags().StringVar(&at, "at", "", "the dotted address (noun.chain) whose config.toml to write (default: the tree root)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	return cmd
 }
 
 func newConfigUnsetCmd() *cobra.Command {
 	var at string
+	var dryRun bool
 	cmd := &cobra.Command{
 		Use:   "unset <key>",
 		Short: "remove a config key, at the root by default",
@@ -173,27 +176,32 @@ func newConfigUnsetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return writeLevel(cmd.OutOrStdout(), s, key, func(f *config.File) (bool, error) {
+			return writeLevel(cmd.OutOrStdout(), s, key, dryRun, func(f *config.File) (bool, error) {
 				return f.Unset(key), nil
 			})
 		},
 	}
 	cmd.Flags().StringVar(&at, "at", "", "the dotted address (noun.chain) whose config.toml to write (default: the tree root)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	return cmd
 }
 
 // writeLevel applies edit to the scope's own config.toml and reports what it
-// wrote.
+// wrote, or — under dryRun — reports what it would write and writes nothing
+// (para-ato; `set` is the case the bead named, `unset` is wired the same way
+// since it shares this whole function).
 //
 // A change that changes nothing writes nothing and says so (§23): a config file
 // rewritten with identical bytes would still churn its mtime, and every re-run
-// of a provisioning script would look like a change.
+// of a provisioning script would look like a change. edit itself never writes —
+// it mutates an in-memory config.File — so the "no change" branch below is the
+// same computation whether or not dryRun was asked for.
 //
 // A change that does land is recorded in the level's own journal (§8.1), which
 // is why this goes through mutate rather than writing the file directly: the
 // config.toml, the event, and that level's ACTIVITY.md are one mutation, and a
 // crash between them would leave the file changed with nothing to say so.
-func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (bool, error)) error {
+func writeLevel(out io.Writer, s scope, key string, dryRun bool, edit func(*config.File) (bool, error)) error {
 	if len(s.locator) > 0 && config.RootOnly(key) {
 		// The keys that are not chain-resolved (see Resolver.RenderConfig and
 		// config.RootOnly). Writing one at a level nothing reads would be exactly
@@ -218,6 +226,9 @@ func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (boo
 	}
 	if !changed {
 		fmt.Fprintln(out, "no change")
+		if dryRun {
+			fmt.Fprintln(out, dryRunLine)
+		}
 		return nil
 	}
 	data, err := f.Encode()
@@ -226,13 +237,16 @@ func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (boo
 	}
 	after, _ := f.Get(key)
 
-	res, err := s.env.ConfigChange(s.locator, key, config.Format(before), config.Format(after), data)
+	res, err := s.env.ConfigChange(s.locator, key, config.Format(before), config.Format(after), data, dryRun)
 	if err != nil {
 		return err
 	}
 	// Not just the file list: setting either `emit.claude` key writes or sweeps
 	// the whole Claude surface in the same command (§6.1, §26).
 	printEffects(out, res)
+	if dryRun {
+		fmt.Fprintln(out, dryRunLine)
+	}
 	return nil
 }
 

@@ -72,6 +72,48 @@ func TestConfigSetEmitGitattributesKeepsTheRepositorysLines(t *testing.T) {
 	assertClean(t, root)
 }
 
+// TestConfigSetEmitGitattributesDryRunReportsTheRemovalWithoutWriting is
+// para-ato: rebuild.Env.WriteGitAttributes had no dryRun parameter at all
+// before this, so `config set --dry-run` on this key could not mean anything.
+func TestConfigSetEmitGitattributesDryRunReportsTheRemovalWithoutWriting(t *testing.T) {
+	root := treeWithSkill(t)
+	e := env(t, root)
+	before := snapshot(t, root)
+
+	dry := setClaudeDryRun(t, e, root, "emit.gitattributes", ptoml.Bool(false))
+	if !slices.Contains(dry.Removed, ".gitattributes") {
+		t.Errorf("removed %v, want .gitattributes among them", dry.Removed)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("the dry run wrote %v, want nothing", changed)
+	}
+
+	real := setClaude(t, e, root, "emit.gitattributes", ptoml.Bool(false))
+	assertEqual(t, "dry run's Removed", dry.Removed, real.Removed)
+	assertEqual(t, "dry run's Wrote", dry.Wrote, real.Wrote)
+}
+
+// TestConfigSetEmitGitattributesDryRunReportsTheRestoreWithoutWriting is the
+// other direction: the file is empty when the key comes back on, so the dry
+// run has to report the write that would recreate it without doing so.
+func TestConfigSetEmitGitattributesDryRunReportsTheRestoreWithoutWriting(t *testing.T) {
+	root := treeWithSkill(t)
+	e := env(t, root)
+	setClaude(t, e, root, "emit.gitattributes", ptoml.Bool(false))
+	before := snapshot(t, root)
+
+	dry := setClaudeDryRun(t, e, root, "emit.gitattributes", ptoml.Bool(true))
+	if !slices.Contains(dry.Wrote, ".gitattributes") {
+		t.Errorf("wrote %v, want .gitattributes among them", dry.Wrote)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("the dry run wrote %v, want nothing", changed)
+	}
+	if exists(t, root, ".gitattributes") {
+		t.Error("the dry run created .gitattributes")
+	}
+}
+
 // TestConfigSetOfAnotherKeyLeavesGitAttributesAlone: the refresh is scoped to
 // the key that decides the file. A `config set` of anything else writes the
 // config and the level's ACTIVITY.md, and nothing at the root.
@@ -115,7 +157,7 @@ func TestConfigSetEmitGitattributesOnASkillStillSyncsTheMirror(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
-	if _, err := e.ConfigChange(skill, config.KeyEmitGitattributes, "true", "false", data); err != nil {
+	if _, err := e.ConfigChange(skill, config.KeyEmitGitattributes, "true", "false", data, false); err != nil {
 		t.Fatalf("ConfigChange: %v", err)
 	}
 

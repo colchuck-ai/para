@@ -81,9 +81,35 @@ func setClaude(t *testing.T, e *mutate.Env, root, key string, value ptoml.Value)
 		t.Fatalf("Encode: %v", err)
 	}
 	after, _ := f.Get(key)
-	res, err := e.ConfigChange(nil, key, config.Format(before), config.Format(after), data)
+	res, err := e.ConfigChange(nil, key, config.Format(before), config.Format(after), data, false)
 	if err != nil {
 		t.Fatalf("ConfigChange(%s): %v", key, err)
+	}
+	return res
+}
+
+// setClaudeDryRun rehearses the same config write setClaude performs, and
+// reports the config.toml as it stood *before* the write, so a caller can go
+// on to make the same real change and compare.
+func setClaudeDryRun(t *testing.T, e *mutate.Env, root, key string, value ptoml.Value) mutate.Result {
+	t.Helper()
+	path := filepath.Join(root, ".para", "config.toml")
+	f, err := config.Read(path)
+	if err != nil {
+		t.Fatalf("config.Read: %v", err)
+	}
+	before, _ := f.Get(key)
+	if _, err := f.Set(key, value); err != nil {
+		t.Fatalf("Set(%s): %v", key, err)
+	}
+	data, err := f.Encode()
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	after, _ := f.Get(key)
+	res, err := e.ConfigChange(nil, key, config.Format(before), config.Format(after), data, true)
+	if err != nil {
+		t.Fatalf("ConfigChange(%s) dry run: %v", key, err)
 	}
 	return res
 }
@@ -141,6 +167,28 @@ func TestConfigSetEmitClaudeWritesTheWholeSurface(t *testing.T) {
 		t.Errorf("Mirror = %v, want %v", res.Mirror, []mirror.Change{want})
 	}
 	assertClean(t, root)
+}
+
+// TestConfigSetEmitClaudeDryRunPreviewsTheWholeSurfaceWithoutWriting is
+// para-ato: before pendingConfig, WriteClaudeSurface's fresh resolver still
+// read the config.toml on disk, which a `config set --dry-run` never writes —
+// so the rehearsal would have answered every question with the flag still
+// off, and reported no change at all.
+func TestConfigSetEmitClaudeDryRunPreviewsTheWholeSurfaceWithoutWriting(t *testing.T) {
+	root := treeWithSkill(t)
+	e := env(t, root)
+	before := snapshot(t, root)
+
+	dry := setClaudeDryRun(t, e, root, config.KeyEmitClaude, ptoml.Bool(true))
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("the dry run wrote %v, want nothing", changed)
+	}
+
+	real := setClaude(t, env(t, root), root, config.KeyEmitClaude, ptoml.Bool(true))
+	assertEqual(t, "dry run's Wrote", dry.Wrote, real.Wrote)
+	if !slices.Equal(dry.Mirror, real.Mirror) {
+		t.Errorf("dry run's Mirror = %v, want %v", dry.Mirror, real.Mirror)
+	}
 }
 
 // TestConfigSetEmitClaudeOffSweepsTheSurface is the same command in reverse:
@@ -294,7 +342,7 @@ func TestRemovingASkillPrunesItsMirror(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanRemove: %v", err)
 	}
-	res, err := plan.Apply()
+	res, err := plan.Apply(false)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -429,7 +477,7 @@ func TestConfigSetOnASkillRefreshesTheMirror(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := e.ConfigChange(skill, config.KeyReviewCadence, "", "90", data)
+	res, err := e.ConfigChange(skill, config.KeyReviewCadence, "", "90", data, false)
 	if err != nil {
 		t.Fatalf("ConfigChange: %v", err)
 	}

@@ -237,6 +237,88 @@ func TestConfigSetToTheStoredValueIsANoOp(t *testing.T) {
 	}
 }
 
+// TestConfigSetDryRunWritesNothingAndMatchesTheRealRun is para-ato's
+// `config set` case of the same property add_test.go's own dry-run test
+// checks: the rehearsal's stdout is the real run's stdout plus the trailer,
+// and the rehearsal itself writes nothing.
+func TestConfigSetDryRunWritesNothingAndMatchesTheRealRun(t *testing.T) {
+	root := plantTree(t, map[string]string{".para/config.toml": ""})
+	path := filepath.Join(root, ".para", "config.toml")
+	before := statOf(t, path)
+
+	dryCode, dryOut, dryErr := run(t, root, "config", "set", "project.stale-after", "30", "--dry-run")
+	if dryCode != 0 {
+		t.Fatalf("--dry-run: exit %d, stderr %q", dryCode, dryErr)
+	}
+	if after := statOf(t, path); after != before {
+		t.Errorf("--dry-run rewrote %s", path)
+	}
+	if !strings.Contains(dryOut, "dry-run: nothing was written") {
+		t.Errorf("--dry-run: stdout = %q, want the dry-run trailer", dryOut)
+	}
+
+	realCode, realOut, realErr := run(t, root, "config", "set", "project.stale-after", "30")
+	if realCode != 0 {
+		t.Fatalf("config set: exit %d, stderr %q", realCode, realErr)
+	}
+	want := strings.TrimSuffix(dryOut, "dry-run: nothing was written\n")
+	if realOut != want {
+		t.Errorf("real run's stdout =\n%q\nwant (dry run minus its trailer)\n%q", realOut, want)
+	}
+}
+
+// TestConfigSetDryRunOfANoOpStillSaysNoChangeAndTrails is writeLevel's other
+// branch: a value already stored writes nothing whether or not --dry-run was
+// asked for, and the trailer still closes the rehearsal so a script grepping
+// for it does not have to special-case the no-op.
+func TestConfigSetDryRunOfANoOpStillSaysNoChangeAndTrails(t *testing.T) {
+	root := plantTree(t, map[string]string{".para/config.toml": "project.stale-after = 30\n"})
+	path := filepath.Join(root, ".para", "config.toml")
+	before := statOf(t, path)
+
+	code, stdout, stderr := run(t, root, "config", "set", "project.stale-after", "30", "--dry-run")
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	want := "no change\ndry-run: nothing was written\n"
+	if stdout != want {
+		t.Errorf("stdout = %q, want %q", stdout, want)
+	}
+	if after := statOf(t, path); after != before {
+		t.Errorf("the file was rewritten: %v then %v", before, after)
+	}
+}
+
+// TestConfigUnsetDryRunWritesNothingAndMatchesTheRealRun proves --dry-run on
+// `config unset` — the scope this bead extended beyond `config set` alone,
+// since writeLevel is the one function both share.
+func TestConfigUnsetDryRunWritesNothingAndMatchesTheRealRun(t *testing.T) {
+	root := plantTree(t, map[string]string{".para/config.toml": "project.stale-after = 30\n"})
+	path := filepath.Join(root, ".para", "config.toml")
+	before := statOf(t, path)
+
+	dryCode, dryOut, dryErr := run(t, root, "config", "unset", "project.stale-after", "--dry-run")
+	if dryCode != 0 {
+		t.Fatalf("--dry-run: exit %d, stderr %q", dryCode, dryErr)
+	}
+	if after := statOf(t, path); after != before {
+		t.Errorf("--dry-run rewrote %s", path)
+	}
+	if !strings.Contains(dryOut, "dry-run: nothing was written") {
+		t.Errorf("--dry-run: stdout = %q, want the dry-run trailer", dryOut)
+	}
+
+	realCode, realOut, realErr := run(t, root, "config", "unset", "project.stale-after")
+	if realCode != 0 {
+		t.Fatalf("config unset: exit %d, stderr %q", realCode, realErr)
+	}
+	want := strings.TrimSuffix(dryOut, "dry-run: nothing was written\n")
+	if realOut != want {
+		t.Errorf("real run's stdout =\n%q\nwant (dry run minus its trailer)\n%q", realOut, want)
+	}
+}
+
 func TestConfigSetRefusesWhatItCannotStore(t *testing.T) {
 	tests := []struct {
 		name    string

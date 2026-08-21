@@ -4,13 +4,17 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/colchuck-ai/para/internal/clock"
+	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/doctor"
+	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/mutate"
 	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/ptoml"
 	"github.com/colchuck-ai/para/internal/view"
 )
 
@@ -708,7 +712,7 @@ func TestUnarchiveRefusesWhenTheLiveParentIsGone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanRemove: %v", err)
 	}
-	if _, err := removal.Apply(); err != nil {
+	if _, err := removal.Apply(false); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 
@@ -731,7 +735,7 @@ func TestRemoveDeletesTheSubtreeAndLogsAtTheParent(t *testing.T) {
 	if len(plan.Descendants) != 1 {
 		t.Errorf("descendants: got %v, want the objectives/ container", plan.Descendants)
 	}
-	if _, err := plan.Apply(); err != nil {
+	if _, err := plan.Apply(false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -741,6 +745,79 @@ func TestRemoveDeletesTheSubtreeAndLogsAtTheParent(t *testing.T) {
 	if got := journalOf(t, root, "projects"); !strings.Contains(got, `"op":"removed","child":"acme"`) {
 		t.Errorf("the parent did not log the removal:\n%s", got)
 	}
+}
+
+// TestRemoveDryRunWritesNothingButReportsWhatRemoveWould is para-ato: a
+// rehearsal must report the identical Wrote a real remove returns — including
+// the parent's journal/ACTIVITY.md write, which the CLI's own hand-rolled
+// rehearsal never named before this — and delete nothing.
+func TestRemoveDryRunWritesNothingButReportsWhatRemoveWould(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	addProject(t, e, "acme")
+	before := snapshot(t, root)
+
+	dry, err := env(t, root).PlanRemove(loc(t, "projects.acme"), false)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	dryRes, err := dry.Apply(true)
+	if err != nil {
+		t.Fatalf("Apply(true): %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("Apply(true) wrote %v, want nothing", changed)
+	}
+	if !exists(t, root, "projects/acme/.para/state.toml") {
+		t.Error("Apply(true) deleted the subtree")
+	}
+
+	real, err := env(t, root).PlanRemove(loc(t, "projects.acme"), false)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	realRes, err := real.Apply(false)
+	if err != nil {
+		t.Fatalf("Apply(false): %v", err)
+	}
+	assertEqual(t, "Apply(true)'s Wrote", dryRes.Wrote, realRes.Wrote)
+}
+
+// TestRemoveKeepFilesDryRunReportsTheStripsWithoutWriting is
+// TestRemoveKeepFilesKeepsBodiesAndDeletesParasFootprint's rehearsal twin:
+// --keep-files rides its README rewrite in as a Subject's projections
+// (Removal.Apply's own comment), which is the one path through
+// writeset.Plan rather than writeset.PlanRelocate.
+func TestRemoveKeepFilesDryRunReportsTheStripsWithoutWriting(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	addProject(t, e, "acme")
+	before := snapshot(t, root)
+
+	plan, err := env(t, root).PlanRemove(loc(t, "projects.acme"), true)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	dry, err := plan.Apply(true)
+	if err != nil {
+		t.Fatalf("Apply(true): %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("Apply(true) wrote %v, want nothing", changed)
+	}
+	if !exists(t, root, "projects/acme/.para") {
+		t.Error("Apply(true) deleted para's footprint")
+	}
+
+	plan2, err := env(t, root).PlanRemove(loc(t, "projects.acme"), true)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	real, err := plan2.Apply(false)
+	if err != nil {
+		t.Fatalf("Apply(false): %v", err)
+	}
+	assertEqual(t, "Apply(true)'s Wrote", dry.Wrote, real.Wrote)
 }
 
 func TestRemoveKeepFilesKeepsBodiesAndDeletesParasFootprint(t *testing.T) {
@@ -763,7 +840,7 @@ func TestRemoveKeepFilesKeepsBodiesAndDeletesParasFootprint(t *testing.T) {
 	if len(plan.Strips) != 2 {
 		t.Errorf("strips: got %v, want the project's README and its container's", plan.Strips)
 	}
-	if _, err := plan.Apply(); err != nil {
+	if _, err := plan.Apply(false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -796,7 +873,7 @@ func TestRemoveTakesASkillsDerivedRuleWithIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanRemove: %v", err)
 	}
-	if _, err := plan.Apply(); err != nil {
+	if _, err := plan.Apply(false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -806,6 +883,59 @@ func TestRemoveTakesASkillsDerivedRuleWithIt(t *testing.T) {
 	if exists(t, root, ".agents/rules/para-signups-report.md") {
 		t.Error("the derived rule outlived its skill")
 	}
+}
+
+// TestRemoveDryRunOnASkillWithClaudeSurfaceOnPreviewsItsOwnRemoval is
+// TestAddDryRunOnASkillWithClaudeSurfaceOnPreviewsTheWholeReach's mirror
+// image (claude_test.go, para-ato): tree.SkillIDs still sees the skill on
+// disk under a dry run, since nothing was deleted, so without naming it via
+// removing the rehearsal would report no surface change at all — the same
+// gap AddDryRun had before adding existed.
+func TestRemoveDryRunOnASkillWithClaudeSurfaceOnPreviewsItsOwnRemoval(t *testing.T) {
+	setup := func(t *testing.T) string {
+		root := treeWithSkill(t)
+		e := env(t, root)
+		setClaude(t, e, root, config.KeyEmitClaude, ptoml.Bool(true))
+		setClaude(t, e, root, config.KeyEmitClaudeSkills, ptoml.String("copy"))
+		return root
+	}
+
+	dryRoot := setup(t)
+	before := snapshot(t, dryRoot)
+	dryPlan, err := env(t, dryRoot).PlanRemove(loc(t, "skills.report"), false)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	dry, err := dryPlan.Apply(true)
+	if err != nil {
+		t.Fatalf("Apply(true): %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, dryRoot)); len(changed) != 0 {
+		t.Errorf("Apply(true) wrote %v, want nothing", changed)
+	}
+	if want := (mirror.Change{Verb: mirror.VerbRemoved, Path: ".claude/skills/para-report"}); !slices.Contains(dry.Mirror, want) {
+		t.Errorf("dry run's Mirror = %v, want it to carry %v", dry.Mirror, want)
+	}
+	for _, rel := range claudeLocations {
+		if !slices.Contains(dry.Wrote, rel) {
+			t.Errorf("dry run's Wrote = %v, want it to carry %s (the rule dropped from its import list)", dry.Wrote, rel)
+		}
+	}
+
+	realRoot := setup(t)
+	realPlan, err := env(t, realRoot).PlanRemove(loc(t, "skills.report"), false)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	real, err := realPlan.Apply(false)
+	if err != nil {
+		t.Fatalf("Apply(false): %v", err)
+	}
+	assertEqual(t, "Apply(true)'s Wrote", dry.Wrote, real.Wrote)
+	if !slices.Equal(dry.Mirror, real.Mirror) {
+		t.Errorf("Apply(true)'s Mirror = %v, want %v", dry.Mirror, real.Mirror)
+	}
+	assertClean(t, realRoot)
 }
 
 func TestRemoveDropsAStubLeftRecordingNothing(t *testing.T) {
@@ -821,7 +951,7 @@ func TestRemoveDropsAStubLeftRecordingNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanRemove: %v", err)
 	}
-	if _, err := plan.Apply(); err != nil {
+	if _, err := plan.Apply(false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -840,7 +970,7 @@ func TestRemoveLeavesAnUnresolvableScopeEntryForDoctor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanRemove: %v", err)
 	}
-	if _, err := plan.Apply(); err != nil {
+	if _, err := plan.Apply(false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 

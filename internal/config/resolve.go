@@ -285,3 +285,22 @@ func (r *Resolver) file(rel string) (File, error) {
 	r.cache[rel] = f
 	return f, nil
 }
+
+// Override seeds the cache for rel with data, so every subsequent Resolve or
+// RenderConfig against rel answers as if it already held data, without
+// reading disk.
+//
+// It exists for a mutation that has not written rel's new bytes yet and needs
+// an answer as if it had — `config set`'s own dry run, whose rehearsal must
+// ask the surface refresh the identical question a real run's post-write
+// resolver would (para-ato). A real run could call it too — the bytes are the
+// same ones about to land on disk — but it is written for the case where
+// nothing has landed at all.
+func (r *Resolver) Override(rel string, data []byte) error {
+	f, err := Decode(data)
+	if err != nil {
+		return err
+	}
+	r.cache[rel] = f
+	return nil
+}

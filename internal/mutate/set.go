@@ -21,6 +21,16 @@ const blockedStatus = kindmeta.StatusBlocked
 // no event, no projection rewrite, no clock movement (§15). Without that rule a
 // shell loop buys permanent silence from every check in §20.
 func (e *Env) Set(loc locator.Locator, f Fields, note string) (Result, error) {
+	return e.set(loc, f, note, false)
+}
+
+// SetDryRun rehearses Set (§19): every field diffed and every refusal checked
+// exactly as Set would, and nothing written.
+func (e *Env) SetDryRun(loc locator.Locator, f Fields, note string) (Result, error) {
+	return e.set(loc, f, note, true)
+}
+
+func (e *Env) set(loc locator.Locator, f Fields, note string, dryRun bool) (Result, error) {
 	if f.Len() == 0 {
 		return Result{}, paraerr.New(paraerr.KindUsage, "set needs at least one field")
 	}
@@ -47,7 +57,7 @@ func (e *Env) Set(loc locator.Locator, f Fields, note string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return e.write(subj, f, next, note)
+	return e.write(subj, f, next, note, dryRun)
 }
 
 // Unset removes fields, which is a different act from setting them to nothing:
@@ -58,6 +68,16 @@ func (e *Env) Set(loc locator.Locator, f Fields, note string) (Result, error) {
 // `type`, which is fixed at creation. So does any field the kind requires —
 // unsetting `name` would leave an entity that cannot render its own README.
 func (e *Env) Unset(loc locator.Locator, fields []kindmeta.Field) (Result, error) {
+	return e.unset(loc, fields, false)
+}
+
+// UnsetDryRun rehearses Unset (§19): every refusal checked exactly as Unset
+// would, and nothing written.
+func (e *Env) UnsetDryRun(loc locator.Locator, fields []kindmeta.Field) (Result, error) {
+	return e.unset(loc, fields, true)
+}
+
+func (e *Env) unset(loc locator.Locator, fields []kindmeta.Field, dryRun bool) (Result, error) {
 	if len(fields) == 0 {
 		return Result{}, paraerr.New(paraerr.KindUsage, "unset needs at least one field")
 	}
@@ -84,7 +104,7 @@ func (e *Env) Unset(loc locator.Locator, fields []kindmeta.Field) (Result, error
 		f.Set(field, "")
 		clearField(&next, field)
 	}
-	return e.write(subj, f, next, "")
+	return e.write(subj, f, next, "", dryRun)
 }
 
 // unsetRefused says which of §15's three refusals kindmeta.Unsettable made.
@@ -112,7 +132,7 @@ func clearField(st *truth.State, field kindmeta.Field) {
 
 // write is the half `set` and `unset` share: diff, log one event per changed
 // field, and write through.
-func (e *Env) write(subj *subject, f Fields, next truth.State, note string) (Result, error) {
+func (e *Env) write(subj *subject, f Fields, next truth.State, note string, dryRun bool) (Result, error) {
 	changes := diff(subj.kind, subj.state, next)
 	res := Result{Locator: subj.loc, Kind: subj.kind, Changes: changes}
 	for _, field := range f.Names() {
@@ -130,9 +150,9 @@ func (e *Env) write(subj *subject, f Fields, next truth.State, note string) (Res
 			return res, nil
 		}
 		events := []journal.Event{journal.NewNote(e.Now.UTC(), note)}
-		wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil, false)
+		wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil, dryRun)
 		res.Wrote, res.NoteRecorded = wrote, true
-		return e.syncSurface(res, err, false, nil)
+		return e.syncSurface(res, err, dryRun, nil, nil)
 	}
 
 	events := make([]journal.Event, 0, len(changes))
@@ -146,9 +166,9 @@ func (e *Env) write(subj *subject, f Fields, next truth.State, note string) (Res
 
 	subj.state = next
 	p := &plan{subj: subj, events: events, writeState: true, createdMoved: changed(changes, kindmeta.FieldCreated)}
-	wrote, err := apply(e, []*plan{p}, nil, false)
+	wrote, err := apply(e, []*plan{p}, nil, dryRun)
 	res.Wrote = wrote
-	return e.syncSurface(res, err, false, nil)
+	return e.syncSurface(res, err, dryRun, nil, nil)
 }
 
 func changed(changes []Change, field kindmeta.Field) bool {

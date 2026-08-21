@@ -173,7 +173,7 @@ func Run(env *Env, opts Options) (Result, error) {
 	// old bytes, so the command you run to repair a tree finished and `doctor`
 	// stayed red.
 	if len(opts.Scope) == 0 || scopeHoldsSkill(subjects) {
-		changes, err := env.SyncMirror(opts.DryRun, pending, nil)
+		changes, err := env.SyncMirror(opts.DryRun, pending, nil, nil)
 		res.Mirror = changes
 		if err != nil {
 			return res, err
@@ -370,7 +370,7 @@ func (e *Env) Derive(s Subject) ([]Artifact, error) {
 		// CLAUDE.md's import list is the one thing a renderer needs that is not
 		// in the subject's own truth (§6.1), and it is loaded only where that
 		// renderer is in the set.
-		if in.Rules, err = e.rules(nil); err != nil {
+		if in.Rules, err = e.rules(nil, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -404,21 +404,41 @@ func (e *Env) Derive(s Subject) ([]Artifact, error) {
 }
 
 // rules is CLAUDE.md's import list: one derived rule per skill that exists,
-// plus adding — the skills a caller has not written to disk yet but is about
-// to, so a rehearsal of adding a skill names its own rule in the same list a
-// real add would produce. RuleFilenames sorts and dedupes, so adding needs no
-// particular order relative to what tree.SkillIDs already returned.
+// plus adding and minus removing — adding names the skills a caller has not
+// written to disk yet but is about to, so a rehearsal of adding a skill names
+// its own rule in the same list a real add would produce; removing names a
+// skill still on disk that a rehearsed `remove` is about to delete, so its
+// rehearsal does not go on naming a rule the real removal would take with it
+// (para-ato). RuleFilenames sorts and dedupes, so neither needs any particular
+// order relative to what tree.SkillIDs already returned.
 //
 // It asks the skills rather than listing .agents/rules/, because a rule is a
 // projection of a skill (§5.3) and §21.1 forbids deriving a projection from
 // one — the listing would import a rule this same rebuild is about to delete,
 // and would need a second pass to converge.
-func (e *Env) rules(adding []string) ([]string, error) {
+func (e *Env) rules(adding, removing []string) ([]string, error) {
 	ids, err := tree.SkillIDs(e.Root)
 	if err != nil {
 		return nil, err
 	}
-	return render.RuleFilenames(append(ids, adding...)), nil
+	return render.RuleFilenames(pendingSkillIDs(ids, adding, removing)), nil
+}
+
+// pendingSkillIDs is the one place a rehearsal's "as if" skill set is derived
+// — rules and SyncMirror both need the identical set, or a rehearsed skill
+// removal could report a different CLAUDE.md import list than the mirror it
+// syncs against, for no reason but having computed the same adjustment twice.
+func pendingSkillIDs(ids, adding, removing []string) []string {
+	if len(removing) == 0 {
+		return append(slices.Clone(ids), adding...)
+	}
+	out := make([]string, 0, len(ids)+len(adding))
+	for _, id := range ids {
+		if !slices.Contains(removing, id) {
+			out = append(out, id)
+		}
+	}
+	return append(out, adding...)
 }
 
 // load reads everything a subject's renderers need: its truth, its whole

@@ -52,6 +52,32 @@ func TestNoteAppendsAndRewritesActivity(t *testing.T) {
 	}
 }
 
+// TestNoteDryRunWritesNothingButReportsWhatNoteWould is para-ato: a rehearsal
+// must report the identical file list a real Note returns, and touch nothing
+// on disk while doing it.
+func TestNoteDryRunWritesNothingButReportsWhatNoteWould(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	if _, err := e.Add(loc(t, "areas.health"), fields("name", "Health", "description", "Staying in one piece.")); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshot(t, root)
+
+	dry, err := e.NoteDryRun(loc(t, "areas.health"), "swapped the tempo block for intervals", "", false)
+	if err != nil {
+		t.Fatalf("NoteDryRun: %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("NoteDryRun wrote %v, want nothing", changed)
+	}
+
+	real, err := e.Note(loc(t, "areas.health"), "swapped the tempo block for intervals", "", false)
+	if err != nil {
+		t.Fatalf("Note: %v", err)
+	}
+	assertEqual(t, "NoteDryRun's Wrote", dry.Wrote, real.Wrote)
+}
+
 // TestNoteNoAttentionRecordsWithTheFlagSet is para-c3u: --no-attention records
 // the note exactly as a normal one (§18.6) but flags the journal event so
 // Attention (§3.6) skips it — see view.TestAttentionKindAndNoteNameWhatSetTheClock

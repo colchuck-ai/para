@@ -147,7 +147,10 @@ func (e *Env) blockResidue(path string, remove func([]byte) ([]byte, bool, error
 // set` of the key can finish the job rather than leaving a tree that needs a
 // rebuild, which is what every other config key that decides a file's contents
 // already does (§6.1's precedent, §2.3's cost test).
-func (e *Env) WriteGitAttributes() (wrote, removed []string, err error) {
+//
+// dryRun reports the same wrote/removed without touching the file, for
+// `config set --dry-run` (para-ato).
+func (e *Env) WriteGitAttributes(dryRun bool) (wrote, removed []string, err error) {
 	cfg, err := e.Resolver.RenderConfig(nil)
 	if err != nil {
 		return nil, nil, err
@@ -173,7 +176,7 @@ func (e *Env) WriteGitAttributes() (wrote, removed []string, err error) {
 		return nil, nil, err
 	}
 
-	return e.apply(artifacts, false)
+	return e.apply(artifacts, dryRun)
 }
 
 // ClaudeSurface derives the CLAUDE.md at every one of the eight locations that
@@ -186,16 +189,19 @@ func (e *Env) WriteGitAttributes() (wrote, removed []string, err error) {
 // skills.x` can keep every CLAUDE.md correct while touching a bounded, known
 // list — which is what makes this a legal thing for a mutation to call.
 //
-// adding is passed straight through to rules: it is only ever non-empty when
-// AddDryRun is rehearsing the addition of a skill, since a rehearsal writes
-// nothing and the skill it is adding is otherwise invisible to tree.SkillIDs.
+// adding and removing are passed straight through to rules: adding is only
+// ever non-empty when AddDryRun is rehearsing the addition of a skill, since a
+// rehearsal writes nothing and the skill it is adding is otherwise invisible
+// to tree.SkillIDs; removing is only ever non-empty when a rehearsed `remove`
+// is about to delete a skill that tree.SkillIDs can still see, for the
+// opposite reason (para-ato).
 //
 // It loads no journals and no state: CLAUDE.md is a pointer file whose whole
 // content is derived from which skills exist (§6.1), so a full Derive over
 // eight subjects would read four files apiece to produce bytes that do not
 // depend on any of them.
-func (e *Env) ClaudeSurface(adding []string) ([]Artifact, error) {
-	rules, err := e.rules(adding)
+func (e *Env) ClaudeSurface(adding, removing []string) ([]Artifact, error) {
+	rules, err := e.rules(adding, removing)
 	if err != nil {
 		return nil, err
 	}
@@ -287,14 +293,14 @@ func (e *Env) locationDir(loc locator.Locator) (string, error) {
 // the ones that are not what they should be, reporting both lists — or, under
 // dryRun, reports them and writes nothing (§21.1).
 //
-// adding is ClaudeSurface's parameter of the same name, threaded through so a
-// rehearsed skill add can name itself.
+// adding and removing are ClaudeSurface's parameters of the same names,
+// threaded through so a rehearsed skill add or remove can name itself.
 //
 // It is the whole of what a skill mutation owes the surface's first half, and
 // it is separate from Run because Run re-derives a tree and this re-derives
 // eight files.
-func (e *Env) WriteClaudeSurface(dryRun bool, adding []string) (wrote, removed []string, err error) {
-	artifacts, err := e.ClaudeSurface(adding)
+func (e *Env) WriteClaudeSurface(dryRun bool, adding, removing []string) (wrote, removed []string, err error) {
+	artifacts, err := e.ClaudeSurface(adding, removing)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -321,7 +327,13 @@ func (e *Env) WriteClaudeSurface(dryRun bool, adding []string) (wrote, removed [
 // ids puts it in Inspect's `want` set, so a tree with emit.claude on reports it
 // StateMissing — the same verdict, and the same planned Change, a real add's
 // SyncMirror call would compute one line later, once the skill exists.
-func (e *Env) SyncMirror(dryRun bool, pending, adding []string) ([]mirror.Change, error) {
+//
+// removing is adding's mirror image: a skill a rehearsed `remove` is about to
+// delete, still on disk and so still in tree.SkillIDs, dropped from the `want`
+// set before Inspect sees it. Without it a skill's remove --dry-run would
+// compare the mirror against a want set that still contains the skill being
+// removed, and report no change at all (para-ato).
+func (e *Env) SyncMirror(dryRun bool, pending, adding, removing []string) ([]mirror.Change, error) {
 	cfg, err := e.Resolver.RenderConfig(nil)
 	if err != nil {
 		return nil, err
@@ -330,7 +342,7 @@ func (e *Env) SyncMirror(dryRun bool, pending, adding []string) ([]mirror.Change
 	if err != nil {
 		return nil, err
 	}
-	ids = append(ids, adding...)
+	ids = pendingSkillIDs(ids, adding, removing)
 	issues, err := mirror.Inspect(e.Root, cfg, ids, pending)
 	if err != nil {
 		return nil, err
