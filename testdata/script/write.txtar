@@ -135,6 +135,17 @@ stderr 'created cannot be unset'
 ! exec para unset project acme-migration name
 stderr 'name is required'
 
+# A due coarser than a full date is accepted too — a year or a year-month,
+# each meaning by the end of that period (para-xbb). The write path used to
+# gate the raw string on --at's own floor-at-a-full-date grammar before it
+# ever reached ptime.Deadline's wider one, so this failed until normalise's
+# own FieldDue case was pointed at Deadline instead.
+exec para set project acme-migration --due 2027
+grep 'due = "2027"' projects/acme-migration/.para/state.toml
+exec para set project acme-migration --due 2027-04
+grep 'due = "2027-04"' projects/acme-migration/.para/state.toml
+exec para unset project acme-migration due
+
 # `unset skill x scope` widens it back to the whole tree (§5.2, §15).
 exec para unset skill signups-report scope
 ! grep 'When working under' .agents/rules/para-signups-report.md

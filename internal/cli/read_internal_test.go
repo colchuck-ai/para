@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/colchuck-ai/para/internal/view"
 )
 
 // TestTableSizesColumnsToTheContentPrinted is the layout rule the read commands
@@ -101,6 +103,31 @@ func TestExactAndNumber(t *testing.T) {
 	}
 	if got := number(1); got != "1.00" {
 		t.Errorf("number(1) = %q, want 1.00", got)
+	}
+}
+
+// TestStaleValueNamesTheUnit is the one place show's staleCell and review's
+// stale group share a rule (para-xbb): both print a stale-after/review.cadence
+// threshold, which is a day count, and "30" alone does not say what it counts.
+// One function so the two never drift apart.
+func TestStaleValueNamesTheUnit(t *testing.T) {
+	cases := []struct {
+		key   string
+		value float64
+		want  string
+	}{
+		{"area.stale-after", 30, "30 days"},
+		{"project.stale-after", 1, "1 day"},
+		{"review.cadence", 90, "90 days"},
+		// at-risk-pace is a dimensionless ratio, not a day count: it keeps
+		// exact's plain spelling, unchanged by para-xbb.
+		{"key-result.at-risk-pace", 0.8, "0.8"},
+	}
+	for _, tc := range cases {
+		th := view.Threshold{Key: tc.key, Value: tc.value, Found: true}
+		if got := staleValue(th); got != tc.want {
+			t.Errorf("staleValue(%+v) = %q, want %q", th, got, tc.want)
+		}
 	}
 }
 

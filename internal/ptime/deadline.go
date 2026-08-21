@@ -3,6 +3,8 @@ package ptime
 import (
 	"strings"
 	"time"
+
+	"github.com/colchuck-ai/para/internal/paraerr"
 )
 
 // Deadline is the last instant a stored `due` still admits, in UTC.
@@ -12,7 +14,9 @@ import (
 // today has to be legal (§15's `created ≤ due` bound) and must not read as
 // overdue while the day is still running (§4.3's `missed`). A `due` carrying a
 // time of day is that instant exactly — the precision the user typed is the
-// precision they meant.
+// precision they meant. A `due` coarser than a date — a bare year or
+// year-month — reads the same way, one period further out: by the end of it
+// (para-xbb, deadlinePeriods below).
 //
 // It lives here rather than beside either caller because the two questions it
 // answers are asked from opposite ends of the system: the write path checks a
@@ -26,16 +30,42 @@ import (
 // takes the string and not a parsed time.
 func Deadline(due string) (time.Time, error) {
 	t, err := ParseAt(due, time.UTC)
-	if err != nil {
-		return time.Time{}, err
+	if err == nil {
+		if strings.Contains(due, "T") {
+			return t, nil
+		}
+		// AddDate rather than a fixed 24 hours: a bare date carries no offset
+		// and is therefore read in UTC, but going through the calendar keeps
+		// the arithmetic honest about month and year ends.
+		return t.AddDate(0, 0, 1).Add(-time.Second), nil
 	}
-	if strings.Contains(due, "T") {
-		return t, nil
+	for _, p := range deadlinePeriods {
+		if start, perr := time.ParseInLocation(p.layout, due, time.UTC); perr == nil {
+			return p.end(start), nil
+		}
 	}
-	// AddDate rather than a fixed 24 hours: a bare date carries no offset and
-	// is therefore read in UTC, but going through the calendar keeps the
-	// arithmetic honest about month and year ends.
-	return t.AddDate(0, 0, 1).Add(-time.Second), nil
+	return time.Time{}, paraerr.Newf(paraerr.KindValidation,
+		"%q is not a valid due date (year, year-month, date, +hour, +minute, +second, or full RFC 3339)", due)
+}
+
+// deadlinePeriods are precisions coarser than a full date, accepted only for
+// a due date (para-xbb): a bare year or a year-month. §15.1's own grammar
+// stops at a full date because a coarser `--at` would not say when something
+// happened, but a coarser `due` is still an honest deadline — "by the end of
+// April" is a real plan's actual resolution, and forcing an exact day invents
+// precision that was not there.
+//
+// Each entry's end is the same "a date is the whole day" reading Deadline
+// already gives a bare date, carried one and two calendar units further:
+// the last instant before the period rolls over, computed through AddDate so
+// month and year lengths (including leap Februaries) are the calendar's
+// arithmetic and not a table of magic numbers.
+var deadlinePeriods = []struct {
+	layout string
+	end    func(time.Time) time.Time
+}{
+	{"2006-01", func(t time.Time) time.Time { return t.AddDate(0, 1, 0).Add(-time.Second) }},
+	{"2006", func(t time.Time) time.Time { return t.AddDate(1, 0, 0).Add(-time.Second) }},
 }
 
 // DeadlineOf is Deadline for a stored `due` that may be absent, reporting ok

@@ -254,6 +254,40 @@ func TestSetCreatedAfterDueIsRefused(t *testing.T) {
 	}
 }
 
+// TestSetDueAcceptsYearAndYearMonth is para-xbb, exercised through the real
+// write path rather than ptime.Deadline alone: normalise's own FieldDue case
+// used to gate the raw string on ptime.ParseAt — the narrower grammar §15.1
+// floors at a full date — before checkState ever got a chance to accept it
+// through ptime.Deadline, so a coarser due was refused before it was ever
+// written, regardless of what ptime.Deadline itself parsed.
+func TestSetDueAcceptsYearAndYearMonth(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	addProject(t, e, "acme")
+
+	res, err := e.Set(loc(t, "projects.acme"), fields("due", "2027"), "")
+	if err != nil {
+		t.Fatalf("Set due=2027: %v", err)
+	}
+	if len(res.Changes) != 1 || res.Changes[0].To != "2027" {
+		t.Errorf("changes = %+v, want due set to %q", res.Changes, "2027")
+	}
+	if !strings.Contains(read(t, root, "projects/acme/.para/state.toml"), `due = "2027"`) {
+		t.Error(`state.toml does not contain due = "2027"`)
+	}
+
+	res, err = e.Set(loc(t, "projects.acme"), fields("due", "2027-04"), "")
+	if err != nil {
+		t.Fatalf("Set due=2027-04: %v", err)
+	}
+	if len(res.Changes) != 1 || res.Changes[0].To != "2027-04" {
+		t.Errorf("changes = %+v, want due set to %q", res.Changes, "2027-04")
+	}
+	if !strings.Contains(read(t, root, "projects/acme/.para/state.toml"), `due = "2027-04"`) {
+		t.Error(`state.toml does not contain due = "2027-04"`)
+	}
+}
+
 // TestUnsetRefusals covers §15's three refusals: created, a fixed field, and a
 // required one.
 func TestUnsetRefusals(t *testing.T) {

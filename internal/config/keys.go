@@ -18,6 +18,7 @@
 package config
 
 import (
+	"errors"
 	"math"
 	"strconv"
 	"strings"
@@ -80,7 +81,7 @@ func RootOnly(key string) bool {
 type Type int
 
 const (
-	// TypeInt is a non-negative whole number: a day count, a byte count.
+	// TypeInt is a non-negative whole number: a byte count.
 	TypeInt Type = iota
 	// TypeFloat is a ratio, such as a pace threshold.
 	TypeFloat
@@ -88,6 +89,13 @@ const (
 	TypeBool
 	// TypeEnum is a string drawn from a fixed set.
 	TypeEnum
+	// TypeDays is a non-negative whole number of days, stored exactly as
+	// TypeInt is. Parse additionally accepts a duration suffix — 30d, 2w —
+	// as sugar over the same integer, and FormatValue names the unit a bare
+	// number cannot carry on its own (para-xbb): log.rotate-bytes states its
+	// unit in the key name, but stale-after and review.cadence do not, and
+	// "30" alone does not say what it counts.
+	TypeDays
 )
 
 // Spec is one row of §7's config table: a key, the type of value it takes,
@@ -165,13 +173,13 @@ func buildSpecs() []Spec {
 			Doc: "the size a journal file may exceed before the next event opens a new one",
 		},
 		{
-			Key: KeyReviewCadence, Type: TypeInt,
+			Key: KeyReviewCadence, Type: TypeDays,
 			Doc: "days a skill may go untouched before review --skills lists it",
 		},
 	}
 	for _, k := range staleAfterKinds {
 		out = append(out, Spec{
-			Key: k.String() + ".stale-after", Type: TypeInt,
+			Key: k.String() + ".stale-after", Type: TypeDays,
 			Doc: "days since attention before a " + k.String() + " reads stale",
 		})
 	}
@@ -240,6 +248,16 @@ func (s Spec) Parse(raw string) (ptoml.Value, error) {
 			return ptoml.Value{}, paraerr.Newf(paraerr.KindValidation, "%s takes a non-negative number, not %q", s.Key, raw)
 		}
 		return ptoml.Int64(n), nil
+	case TypeDays:
+		n, perr := parseDays(raw)
+		if perr != nil {
+			return ptoml.Value{}, paraerr.Newf(paraerr.KindValidation,
+				"%s takes a whole number of days, or a duration like 30d or 2w, not %q", s.Key, raw)
+		}
+		if n < 0 {
+			return ptoml.Value{}, paraerr.Newf(paraerr.KindValidation, "%s takes a non-negative number, not %q", s.Key, raw)
+		}
+		return ptoml.Int64(n), nil
 	case TypeFloat:
 		f, err := strconv.ParseFloat(raw, 64)
 		if err != nil {
@@ -276,13 +294,42 @@ func (s Spec) Parse(raw string) (ptoml.Value, error) {
 	}
 }
 
+// parseDays converts raw into a whole number of days: a bare integer — the
+// only spelling stale-after and review.cadence took before para-xbb, and
+// still what a config.toml stores — or that integer suffixed with d (days)
+// or w (weeks), sugar over the same stored count. "2w" and "14" write the
+// identical ptoml.Value, so an old tree's hand-written bare number keeps
+// reading exactly as it always did.
+func parseDays(raw string) (int64, error) {
+	if n, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		return n, nil
+	}
+	if len(raw) < 2 {
+		return 0, errBadDuration
+	}
+	n, err := strconv.ParseInt(raw[:len(raw)-1], 10, 64)
+	if err != nil {
+		return 0, errBadDuration
+	}
+	switch raw[len(raw)-1] {
+	case 'd':
+		return n, nil
+	case 'w':
+		return n * 7, nil
+	default:
+		return 0, errBadDuration
+	}
+}
+
+var errBadDuration = errors.New("not a whole number of days or a duration")
+
 // Check validates a value read back from a file, which — unlike one Parse
 // produced — may have been hand-edited to the wrong TOML type. A mistyped
 // knob is refused loudly rather than read as if it were right, because the
 // alternative is a threshold that silently never fires.
 func (s Spec) Check(v ptoml.Value) error {
 	switch s.Type {
-	case TypeInt:
+	case TypeInt, TypeDays:
 		if v.Kind != ptoml.KindInt64 {
 			return s.typeErr(v, "a whole number")
 		}
@@ -359,4 +406,29 @@ func Format(v ptoml.Value) string {
 	default:
 		return ""
 	}
+}
+
+// FormatValue is Format plus the key's declared unit, where Format's bare
+// number would otherwise oversell its own precision the way para-xbb found
+// stale-after doing: printed alone, "30" does not say what it counts. Only
+// TypeDays carries one; every other type prints exactly what Format does.
+func (s Spec) FormatValue(v ptoml.Value) string {
+	out := Format(v)
+	// The Kind guard, not just the Spec's declared Type, because writeLevel
+	// calls this on a "before" value that may be the zero Value (KindString,
+	// "") when the key was not set at all — and an absent value has no unit
+	// to name.
+	if s.Type == TypeDays && v.Kind == ptoml.KindInt64 {
+		out += " " + DaysUnit(v.Int)
+	}
+	return out
+}
+
+// DaysUnit is "day" or "days" for n — the one place that pluralization rule
+// lives, so FormatValue and any other TypeDays display agree on it.
+func DaysUnit(n int64) string {
+	if n == 1 {
+		return "day"
+	}
+	return "days"
 }

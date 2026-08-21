@@ -18,6 +18,7 @@ func execNote(args []string) (string, error)      { return execPlain(newNoteCmd(
 func execRemove(args []string) (string, error)    { return execPlain(newRemoveCmd(), args) }
 func execArchive(args []string) (string, error)   { return execPlain(newArchiveCmd(), args) }
 func execUnarchive(args []string) (string, error) { return execPlain(newUnarchiveCmd(), args) }
+func execShow(args []string) (string, error)      { return execPlain(newShowCmd(), args) }
 
 func execPlain(cmd *cobra.Command, args []string) (string, error) {
 	var out bytes.Buffer

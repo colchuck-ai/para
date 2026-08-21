@@ -102,6 +102,17 @@ func TestParseValueByDeclaredType(t *testing.T) {
 		{key: "project.stale-after", raw: "30.5", wantErr: true},
 		{key: "project.stale-after", raw: "soon", wantErr: true},
 		{key: "project.stale-after", raw: "-1", wantErr: true}, // a negative window is not a window
+		// A duration suffix is sugar over the same stored day count
+		// (para-xbb): "30d" and "2w" both write the plain integer a bare "30"
+		// always has, so an old tree's hand-written config.toml still reads.
+		{key: "project.stale-after", raw: "30d", want: "30"},
+		{key: "project.stale-after", raw: "2w", want: "14"},
+		{key: "project.stale-after", raw: "0w", want: "0"},
+		{key: "project.stale-after", raw: "-1d", wantErr: true}, // a negative window is not a window, suffixed or not
+		{key: "project.stale-after", raw: "30x", wantErr: true}, // not a unit para knows
+		{key: "project.stale-after", raw: "d", wantErr: true},   // no number to suffix
+		{key: "review.cadence", raw: "90", want: "90"},
+		{key: "review.cadence", raw: "12w", want: "84"},
 		{key: "log.rotate-bytes", raw: "4194304", want: "4194304"},
 
 		{key: "key-result.at-risk-pace", raw: "0.8", want: "0.8"},
@@ -242,5 +253,41 @@ func TestFormatIsTheUnquotedDisplayForm(t *testing.T) {
 		if got := Format(tt.value); got != tt.want {
 			t.Errorf("Format(%v) = %q, want %q", tt.value, got, tt.want)
 		}
+	}
+}
+
+// FormatValue is Format plus the unit a bare number cannot carry on its own
+// (para-xbb): "30" said nothing about what it counted, and the one config
+// key whose unit *was* in the key name (log.rotate-bytes) is the reason a
+// day count needs the same treatment rather than a bare number nobody can
+// place.
+func TestSpecFormatValueNamesTheUnit(t *testing.T) {
+	tests := []struct {
+		key   string
+		value ptoml.Value
+		want  string
+	}{
+		{key: "project.stale-after", value: ptoml.Int64(30), want: "30 days"},
+		{key: "project.stale-after", value: ptoml.Int64(1), want: "1 day"},
+		{key: "project.stale-after", value: ptoml.Int64(0), want: "0 days"},
+		{key: "review.cadence", value: ptoml.Int64(90), want: "90 days"},
+		// The zero Value (KindString, "") is what writeLevel's "before" is
+		// when the key was never set — an absent value has no unit to name.
+		{key: "project.stale-after", value: ptoml.Value{}, want: ""},
+		// Types with no declared unit print exactly what Format does.
+		{key: "log.rotate-bytes", value: ptoml.Int64(4194304), want: "4194304"},
+		{key: "key-result.at-risk-pace", value: ptoml.Float64(0.8), want: "0.8"},
+		{key: "emit.claude", value: ptoml.Bool(true), want: "true"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			spec, ok := Lookup(tt.key)
+			if !ok {
+				t.Fatalf("Lookup(%q) not found", tt.key)
+			}
+			if got := spec.FormatValue(tt.value); got != tt.want {
+				t.Errorf("FormatValue(%v) = %q, want %q", tt.value, got, tt.want)
+			}
+		})
 	}
 }

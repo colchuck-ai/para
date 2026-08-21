@@ -391,7 +391,7 @@ due          2026-09-30        in 209 days
 tags         consumer, kafka
 created      2026-01-01
 attention    2026-02-02        31 days ago   note: checked in with the ingest team
-             stale (project.stale-after 14, from .para/config.toml)
+             stale (project.stale-after 14 days, from .para/config.toml)
 
 objectives
   q1-growth  Grow signups    in-progress

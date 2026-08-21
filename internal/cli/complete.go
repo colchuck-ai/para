@@ -371,9 +371,9 @@ func completeConfigKey(_ *cobra.Command, args []string, toComplete string) ([]st
 }
 
 // completeConfigValue offers the values the key already typed accepts, which
-// §7's spec table says for two of its four types: an enum's members, and a
-// boolean's two spellings. An int or a float is a number nobody can enumerate,
-// and offers nothing.
+// §7's spec table says for two of its five types: an enum's members, and a
+// boolean's two spellings. An int, a float, or a day count is a number nobody
+// can enumerate, and offers nothing.
 func completeConfigValue(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	spec, ok := config.Lookup(first(args))
 	if !ok {

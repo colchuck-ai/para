@@ -219,6 +219,7 @@ func writeLevel(out io.Writer, s scope, key string, dryRun bool, edit func(*conf
 	if err != nil {
 		return err
 	}
+	spec, _ := config.Lookup(key)
 	before, _ := f.Get(key)
 	changed, err := edit(&f)
 	if err != nil {
@@ -237,7 +238,7 @@ func writeLevel(out io.Writer, s scope, key string, dryRun bool, edit func(*conf
 	}
 	after, _ := f.Get(key)
 
-	res, err := s.env.ConfigChange(s.locator, key, config.Format(before), config.Format(after), data, dryRun)
+	res, err := s.env.ConfigChange(s.locator, key, spec.FormatValue(before), spec.FormatValue(after), data, dryRun)
 	if err != nil {
 		return err
 	}
@@ -359,12 +360,12 @@ func formatChain(res config.Resolution) string {
 	for i, l := range res.Levels {
 		r := row{label: l.Label(), value: unset, winner: i == res.Winner}
 		if l.Set {
-			r.value = config.Format(l.Value)
+			r.value = res.Spec.FormatValue(l.Value)
 		}
 		rows = append(rows, r)
 	}
 	if res.FromDefault {
-		rows = append(rows, row{label: defaultLabel, value: config.Format(res.Value), winner: true})
+		rows = append(rows, row{label: defaultLabel, value: res.Spec.FormatValue(res.Value), winner: true})
 	}
 
 	// §22's example puts the value column six spaces past the longest
@@ -378,7 +379,7 @@ func formatChain(res config.Resolution) string {
 	var b strings.Builder
 	value := unset
 	if res.Found {
-		value = config.Format(res.Value)
+		value = res.Spec.FormatValue(res.Value)
 	}
 	b.WriteString(value)
 	b.WriteString("\n\n")
@@ -423,7 +424,7 @@ func resolvedValue(res config.Resolution) string {
 	if !res.Found {
 		return unset
 	}
-	return config.Format(res.Value)
+	return res.Spec.FormatValue(res.Value)
 }
 
 // resolvedSource names where a value came from: the level that supplied it,

@@ -26,6 +26,12 @@ func TestDeadline(t *testing.T) {
 		// A month boundary is arithmetic, not string surgery.
 		{"2026-02-28", "2026-02-28T23:59:59Z"},
 		{"2026-12-31", "2026-12-31T23:59:59Z"},
+		// A year or year-month `due` is a real plan's honest resolution
+		// (para-xbb): it means by the end of that period, the same "a date is
+		// the whole day" reading carried one and two steps further.
+		{"2027", "2027-12-31T23:59:59Z"},
+		{"2027-04", "2027-04-30T23:59:59Z"},
+		{"2028-02", "2028-02-29T23:59:59Z"}, // leap year: arithmetic, not string surgery.
 	}
 	for _, tc := range cases {
 		got, err := ptime.Deadline(tc.due)
@@ -40,7 +46,7 @@ func TestDeadline(t *testing.T) {
 }
 
 func TestDeadlineRejectsWhatParseAtRejects(t *testing.T) {
-	for _, due := range []string{"", "tomorrow", "2026-13-01", "30/09/2026"} {
+	for _, due := range []string{"", "tomorrow", "2026-13-01", "30/09/2026", "2027-13", "202"} {
 		if _, err := ptime.Deadline(due); err == nil {
 			t.Errorf("Deadline(%q): want an error", due)
 		}

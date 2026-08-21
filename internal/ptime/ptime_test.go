@@ -79,6 +79,12 @@ func TestParseAt_Invalid(t *testing.T) {
 		"2026-13-01",
 		"2026-01-03 09:02",
 		"2026/01/03",
+		// A full date is the minimum precision §15.1 grants `--at` — the
+		// coarser year and year-month forms are `due`'s alone (ptime.Deadline,
+		// para-xbb), because "by the end of April" only makes sense for a
+		// deadline, not for when something happened.
+		"2026",
+		"2026-01",
 	}
 	for _, in := range cases {
 		if _, err := ParseAt(in, pt); err == nil {

@@ -11,9 +11,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/colchuck-ai/para/internal/clock"
+	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/ptoml"
 	"github.com/colchuck-ai/para/internal/query"
 	"github.com/colchuck-ai/para/internal/tagexpr"
 	"github.com/colchuck-ai/para/internal/tree"
@@ -323,3 +325,17 @@ func number(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
 // it as 14.00 would suggest a precision the knob does not have — and §16.1
 // prints it back in the spelling a `config set` would take.
 func exact(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
+
+// staleValue is a §7 threshold's value, named with its unit where the key is
+// a day count (para-xbb): show's staleCell and review's knobCell both print
+// "<key> <value>" for a Threshold that may be stale-after, review.cadence, or
+// at-risk-pace, so this is the one function that decides what the value half
+// says rather than two copies that could silently drift. Only the day-count
+// keys have a unit to add — at-risk-pace is a dimensionless ratio and keeps
+// exact's plain spelling.
+func staleValue(th view.Threshold) string {
+	if spec, ok := config.Lookup(th.Key); ok && spec.Type == config.TypeDays {
+		return spec.FormatValue(ptoml.Int64(int64(th.Value)))
+	}
+	return exact(th.Value)
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -42,11 +43,11 @@ func TestConfigShowPrintsSection22sChain(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	want := "30\n" +
+	want := "30 days\n" +
 		"\n" +
 		"  project.acme-migration      —\n" +
-		"→ project                     30\n" +
-		"  <root>                      14\n"
+		"→ project                     30 days\n" +
+		"  <root>                      14 days\n"
 	if stdout != want {
 		t.Errorf("stdout =\n%q\nwant\n%q", stdout, want)
 	}
@@ -62,7 +63,7 @@ func TestConfigShowAtTheRootWhenNoLocatorIsGiven(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	want := "14\n\n→ <root>      14\n"
+	want := "14 days\n\n→ <root>      14 days\n"
 	if stdout != want {
 		t.Errorf("stdout =\n%q\nwant\n%q", stdout, want)
 	}
@@ -174,7 +175,7 @@ func TestConfigSetWritesTheRootByDefaultAndSaysSo(t *testing.T) {
 		".para/config.toml",
 		"ACTIVITY.md")
 	assertFile(t, root, ".para/config.toml", "project.stale-after = 30\n")
-	assertContains(t, root, "ACTIVITY.md", "Set **project.stale-after** to 30")
+	assertContains(t, root, "ACTIVITY.md", "Set **project.stale-after** to 30 days")
 }
 
 // §22: --at is how the chain gets built deliberately rather than by accident.
@@ -386,7 +387,7 @@ func TestConfigUnsetRemovesTheValueAtOneLevel(t *testing.T) {
 		"projects/.para/config.toml",
 		"projects/ACTIVITY.md")
 	assertFile(t, root, "projects/.para/config.toml", "emit.claude = true\n")
-	assertContains(t, root, "projects/ACTIVITY.md", "Unset **project.stale-after** (was 30)")
+	assertContains(t, root, "projects/ACTIVITY.md", "Unset **project.stale-after** (was 30 days)")
 	// §7: unset removes a value and resolution continues up the chain.
 	assertFile(t, root, ".para/config.toml", "project.stale-after = 14\n")
 }
@@ -434,7 +435,7 @@ func TestConfigListPrintsEveryKnobAndWhereItCameFrom(t *testing.T) {
 		"emit.claude":             {"true", "<root>"},
 		"emit.claude-skills":      {"symlink", "(default)"},
 		"emit.gitattributes":      {"true", "(default)"},
-		"project.stale-after":     {"30", "<root>"},
+		"project.stale-after":     {"30 days", "<root>"},
 		"review.cadence":          {"—", "—"},
 		"key-result.at-risk-pace": {"—", "—"},
 		"log.rotate-bytes":        {"4194304", "(default)"},
@@ -467,12 +468,16 @@ func TestConfigListRefusesAnAddressArgument(t *testing.T) {
 	}
 }
 
-// listRows splits `config list` output into key → [value, source]. The
-// columns are aligned with runs of spaces, and no cell contains one.
+// columnGap is two or more spaces: what separates `config list`'s columns,
+// as opposed to the single space inside a cell like "30 days" (para-xbb) — a
+// TypeDays value is the one cell that is not a single token.
+var columnGap = regexp.MustCompile(`\s{2,}`)
+
+// listRows splits `config list` output into key → [value, source].
 func listRows(stdout string) map[string][]string {
 	rows := make(map[string][]string)
 	for _, line := range strings.Split(strings.TrimRight(stdout, "\n"), "\n") {
-		fields := strings.Fields(line)
+		fields := columnGap.Split(strings.TrimSpace(line), -1)
 		if len(fields) == 3 {
 			rows[fields[0]] = fields[1:]
 		}

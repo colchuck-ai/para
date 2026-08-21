@@ -977,6 +977,13 @@ this defensible. A skill's chain is its own `config.toml`, then the root —
 `unset` removes a value and resolution continues up the chain. Unset everywhere means the check
 never fires.
 
+**`<kind>.stale-after` and `review.cadence` are day counts, and say so.** `config set` accepts a bare
+non-negative integer as before, or the same count suffixed `d` (days) or `w` (weeks) — `30d`, `2w` —
+both sugar over the identical stored integer, so an existing bare-number `config.toml` still reads
+exactly as it always did. Every resolved display — `config list`, `config show`, and `show`'s own
+`stale (…)` line — prints the value with its unit, `30 days` rather than a bare `30` that does not say
+what it counts (para-xbb). `log.rotate-bytes` needed no such change: its unit is already in the key.
+
 ---
 
 ## 8. Truth files
@@ -1408,6 +1415,14 @@ anything you type. One irregularity survives from before nouns existed, and one 
   was already optional, `.` is not reducing an argument count so much as supplying a token that is not
   drawn from the seven-word noun vocabulary at all. Cheap either way, and it is the difference between
   para being usable from inside a project and not.
+- **`.` at the tree root is `show`'s alone to answer with the tree itself, not an error** (para-xbb).
+  Every other container and entity satisfies "." by holding its own `.para/state.toml`; the root holds
+  `tree.toml` instead; and standing there, or anywhere the walk reaches the root without finding one,
+  used to refuse with "no entity or container contains …" — true, but read by a new user as "this tree
+  is not set up," when the root is exactly the kind of thing `.` already promises: "the thing containing
+  the working directory." `para show .` at the root prints that thing — name, created date, config, and
+  its container children — the same summary any other `show` gives. Every other verb `.` reaches keeps
+  the refusal: `para note .` at the root still has nothing to attach a note to.
 - **A noun with no chain is the bucket.** `para list project`, `para doctor area`, `para path skill`.
   This collapses "filter by kind" and "the bucket" into one idea (§1.4's table gives the four buckets'
   paths this way), and it is accepted by every command whose argument the table below calls "entity,
@@ -1492,6 +1507,12 @@ local.
 Bounds: never in the future. `measure --at` must not collide with an existing measurement on the same
 key-result (§3.1); notes and changes may collide freely.
 
+**`due` alone accepts two precisions coarser than this floor**: a bare year and a year-month, each
+meaning by the end of that period — `2027` is the last instant of 2027, `2027-04` the last instant of
+April. A deadline that granular is a real plan's honest resolution, and forcing it to a fuller date
+would invent precision that was never there (para-xbb). `--at` itself stays floored at a full date:
+"by the end of April" answers when something is due, not when it happened.
+
 **What you type is local; what is stored is UTC.** The zero-filling above happens in your offset, and
 the resolved instant is then written as UTC — so `--at 2026-01-03` in `-08:00` stores
 `2026-01-03T08:00:00Z`. One representation on disk means one answer to "which day is this" for every
@@ -1521,7 +1542,7 @@ due          2026-09-30        in 181 days
 tags         consumer, kafka
 created      2026-01-01
 attention    2026-03-02        31 days ago
-             stale (stale-after 14, from .para/config.toml)
+             stale (stale-after 14 days, from .para/config.toml)
 
 objectives
   q1-growth  Grow signups                          in-progress
@@ -1542,6 +1563,27 @@ skills       signups-report (from skill.signups-report, scope project)
 - `show` says when an entity is dormant under a terminal ancestor or lives under `archive/`, because
   its own fields do not explain why it stopped appearing in `list` (§1.6, §1.7).
 - `show` is unaffected by terminal-status hiding. You named the thing.
+- **`para show .` at the tree root summarises the tree itself** (§14, para-xbb) rather than refusing:
+
+```
+$ para show .
+tree  max's brain
+Everything I am carrying.
+
+created      2026-01-01
+config       3 keys set — see `para config list`
+
+containers
+projects   Projects    —
+areas      Areas       —
+resources  Resources   —
+archive    Archive     —
+```
+
+  Its containers print flush left rather than indented under a name the way `q1-growth` is under
+  `acme-migration` above: they are the four buckets §8.1's own `child` events name, and every one of
+  them is a reserved locator segment on its own, which is what makes a child's *depth* — the same
+  count `list` and `show` compute everywhere else — zero here rather than one.
 
 ### 16.2 `list`
 
@@ -1954,11 +1996,11 @@ para config show project.stale-after objective.acme.q1-growth
 
 ```
 $ para config show project.stale-after project.acme-migration
-30
+30 days
 
   project.acme-migration       —
-→ project                      30
-  <root>                       14
+→ project                      30 days
+  <root>                       14 days
 ```
 
 §7 says the chain must be printable or chained resolution is not defensible. This is that command, and
@@ -2224,7 +2266,7 @@ that is the only thing it has.
 ```
 $ para review --stale --behind
 stale (3)
-  area.fitness.training                          61 days   stale-after 30
+  area.fitness.training                          61 days   stale-after 30 days
   …
 behind (1)
   key-result.acme-migration.q1-growth.signups    pace 0.70   at-risk-pace 0.80
@@ -2250,11 +2292,11 @@ exit 0
 ```
 $ para config set --at project project.stale-after 30
 $ para config show project.stale-after project.acme-migration
-30
+30 days
 
   project.acme-migration      —
-→ project                     30
-  <root>                      14
+→ project                     30 days
+  <root>                      14 days
 
 $ para config set emit.claude true
 wrote  .para/config.toml

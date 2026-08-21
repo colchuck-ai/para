@@ -54,7 +54,7 @@ var fieldHelp = map[kindmeta.Field]string{
 	kindmeta.FieldName:        "the thing's name",
 	kindmeta.FieldDescription: "one line: what it is, or when to use it",
 	kindmeta.FieldPriority:    "one of " + strings.Join(kindmeta.Priorities(), ", "),
-	kindmeta.FieldDue:         "a deadline, in progressive precision",
+	kindmeta.FieldDue:         "a deadline, in progressive precision (year, year-month, or finer)",
 	kindmeta.FieldTags:        "a comma-separated list, replacing whatever is there",
 	kindmeta.FieldCreated:     "the creation time; defaults to now, never in the future",
 	// type, start, target, and scope each belong to exactly one kind, so
@@ -497,7 +497,7 @@ func newNoteCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&at, "at", "", "when it happened, in progressive precision; defaults to now")
+	cmd.Flags().StringVar(&at, "at", "", "when it happened, in progressive precision starting at a full date; defaults to now")
 	cmd.Flags().BoolVar(&noAttention, "no-attention", false, "record the note without moving the attention clock")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	archived.register(cmd)
@@ -556,7 +556,7 @@ func newMeasureCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&at, "at", "", "when the reading was taken, in progressive precision; defaults to now")
+	cmd.Flags().StringVar(&at, "at", "", "when the reading was taken, in progressive precision starting at a full date; defaults to now")
 	cmd.Flags().StringVar(&note, "note", "", "a reason or a caveat, recorded with the reading")
 	return cmd
 }

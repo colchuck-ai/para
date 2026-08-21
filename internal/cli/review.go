@@ -165,7 +165,7 @@ func knobCell(item review.Item) string {
 	if !item.Threshold.Found {
 		return ""
 	}
-	return item.Threshold.Key + " " + exact(item.Threshold.Value)
+	return item.Threshold.Key + " " + staleValue(item.Threshold)
 }
 
 // reviewOutput is `review --json`: the sections, and §23's counts.

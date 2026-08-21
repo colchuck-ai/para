@@ -8,10 +8,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/ptime"
 	"github.com/colchuck-ai/para/internal/query"
+	"github.com/colchuck-ai/para/internal/tree"
+	"github.com/colchuck-ai/para/internal/truth"
 	"github.com/colchuck-ai/para/internal/view"
 )
 
@@ -67,38 +71,200 @@ func newShowCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// "." is checked before parseAddressArgs, because at the tree
+			// root it names something parseAddressArgs' arity has no shape
+			// for at all: not an entity, not a bucket, but the tree itself
+			// (para-xbb) — the one address show can reach that no noun and
+			// chain ever can, since the root has no locator of its own
+			// (§8.1, §14).
+			if len(args) > 0 && args[0] == "." {
+				loc, atRoot, err := tree.ResolveDotOrRoot(env.Root, cwd)
+				if err != nil {
+					return err
+				}
+				if atRoot {
+					return showRoot(cmd, env, read)
+				}
+				return showEntity(cmd, env, loc, read)
+			}
 			loc, _, err := parseAddressArgs(env.Root, cwd, args, bucketArity, archived.value)
 			if err != nil {
 				return err
 			}
-			ent, err := env.Load(loc)
-			if err != nil {
-				return err
-			}
-			children, err := showChildren(env, ent)
-			if err != nil {
-				return err
-			}
-			skills, err := env.SkillsReaching(loc)
-			if err != nil {
-				return err
-			}
-			stale, isStale, err := env.Stale(ent)
-			if err != nil {
-				return err
-			}
-
-			s := shown{ent: ent, children: children, skills: skills, stale: stale, isStale: isStale}
-			if read.json {
-				return writeJSON(cmd.OutOrStdout(), showOutputOf(env, s))
-			}
-			printShow(cmd.OutOrStdout(), env, s, read)
-			return nil
+			return showEntity(cmd, env, loc, read)
 		},
 	}
 	read.register(cmd)
 	archived.register(cmd)
 	return cmd
+}
+
+// showEntity is `show <noun> [<chain>]` once loc names a real entity or
+// container — every case parseAddressArgs' arities cover, and dot-at-root's
+// non-root outcome besides.
+func showEntity(cmd *cobra.Command, env *view.Env, loc locator.Locator, read readFlags) error {
+	ent, err := env.Load(loc)
+	if err != nil {
+		return err
+	}
+	children, err := showChildren(env, ent)
+	if err != nil {
+		return err
+	}
+	skills, err := env.SkillsReaching(loc)
+	if err != nil {
+		return err
+	}
+	stale, isStale, err := env.Stale(ent)
+	if err != nil {
+		return err
+	}
+
+	s := shown{ent: ent, children: children, skills: skills, stale: stale, isStale: isStale}
+	if read.json {
+		return writeJSON(cmd.OutOrStdout(), showOutputOf(env, s))
+	}
+	printShow(cmd.OutOrStdout(), env, s, read)
+	return nil
+}
+
+// rootContainerNames are the tree's own children (para-xbb): the four
+// buckets §8.1's `init` journals as the root's four `child` events
+// (mutate.rootPlan), in that same order. The skill bucket is deliberately
+// not among them — it never joins that journaled set either (see
+// mutate.bucketPlans' own reasoning) — so `show .` at the root names exactly
+// what the root's own journal already claims as its children, not every
+// container the tree happens to hold.
+var rootContainerNames = []string{"projects", "areas", "resources", "archive"}
+
+// showRoot is `show .` at the tree root (para-xbb): the root has
+// .para/tree.toml and is plainly a thing para tracks, but it is not an
+// entity or a container (§8.1) — the previous refusal, "no entity or
+// container contains …", read as though the tree were unset up rather than
+// simply not the kind of thing "." had ever been allowed to name. It is
+// addressable here instead, the same "what is this tree" summary any other
+// `show` gives: identity, then containers.
+func showRoot(cmd *cobra.Command, env *view.Env, read readFlags) error {
+	t, err := truth.ReadTree(env.Root)
+	if err != nil {
+		return err
+	}
+	containers, err := loadRootContainers(env)
+	if err != nil {
+		return err
+	}
+	configKeys, err := rootConfigKeyCount(env.Root)
+	if err != nil {
+		return err
+	}
+
+	if read.json {
+		return writeJSON(cmd.OutOrStdout(), rootOutputOf(env, t, containers, configKeys))
+	}
+	printRoot(cmd.OutOrStdout(), t, containers, configKeys, read.zone(env))
+	return nil
+}
+
+// loadRootContainers loads the four buckets rootContainerNames names, each
+// exactly the way `show project` (the bare noun, R17's bucket) already
+// loads one.
+func loadRootContainers(env *view.Env) ([]view.Entity, error) {
+	out := make([]view.Entity, 0, len(rootContainerNames))
+	for _, name := range rootContainerNames {
+		ent, err := env.Load(locator.Locator{name})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ent)
+	}
+	return out, nil
+}
+
+// rootConfigKeyCount is how many keys the root's own config.toml sets —
+// not the resolved chain `config list` walks (the root has no ancestor to
+// resolve against), just what is actually written there, the same thing
+// `show` prints for every other stored field: what is in the file, not a
+// derivation over it.
+func rootConfigKeyCount(root string) (int, error) {
+	f, err := config.Read(truth.ConfigPath(root))
+	if err != nil {
+		return 0, err
+	}
+	return len(f.Keys()), nil
+}
+
+// printRoot is showRoot's human-readable shape: the tree's name and
+// description the way any other `show` header prints them, its stored
+// fields, then its containers — the same "children in summary" §16.1 gives
+// every other kind, reusing printChildren so the two never format a child
+// row two different ways.
+func printRoot(out io.Writer, t truth.Tree, containers []view.Entity, configKeys int, zone *time.Location) {
+	var head table
+	head.add("tree", t.Name)
+	head.write(out)
+	if t.Description != "" {
+		fmt.Fprintln(out, t.Description)
+	}
+
+	var fields []string
+	if created, ok := ptime.StoredAt(t.Created); ok {
+		fields = append(fields, labelled("created", day(created, zone)))
+	}
+	fields = append(fields, labelled("config", configSummary(configKeys)))
+	fmt.Fprintln(out)
+	for _, line := range fields {
+		fmt.Fprintln(out, strings.TrimRight(line, " "))
+	}
+
+	if len(containers) > 0 {
+		fmt.Fprintln(out)
+		printChildren(out, nil, containers)
+	}
+}
+
+// configSummary is showRoot's one-line answer to "is anything configured
+// here", pointing at the command that has the real answer rather than
+// reprinting `config list`'s own table inside `show`.
+func configSummary(keys int) string {
+	if keys == 0 {
+		return "none set"
+	}
+	if keys == 1 {
+		return "1 key set — see `para config list`"
+	}
+	return fmt.Sprintf("%d keys set — see `para config list`", keys)
+}
+
+// rootOutput is `show .` at the root, as --json reports it (para-xbb): the
+// tree's own identity fields, which no locator-addressed --json shape can
+// otherwise carry (§8.1's root has no locator), plus its containers in the
+// same entityJSON shape every other `show --json` child uses.
+type rootOutput struct {
+	Schema      int64        `json:"schema"`
+	ParaVersion string       `json:"para-version"`
+	Name        string       `json:"name"`
+	Description string       `json:"description,omitempty"`
+	Created     string       `json:"created,omitempty"`
+	ConfigKeys  int          `json:"config-keys"`
+	Containers  []entityJSON `json:"containers"`
+}
+
+func rootOutputOf(env *view.Env, t truth.Tree, containers []view.Entity, configKeys int) rootOutput {
+	out := rootOutput{
+		Schema:      t.Schema,
+		ParaVersion: t.ParaVersion,
+		Name:        t.Name,
+		Description: t.Description,
+		ConfigKeys:  configKeys,
+		Containers:  make([]entityJSON, 0, len(containers)),
+	}
+	if created, ok := ptime.StoredAt(t.Created); ok {
+		out.Created = created.UTC().Format(time.RFC3339)
+	}
+	for _, c := range containers {
+		out.Containers = append(out.Containers, newEntityJSON(env, c))
+	}
+	return out
 }
 
 // shown is everything `show` gathered, so that the human and JSON shapes are
@@ -269,7 +435,7 @@ func staleCell(th view.Threshold) string {
 	} else {
 		from = "from " + from
 	}
-	return fmt.Sprintf("stale (%s %s, %s)", th.Key, exact(th.Value), from)
+	return fmt.Sprintf("stale (%s %s, %s)", th.Key, staleValue(th), from)
 }
 
 // dormancy names what is quieting the entity, since neither answer is in its

@@ -180,8 +180,15 @@ func (e *Env) normalise(kind kindmeta.Kind, field kindmeta.Field, raw string, st
 		// A deadline is also the one timestamp that is *supposed* to be in the
 		// future, so it takes neither of §15's bounds directly; `created` is
 		// checked against it in checkState.
-		if _, err := e.timestamp(field, raw); err != nil {
-			return "", err
+		//
+		// Validated through ptime.Deadline, not e.timestamp/ParseAt: a year and
+		// a year-month are due's own coarser precisions (para-xbb), which §15.1's
+		// floor-at-a-full-date grammar does not admit — checkState calls
+		// ptime.Deadline too, so gating here on the narrower ParseAt would
+		// refuse a value checkState would otherwise accept, which is exactly
+		// the bug (a `--due 2027` that ptime.Deadline itself parses fine).
+		if _, err := ptime.Deadline(raw); err != nil {
+			return "", paraerr.Newf(paraerr.KindValidation, "%s: %s", field, unwrapMessage(err))
 		}
 		return strings.TrimSpace(raw), nil
 
