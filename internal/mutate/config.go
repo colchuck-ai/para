@@ -37,7 +37,11 @@ import (
 // removing a file — true, and not a reason to leave the tree stale. A command
 // that succeeds and leaves `doctor` red is the failure Phase 13's review named
 // twice, and the cost of not having it is one write at a fixed path.
-func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byte) (Result, error) {
+//
+// dryRun is a parameter rather than a second copy of this function for the
+// same reason apply's is (para-ato): `config set --dry-run`'s rehearsal must
+// ask apply and the surface refresh the identical question a real run does.
+func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byte, dryRun bool) (Result, error) {
 	subj, err := e.open(loc)
 	if err != nil {
 		return Result{}, err
@@ -50,13 +54,13 @@ func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byt
 		config:          file,
 		onlyProjections: []render.Renderer{render.Activity},
 	}
-	wrote, err := apply(e, []*plan{p}, nil)
+	wrote, err := apply(e, []*plan{p}, nil, dryRun)
 	res := Result{Locator: loc, Kind: subj.kind, Wrote: wrote}
 	if err == nil && config.AffectsClaudeSurface(key) {
-		return e.refreshSurface(res)
+		return e.refreshSurface(res, dryRun, nil, nil, file)
 	}
 	if err == nil && key == config.KeyEmitGitattributes {
-		res, err = e.refreshGitAttributes(res)
+		res, err = e.refreshGitAttributes(res, dryRun, file)
 	}
 	// And then the ordinary rule, which every path falls through to: a config
 	// change on a *skill* has rewritten that skill's ACTIVITY.md, which a
@@ -71,5 +75,5 @@ func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byt
 	// skipped the mirror; a returning branch here would have reintroduced it for
 	// one more key. `refreshSurface` returns directly because it has already
 	// synced the mirror itself.
-	return e.syncSurface(res, err)
+	return e.syncSurface(res, err, dryRun, nil, nil)
 }

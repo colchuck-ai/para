@@ -226,7 +226,7 @@ func Inspect(root string, cfg render.Config, skills, pending []string) ([]Issue,
 		}
 		issues = append(issues, Issue{
 			ID: id, Path: Path(id), State: StateMissing,
-			Detail: fmt.Sprintf("is missing; skills.%s has no mirror", id),
+			Detail: fmt.Sprintf("is missing; skill.%s has no mirror", id),
 		})
 	}
 
@@ -242,7 +242,7 @@ func classify(root string, cfg render.Config, want, pending map[string]bool, id 
 		issue.State, issue.Detail = StateResidue, ResidueDetail
 		return issue, true
 	case !want[id]:
-		issue.State, issue.Detail = StateOrphan, fmt.Sprintf("mirrors skills.%s, which is gone", id)
+		issue.State, issue.Detail = StateOrphan, fmt.Sprintf("mirrors skill.%s, which is gone", id)
 		return issue, true
 	}
 

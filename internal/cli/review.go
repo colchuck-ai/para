@@ -6,20 +6,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/review"
 	"github.com/colchuck-ai/para/internal/view"
 )
 
-// newReviewCmd implements `para review [<locator>]` (§20).
+// newReviewCmd implements `para review [<noun> [<chain>]]` (R3, R17, R18).
 func newReviewCmd() *cobra.Command {
 	var read readFlags
+	var archived archivedFlag
 	var all bool
 	var limit int
 	selected := map[review.Group]*bool{}
 
 	cmd := &cobra.Command{
-		Use:   "review [<locator>]",
+		Use:   "review [<noun> [<chain>]]",
 		Short: "list what is worth looking at, grouped by reason",
 		Long: "Group what needs attention by why it needs it: stale, blocked, overdue,\n" +
 			"behind, and skills nobody has touched. Naming no group runs all five.\n\n" +
@@ -27,17 +27,15 @@ func newReviewCmd() *cobra.Command {
 			"there is no --sort. Terminal items and archived things are excluded unless\n" +
 			"--all. It always exits 0: having work is not a failure, and a command that\n" +
 			"fails whenever you have work is a command you stop running.",
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openRead(cmd)
 			if err != nil {
 				return err
 			}
-			var scope locator.Locator
-			if len(args) == 1 {
-				if scope, err = resolveLocatorArg(env.Root, cwd, args[0]); err != nil {
-					return err
-				}
+			scope, _, err := parseAddressArgs(env.Root, cwd, args, scopeArity, archived.value)
+			if err != nil {
+				return err
 			}
 			if err := checkLimit(limit); err != nil {
 				return err
@@ -80,6 +78,7 @@ func newReviewCmd() *cobra.Command {
 	// converted at all: it is a day somebody chose, not an instant something
 	// happened at (§15.1).
 	read.register(cmd)
+	archived.register(cmd)
 	cmd.Flags().Lookup("local").Usage = "accepted for consistency; review prints no timestamp to convert"
 	return cmd
 }
@@ -113,7 +112,7 @@ func printReview(out io.Writer, res review.Result) {
 		t.head(sectionHeading(s))
 		for _, item := range s.Items {
 			measure, threshold := cells(s.Group, item)
-			t.add(item.Entity.Locator.String(), measure, threshold)
+			t.add(entityLocatorString(item.Entity.Locator), measure, threshold, attentionSource(item.Entity))
 		}
 	}
 	t.write(out)
@@ -142,7 +141,7 @@ func sectionHeading(s review.Section) string {
 // leaves §7's chain invisible in exactly the place it decided something.
 //
 // Where the value came from is carried by --json rather than printed on every
-// row: `show <locator>` is the command for one thing's provenance, and repeating
+// row: `show <noun> <chain>` is the command for one thing's provenance, and repeating
 // a path down a column of twenty would bury the numbers.
 func cells(g review.Group, item review.Item) (measure, threshold string) {
 	switch g {
@@ -166,7 +165,7 @@ func knobCell(item review.Item) string {
 	if !item.Threshold.Found {
 		return ""
 	}
-	return item.Threshold.Key + " " + exact(item.Threshold.Value)
+	return item.Threshold.Key + " " + staleValue(item.Threshold)
 }
 
 // reviewOutput is `review --json`: the sections, and §23's counts.

@@ -33,14 +33,14 @@ import (
 // case §3.6 falls back to `created` for and for OldestOf the case §4.1 has no
 // baseline in.
 func LatestOf(dir string, kinds ...Kind) (Event, bool, error) {
-	return bound(dir, kinds, func(candidate, best Event) bool {
+	return bound(dir, kinds, nil, func(candidate, best Event) bool {
 		return candidate.At.After(best.At)
 	})
 }
 
 // OldestOf is the earliest event of the given kinds, by `at`. See LatestOf.
 func OldestOf(dir string, kinds ...Kind) (Event, bool, error) {
-	return bound(dir, kinds, func(candidate, best Event) bool {
+	return bound(dir, kinds, nil, func(candidate, best Event) bool {
 		return candidate.At.Before(best.At)
 	})
 }
@@ -48,10 +48,17 @@ func OldestOf(dir string, kinds ...Kind) (Event, bool, error) {
 // bound walks every journal file in dir and keeps the one matching event that
 // better satisfies the comparison.
 //
+// extra is a second filter beyond kind, checked only when non-nil. It exists
+// for AttentionAt alone: every other caller's question is answered by kind by
+// itself, and giving them an unused nil to pass is cheaper than a second
+// almost-identical walk, which is the exact drift bound exists to prevent
+// (see AttentionAt's own comment on the bug an earlier "cheap shortcut" here
+// caused).
+//
 // Ties keep the first encountered, which is file-then-line order — the same
 // tie-break ReadAll's stable sort gives, so the two agree on a journal holding
 // two events at one instant.
-func bound(dir string, kinds []Kind, better func(candidate, best Event) bool) (Event, bool, error) {
+func bound(dir string, kinds []Kind, extra func(Event) bool, better func(candidate, best Event) bool) (Event, bool, error) {
 	names, err := listJSONL(dir)
 	if err != nil {
 		return Event{}, false, err
@@ -70,6 +77,9 @@ func bound(dir string, kinds []Kind, better func(candidate, best Event) bool) (E
 		}
 		for _, e := range events {
 			if !want[e.Kind] {
+				continue
+			}
+			if extra != nil && !extra(e) {
 				continue
 			}
 			if !found || better(e, best) {
@@ -95,15 +105,45 @@ func LatestAt(dir string, kinds ...Kind) (time.Time, bool, error) {
 // each one's whole history. The two must agree — that is a test — because
 // `review --stale` and `list --sort attention` would otherwise rank a tree
 // differently from the way `show` describes each row of it.
+//
+// It is a thin wrapper over AttentionEvent: the instant alone is what most
+// callers want, and computing it independently would be a second walk asking
+// the same question bound's own comment warns against.
 func AttentionAt(dir string, created time.Time) (time.Time, error) {
-	at, ok, err := LatestAt(dir, KindNote, KindMeasurement)
+	e, ok, err := AttentionEvent(dir, created)
 	if err != nil {
 		return time.Time{}, err
 	}
-	if !ok || created.After(at) {
-		// The same guard Attention takes: a hand-edited `created` later than
-		// every event must not read as attention in the past.
+	if !ok {
 		return created, nil
 	}
-	return at, nil
+	return e.At, nil
+}
+
+// AttentionEvent is AttentionAt's whole answer, not just its instant: the
+// event that set the clock, or ok=false when nothing on disk beats `created`
+// (an entity with no qualifying event yet, or a hand-edited `created` later
+// than every one it has).
+//
+// It exists so a read command can say *what* set attention — a note's first
+// words, or "measurement" — rather than only how long ago, which is
+// otherwise invisible without opening ACTIVITY.md (§18.6, §20).
+//
+// attends, not a kind filter, is bound's extra predicate here: LatestOf
+// filters by kind alone and would report a no-attention note as the winner
+// merely for being newest, which is the exact bug the two-lens review found
+// in an earlier version of this comparison (see bounds_test.go).
+func AttentionEvent(dir string, created time.Time) (Event, bool, error) {
+	e, ok, err := bound(dir, []Kind{KindNote, KindMeasurement}, attends, func(candidate, best Event) bool {
+		return candidate.At.After(best.At)
+	})
+	if err != nil {
+		return Event{}, false, err
+	}
+	if !ok || created.After(e.At) {
+		// The same guard Attention takes: a hand-edited `created` later than
+		// every event must not read as attention in the past.
+		return Event{}, false, nil
+	}
+	return e, true, nil
 }

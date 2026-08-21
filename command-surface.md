@@ -1,5 +1,11 @@
 # para — command surface
 
+> **Superseded by `para-design-v4.md`.** This is the v1/v2 surface, built on `para <noun> <verb>
+> <locator>` — the noun leading as a sub-command. v4's Phase 16 amendment arrives at a different
+> noun-verb grammar by a different route: `para <verb> <noun> <chain>`, the noun trailing as an
+> ordinary argument that partitions help, flags, and completions for a reader, not one that dispatches
+> the verb (see §12 and §25 of `para-design-v4.md`). Nothing below this notice is current.
+
 A PARA tree on disk, driven by a CLI whose grammar is `para <noun> <verb> <locator>`. This document is the normative surface: the model first, then the grammar, then a worked example of every command.
 
 ---

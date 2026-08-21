@@ -70,8 +70,9 @@ Each of those directories explains itself in its own AGENTS.md.
 
 A directory with a ` + "`.para/`" + ` inside it is a thing this tree tracks. Most directories without one
 are content — yours, and left alone. The exceptions are ` + "`.agents/`" + `, described below; the
-placeholders inside the archive, which the archive explains; and ` + "`.claude/`" + ` with its ` + "`CLAUDE.md`" + `,
-which para generates when the Claude Code surface is switched on and does not create otherwise.
+placeholders inside the archive, which the archive explains; and ` + "`.claude/skills/`" + `, para's mirror
+of ` + "`.agents/skills/`" + ` when the Claude Code surface is switched on. The rest of ` + "`.claude/`" + ` is not
+para's — nor is ` + "`CLAUDE.md`" + `, described below.
 In a tracked directory, ` + "`ACTIVITY.md`" + ` is a generated digest of that directory's own history and
 ` + "`.para/`" + ` holds the machine-readable truth: what the thing is, and an append-only log of what
 has happened to it. Alongside them is a ` + "`README.md`" + ` — or, for a skill, a ` + "`SKILL.md`" + ` — whose
@@ -84,15 +85,25 @@ applies to, or names none and applies to all of them, and that scope is rendered
 routing file under ` + "`.agents/rules/`" + `, one per skill. Those files are generated: to change where a
 skill applies, change the skill.
 
-Two rules before you edit anything here:
+A skill's own directory is named ` + "`para-<id>`" + ` — ` + "`.agents/skills/para-<id>/`" + ` — so the
+` + "`.claude/skills/`" + ` mirror can never collide with a skill some other tool installed there. The
+skill's address is unprefixed (` + "`skill.<id>`" + `); ` + "`para add skill`" + ` prints the directory's real
+path so the two are never guessed.
+
+Three rules before you edit anything here:
 
 - The frontmatter of a ` + "`README.md`" + ` or a ` + "`SKILL.md`" + ` is generated and the body below it is yours.
   Edit the body freely; edits to the frontmatter are overwritten.
-- ` + "`ACTIVITY.md`" + `, ` + "`MEASUREMENTS.csv`" + `, everything under ` + "`.agents/rules/`" + `, and — where they exist —
-  ` + "`CLAUDE.md`" + ` and everything under ` + "`.claude/`" + ` are wholly generated. Do not hand-edit them.
+- ` + "`ACTIVITY.md`" + `, ` + "`MEASUREMENTS.csv`" + `, and everything under ` + "`.agents/rules/`" + ` are wholly
+  generated. Do not hand-edit them.
+- Where it exists, ` + "`CLAUDE.md`" + ` holds a block para owns, delimited by a ` + "`para:begin`" + `/` + "`para:end`" + `
+  marker pair, and nothing outside it. Edit anywhere outside the markers freely — that part is yours,
+  same as any other tool that shares the file; edits inside them are overwritten on the next
+  ` + "`para rebuild`" + `.
 
 Resolving a merge conflict in this tree: resolve the truth files under ` + "`.para/`" + ` and the journals
-under ` + "`.para/logs/`" + `, then run ` + "`para rebuild`" + `. Never hand-resolve a generated file.
+under ` + "`.para/logs/`" + `, then run ` + "`para rebuild`" + `. Never hand-resolve a generated file or the block
+inside a ` + "`CLAUDE.md`" + `.
 `,
 
 	"projects": `This directory holds PARA **projects**: work with a finish line. A project has a defined end —

@@ -38,6 +38,14 @@ func TestInitWritesTheFileSet(t *testing.T) {
 		"projects/README.md", "projects/AGENTS.md", "projects/ACTIVITY.md", "projects/.para/state.toml",
 		"areas/README.md", "resources/README.md", "archive/README.md",
 		"archive/projects/README.md", "archive/areas/README.md", "archive/resources/README.md",
+		// The skill bucket (para-a3p): a container like the other three, so
+		// `show`, `log`, `activity`, `review`, `rebuild`, and `doctor` can
+		// resolve the bare `skill` noun the same way they resolve `project`,
+		// `area`, and `resource` — but it never gets an AGENTS.md/CLAUDE.md
+		// (checked below) or a config.toml (checked below): those are
+		// separate, deliberately untouched invariants (§6's fixed eight
+		// AGENTS.md places, §7's "no `skills` level to consult").
+		".agents/skills/README.md", ".agents/skills/ACTIVITY.md", ".agents/skills/.para/state.toml",
 	} {
 		if !lstatExists(root, rel) {
 			t.Errorf("init did not create %s", rel)
@@ -50,6 +58,11 @@ func TestInitWritesTheFileSet(t *testing.T) {
 		info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil || !info.IsDir() {
 			t.Errorf("init did not create the directory %s", rel)
+		}
+	}
+	for _, rel := range []string{".agents/skills/AGENTS.md", ".agents/skills/CLAUDE.md", ".agents/skills/.para/config.toml"} {
+		if lstatExists(root, rel) {
+			t.Errorf("init created %s, which the skill bucket does not get", rel)
 		}
 	}
 }
@@ -206,17 +219,20 @@ func journalText(t *testing.T, root, rel string) string {
 	return b.String()
 }
 
-// TestAddASkillIntoAFreshClone is the repair for a state that had none: git does
-// not carry an empty directory, so a clone of a tree with no skills in it has no
-// `.agents/skills/` — and `doctor` calls that tree clean, `rebuild` finds nothing
-// to do, and `add skills.x` used to refuse it with no command that would fix it.
+// TestAddASkillIntoAFreshClone is the repair for a state that had none: git
+// does not carry an empty directory, so a clone of a tree with no skills in
+// it has no `.agents/rules/` — and `add skills.x` used to refuse a missing
+// `.agents/skills/` too, with no command that would fix it. `.agents/skills/`
+// itself no longer has that problem (para-a3p gave it a real, always-committed
+// state.toml, README.md, and ACTIVITY.md, so a clone always carries it, the
+// same way it always carries `projects/`), but `.agents/rules/` stays empty
+// until a skill's own rule file lands in it, so it is still exactly what
+// `git clone` gives you here.
 func TestAddASkillIntoAFreshClone(t *testing.T) {
 	root, _ := initAt(t, t.TempDir(), "brain")
 	// Precisely what `git clone` gives you.
-	for _, rel := range []string{".agents/skills", ".agents/rules", ".agents"} {
-		if err := os.Remove(filepath.Join(root, filepath.FromSlash(rel))); err != nil {
-			t.Fatalf("removing %s: %v", rel, err)
-		}
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(".agents/rules"))); err != nil {
+		t.Fatalf("removing .agents/rules: %v", err)
 	}
 
 	if _, err := mutate.NewEnv(root, clock.Fixed{At: now()}).

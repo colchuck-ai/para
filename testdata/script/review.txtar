@@ -28,29 +28,29 @@ cd brain
 # --- the tree these blocks review -------------------------------------------
 
 # Two areas untouched since the new year: 63 days, past a 30-day threshold.
-exec para add areas.fitness --name Fitness --description 'Staying in one piece.' --created 2026-01-01
-exec para add areas.fitness.training --name Training --description 'The weekly plan.' --created 2026-01-01
+exec para add area fitness --name Fitness --description 'Staying in one piece.' --created 2026-01-01
+exec para add area fitness.training --name Training --description 'The weekly plan.' --created 2026-01-01
 # And one touched last week, which no threshold here reaches.
-exec para add areas.admin --name Admin --description 'Paperwork.' --created 2026-02-25
+exec para add area admin --name Admin --description 'Paperwork.' --created 2026-02-25
 
-exec para add projects.acme-migration --name 'Acme migration' --description 'Rebuild the consumer.' --status in-progress --created 2026-01-05 --due 2026-09-30
-exec para add projects.acme-migration.objectives.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.' --status in-progress --created 2026-01-05
-exec para add projects.acme-migration.objectives.q1-growth.key-results.signups --name 'Weekly signups' --type ratio --start 480/9000 --target 2000/12000 --created 2026-01-05 --due 2026-09-30
+exec para add project acme-migration --name 'Acme migration' --description 'Rebuild the consumer.' --status in-progress --created 2026-01-05 --due 2026-09-30
+exec para add objective acme-migration.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.' --status in-progress --created 2026-01-05
+exec para add key-result acme-migration.q1-growth.signups --name 'Weekly signups' --type ratio --start 480/9000 --target 2000/12000 --created 2026-01-05 --due 2026-09-30
 # A key-result whose deadline went by: it derives `missed` (§4.3), and `missed`
 # is deliberately not terminal (§1.7).
-exec para add projects.acme-migration.objectives.q1-growth.key-results.launch --name Launch --type boolean --target true --created 2026-01-05 --due 2026-02-01
+exec para add key-result acme-migration.q1-growth.launch --name Launch --type boolean --target true --created 2026-01-05 --due 2026-02-01
 
 # Blocked moments ago, so no timer of any kind could have run out.
-exec para add projects.website --name Website --description 'A refresh.' --status planned
-exec para set projects.website --status blocked --note 'waiting on the design review'
+exec para add project website --name Website --description 'A refresh.' --status planned
+exec para set project website --status blocked --note 'waiting on the design review'
 
-exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope projects --created 2026-01-01
+exec para add skill signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope project --created 2026-01-01
 
 # A project dropped, and one archived: both are excluded by default.
-exec para add projects.shelved --name Shelved --description 'Not happening.' --created 2026-01-01
-exec para set projects.shelved --status dropped
-exec para add projects.old --name Old --description 'Finished long ago.' --created 2026-01-01
-exec para archive projects.old
+exec para add project shelved --name Shelved --description 'Not happening.' --created 2026-01-01
+exec para set project shelved --status dropped
+exec para add project old --name Old --description 'Finished long ago.' --created 2026-01-01
+exec para archive project old
 
 # --- §7's thresholds have no defaults ---------------------------------------
 
@@ -61,7 +61,7 @@ stdout '^nothing to review$'
 
 # --blocked is the one group with no timer, so it fires regardless (§20).
 exec para review --blocked
-stdout '^  projects\.website\s+0 days$'
+stdout '^  project\.website\s+0 days$'
 
 exec para config set area.stale-after 30
 exec para config set project.stale-after 30
@@ -69,7 +69,7 @@ exec para config set objective.stale-after 30
 exec para config set key-result.stale-after 30
 exec para config set key-result.at-risk-pace 0.80
 exec para config set review.cadence 30
-exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 700/10000
+exec para measure acme-migration.q1-growth.signups 700/10000
 
 # --- §20's five groups ------------------------------------------------------
 
@@ -83,9 +83,9 @@ cmp stdout $WORK/want-review.txt
 exec para review --stale --behind
 cmp stdout $WORK/want-review-stale-behind.txt
 
-# `review <locator>` includes the entity you named: it is a question about a
-# region of the tree, and the root of the region is in the region.
-exec para review areas.fitness
+# `review <noun> <chain>` includes the entity you named: it is a question about
+# a region of the tree, and the root of the region is in the region.
+exec para review area fitness
 cmp stdout $WORK/want-review-scoped.txt
 
 # --limit truncates each group rather than the whole answer: §20 groups by
@@ -103,20 +103,18 @@ cmp stdout $WORK/want-review-behind.json
 
 # Containers never appear in any group: "a row you can neither act on nor set is
 # the same noise §16.2 keeps out of `list`". They are still traversed — the rows
-# above are all beneath one.
+# above are all beneath one. A container row would print with the `container`
+# noun (R23), so that is the one prefix to rule out.
 exec para review
-! stdout '^  projects\s'
-! stdout '^  areas\s'
-! stdout 'objectives\s+\d+ days'
-! stdout 'key-results\s+\d+ days'
+! stdout '^  container\.'
 
 # Skills are reached by --skills and nothing else: a skill's threshold is
 # review.cadence, and putting it in --stale would mean one group reading two
 # different knobs.
 exec para review --stale
-! stdout 'skills\.'
+! stdout 'skill\.'
 exec para review --skills
-stdout '^  skills\.signups-report\s+63 days\s+review\.cadence 30$'
+stdout '^  skill\.signups-report\s+63 days\s+review\.cadence 30 days$'
 
 # And it fires off that key and no other: widen the cadence and the skill goes
 # quiet, while --stale is unmoved because it never read the key.
@@ -131,48 +129,48 @@ exec para config set review.cadence 30
 
 # Terminal and archived are out by default, and one flag brings both back.
 exec para review --stale
-! stdout 'projects\.shelved'
+! stdout 'project\.shelved'
 ! stdout 'archive\.'
 exec para review --stale --all
-stdout 'projects\.shelved'
-stdout 'archive\.projects\.old'
+stdout 'project\.shelved'
+stdout 'archive\.project\.old'
 
 # §1.7's cascade, not each entity's own status: closing the project quiets the
 # whole chain beneath it, none of which was touched.
-exec para set projects.acme-migration --status done
+exec para set project acme-migration --status done
 exec para review --stale
-! stdout 'projects\.acme-migration'
-exec para set projects.acme-migration --status in-progress
+! stdout 'project\.acme-migration'
+exec para set project acme-migration --status in-progress
 
 # A scope naming nothing is an error, not an empty review — the same reading
 # `list` takes, because "nothing to review there" is a wrong answer to a typo.
 # §20's "always exits 0" is about findings; a command that could not run is
 # §0.5's exit 1, as it is for every other command.
-! exec para review projects.nope
-stderr 'projects\.nope does not exist'
+! exec para review project nope
+stderr 'project\.nope does not exist'
 ! exec para review --limit -1
 stderr 'limit cannot be negative'
 
 # A scope naming one skill is about that skill, not about every skill: §5.1
-# gives a skill no children, so the segments after `skills` are not decoration.
-exec para add skills.commit-style --name 'Commit style' --description 'when writing a commit message' --created 2026-01-01
-exec para review skills.commit-style
-stdout 'skills\.commit-style'
-! stdout 'skills\.signups-report'
-exec para review skills
-stdout 'skills\.signups-report'
+# gives a skill no children, so the segments after `skill` are not decoration.
+exec para add skill commit-style --name 'Commit style' --description 'when writing a commit message' --created 2026-01-01
+exec para review skill commit-style
+stdout 'skill\.commit-style'
+! stdout 'skill\.signups-report'
+exec para review skill
+stdout 'skill\.signups-report'
 
 # --- a blown deadline is unhideable -----------------------------------------
 
 # `missed` is not terminal (§1.7), so §20's default exclusion cannot reach it.
-exec para show projects.acme-migration.objectives.q1-growth.key-results.launch
+exec para show key-result acme-migration.q1-growth.launch
 stdout '^status       missed$'
 exec para review --overdue
-stdout 'key-results\.launch\s+32 days over\s+due 2026-02-01$'
+stdout 'key-result\.acme-migration\.q1-growth\.launch\s+32 days over\s+due 2026-02-01$'
 
 # The one thing that does quiet it is saying you have stopped caring, which is
 # the single settable key-result status (§4.3).
-exec para set projects.acme-migration.objectives.q1-growth.key-results.launch --status dropped
+exec para set key-result acme-migration.q1-growth.launch --status dropped
 exec para review --overdue
 stdout '^nothing to review$'
 
@@ -215,43 +213,43 @@ created = "2026-01-01T00:00:00Z"
 -- brain/.agents/skills/.keep --
 -- want-review.txt --
 stale (5)
-  areas.fitness                                                     63 days       area.stale-after 30
-  areas.fitness.training                                            63 days       area.stale-after 30
-  projects.acme-migration                                           59 days       project.stale-after 30
-  projects.acme-migration.objectives.q1-growth                      59 days       objective.stale-after 30
-  projects.acme-migration.objectives.q1-growth.key-results.launch   59 days       key-result.stale-after 30
+  area.fitness                                 63 days       area.stale-after 30 days
+  area.fitness.training                        63 days       area.stale-after 30 days
+  project.acme-migration                       59 days       project.stale-after 30 days
+  objective.acme-migration.q1-growth           59 days       objective.stale-after 30 days
+  key-result.acme-migration.q1-growth.launch   59 days       key-result.stale-after 30 days
 blocked (1)
-  projects.website                                                  0 days
+  project.website                              0 days
 overdue (1)
-  projects.acme-migration.objectives.q1-growth.key-results.launch   32 days over  due 2026-02-01
+  key-result.acme-migration.q1-growth.launch   32 days over  due 2026-02-01
 behind (1)
-  projects.acme-migration.objectives.q1-growth.key-results.signups  pace 0.67     key-result.at-risk-pace 0.8
+  key-result.acme-migration.q1-growth.signups  pace 0.67     key-result.at-risk-pace 0.8     measurement
 skills (1)
-  skills.signups-report                                             63 days       review.cadence 30
+  skill.signups-report                         63 days       review.cadence 30 days
 -- want-review-stale-behind.txt --
 stale (5)
-  areas.fitness                                                     63 days    area.stale-after 30
-  areas.fitness.training                                            63 days    area.stale-after 30
-  projects.acme-migration                                           59 days    project.stale-after 30
-  projects.acme-migration.objectives.q1-growth                      59 days    objective.stale-after 30
-  projects.acme-migration.objectives.q1-growth.key-results.launch   59 days    key-result.stale-after 30
+  area.fitness                                 63 days    area.stale-after 30 days
+  area.fitness.training                        63 days    area.stale-after 30 days
+  project.acme-migration                       59 days    project.stale-after 30 days
+  objective.acme-migration.q1-growth           59 days    objective.stale-after 30 days
+  key-result.acme-migration.q1-growth.launch   59 days    key-result.stale-after 30 days
 behind (1)
-  projects.acme-migration.objectives.q1-growth.key-results.signups  pace 0.67  key-result.at-risk-pace 0.8
+  key-result.acme-migration.q1-growth.signups  pace 0.67  key-result.at-risk-pace 0.8     measurement
 -- want-review-scoped.txt --
 stale (2)
-  areas.fitness           63 days  area.stale-after 30
-  areas.fitness.training  63 days  area.stale-after 30
+  area.fitness           63 days  area.stale-after 30 days
+  area.fitness.training  63 days  area.stale-after 30 days
 -- want-review-limit.txt --
 stale (1 of 5)
-  areas.fitness                                                     63 days       area.stale-after 30
+  area.fitness                                 63 days       area.stale-after 30 days
 blocked (1)
-  projects.website                                                  0 days
+  project.website                              0 days
 overdue (1)
-  projects.acme-migration.objectives.q1-growth.key-results.launch   32 days over  due 2026-02-01
+  key-result.acme-migration.q1-growth.launch   32 days over  due 2026-02-01
 behind (1)
-  projects.acme-migration.objectives.q1-growth.key-results.signups  pace 0.67     key-result.at-risk-pace 0.8
+  key-result.acme-migration.q1-growth.signups  pace 0.67     key-result.at-risk-pace 0.8  measurement
 skills (1)
-  skills.signups-report                                             63 days       review.cadence 30
+  skill.signups-report                         63 days       review.cadence 30 days
 -- want-review-behind.json --
 {
   "total": 1,
@@ -263,7 +261,7 @@ skills (1)
       "shown": 1,
       "items": [
         {
-          "locator": "projects.acme-migration.objectives.q1-growth.key-results.signups",
+          "locator": "key-result.acme-migration.q1-growth.signups",
           "kind": "key-result",
           "id": "signups",
           "name": "Weekly signups",
@@ -278,6 +276,7 @@ skills (1)
           "dormant": false,
           "attention": "2026-03-05T17:00:00Z",
           "attention-days": 0,
+          "attention-kind": "measurement",
           "overdue": false,
           "due-days": 209,
           "key-result": {

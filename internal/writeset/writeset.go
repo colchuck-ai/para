@@ -195,7 +195,36 @@ func (r Relocation) Empty() bool {
 // returning the operations already completed — exactly the ones a crash at that
 // point would have left behind.
 func Relocate(r Relocation) (Ops, error) {
+	return relocate(r, true)
+}
+
+// PlanRelocate reports what Relocate would do to r without touching a byte, for
+// `remove --dry-run` (§19). It shares Relocate's whole body rather than
+// re-deriving which dirs are already there, which destinations are occupied, and
+// which prunes are already gone — a rehearsal that answered those questions on
+// its own could name a different set of operations than the real run for no
+// reason but having computed it twice (the same reasoning Plan's doc comment
+// gives for Mutation).
+//
+// It never calls record: crashPoint exists to let the crash matrix kill the
+// process between two real writes, and a dry run performs none, so there is
+// nothing for a mid-mutation crash to interrupt.
+func PlanRelocate(r Relocation) (Ops, error) {
+	return relocate(r, false)
+}
+
+// relocate is Relocate's and PlanRelocate's shared body. perform decides
+// whether each step actually touches the filesystem; every decision about
+// *which* operations there are to perform is made identically either way.
+func relocate(r Relocation, perform bool) (Ops, error) {
 	var ops Ops
+	note := func(op Op) {
+		if perform {
+			ops = record(ops, op)
+			return
+		}
+		ops = append(ops, op)
+	}
 
 	for _, dir := range r.Dirs {
 		if isDir(dir) {
@@ -204,10 +233,12 @@ func Relocate(r Relocation) (Ops, error) {
 			// again is not an operation anyone performed.
 			continue
 		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", dir))
+		if perform {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", dir))
+			}
 		}
-		ops = record(ops, Op{Kind: OpMkdir, Path: dir})
+		note(Op{Kind: OpMkdir, Path: dir})
 	}
 
 	for _, m := range r.Moves {
@@ -219,19 +250,21 @@ func Relocate(r Relocation) (Ops, error) {
 		} else if !os.IsNotExist(err) {
 			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: checking %s", m.To))
 		}
-		if err := os.MkdirAll(filepath.Dir(m.To), 0o755); err != nil {
-			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", filepath.Dir(m.To)))
+		if perform {
+			if err := os.MkdirAll(filepath.Dir(m.To), 0o755); err != nil {
+				return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: creating %s", filepath.Dir(m.To)))
+			}
+			if err := os.Rename(m.From, m.To); err != nil {
+				// A cross-device rename is the one failure worth naming, because
+				// the repair is not para's: a tree with a submount inside it cannot
+				// be relocated with rename(2), and copying instead would have to
+				// reproduce modes, times, and hard links to be a move rather than an
+				// approximation of one.
+				return ops, paraerr.Wrap(paraerr.KindInternal, err,
+					fmt.Sprintf("writeset: renaming %s to %s (a tree spanning two filesystems must be moved by hand, then `para rebuild`)", m.From, m.To))
+			}
 		}
-		if err := os.Rename(m.From, m.To); err != nil {
-			// A cross-device rename is the one failure worth naming, because
-			// the repair is not para's: a tree with a submount inside it cannot
-			// be relocated with rename(2), and copying instead would have to
-			// reproduce modes, times, and hard links to be a move rather than an
-			// approximation of one.
-			return ops, paraerr.Wrap(paraerr.KindInternal, err,
-				fmt.Sprintf("writeset: renaming %s to %s (a tree spanning two filesystems must be moved by hand, then `para rebuild`)", m.From, m.To))
-		}
-		ops = record(ops, Op{Kind: OpMove, From: m.From, Path: m.To})
+		note(Op{Kind: OpMove, From: m.From, Path: m.To})
 	}
 
 	// Deepest first, which is the only ordering among the prunes that matters.
@@ -256,10 +289,12 @@ func Relocate(r Relocation) (Ops, error) {
 			}
 			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: checking %s", path))
 		}
-		if err := os.RemoveAll(path); err != nil {
-			return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: removing %s", path))
+		if perform {
+			if err := os.RemoveAll(path); err != nil {
+				return ops, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("writeset: removing %s", path))
+			}
 		}
-		ops = record(ops, Op{Kind: OpPrune, Path: path})
+		note(Op{Kind: OpPrune, Path: path})
 	}
 
 	return ops, nil
@@ -347,6 +382,22 @@ func (o Ops) Paths() []string {
 	return out
 }
 
+// validate is the one shape rule both Apply and Plan refuse before doing
+// anything else: a mutation with nothing in it, or a subject with nowhere to
+// write. Apply and Plan share this rather than each stating it, so the rule a
+// rehearsal refuses on is provably the rule a real run refuses on too.
+func validate(m Mutation) error {
+	if len(m.Subjects) == 0 && len(m.Parents) == 0 {
+		return paraerr.New(paraerr.KindInternal, "writeset: mutation has no subject")
+	}
+	for _, s := range m.Subjects {
+		if s.Dir == "" {
+			return paraerr.New(paraerr.KindInternal, "writeset: mutation has a subject with no directory")
+		}
+	}
+	return nil
+}
+
 // Apply writes m in the order the package doc fixes, and reports what it did.
 // On error it stops at the failing write and returns the operations completed
 // so far, which are exactly the ones a crash at that point would have left
@@ -356,13 +407,8 @@ func (o Ops) Paths() []string {
 // call rather than a mkdir pass followed by a write pass: the write set is the
 // definition of which directories exist.
 func Apply(m Mutation) (Ops, error) {
-	if len(m.Subjects) == 0 && len(m.Parents) == 0 {
-		return nil, paraerr.New(paraerr.KindInternal, "writeset: mutation has no subject")
-	}
-	for _, s := range m.Subjects {
-		if s.Dir == "" {
-			return nil, paraerr.New(paraerr.KindInternal, "writeset: mutation has a subject with no directory")
-		}
+	if err := validate(m); err != nil {
+		return nil, err
 	}
 	var ops Ops
 
@@ -403,6 +449,85 @@ func Apply(m Mutation) (Ops, error) {
 	}
 
 	return ops, nil
+}
+
+// Plan reports what Apply would do to m without writing anything, for
+// `--dry-run`. It walks the exact phases Apply's own doc comment fixes —
+// subjects' truth, then subjects' projections, then parents' truth, then
+// parents' projections — so a rehearsal and a real run can never drift apart
+// by consulting two different orderings of the same Mutation.
+//
+// It never calls record: crashPoint exists to let Phase 14's crash matrix kill
+// the process between two real writes, and a dry run performs none, so there
+// is nothing for a mid-mutation crash to interrupt.
+func Plan(m Mutation) (Ops, error) {
+	if err := validate(m); err != nil {
+		return nil, err
+	}
+	var ops Ops
+
+	for _, s := range m.Subjects {
+		planned, err := planTruth(s)
+		ops = append(ops, planned...)
+		if err != nil {
+			return ops, err
+		}
+	}
+	for _, s := range m.Subjects {
+		ops = append(ops, planFiles(s.Projections)...)
+	}
+	for _, p := range m.Parents {
+		planned, err := planTruth(p)
+		ops = append(ops, planned...)
+		if err != nil {
+			return ops, err
+		}
+		ops = append(ops, planFiles(p.Projections)...)
+	}
+	return ops, nil
+}
+
+// planTruth is writeTruth's read-only twin: the journal appends and the truth
+// files a subject would gain, in the same order writeTruth itself uses.
+//
+// It has nothing to say about s.Dirs — the scaffolding directories `add` and
+// `init` create even while empty — because wrote (mutate.go) already filters
+// OpMkdir out of everything it prints: a directory creation is not a file
+// anyone wrote, dry run or not, so there is nothing here for it to plan.
+func planTruth(s Subject) (Ops, error) {
+	rotate := s.RotateBytes
+	if rotate <= 0 {
+		rotate = journal.DefaultRotateBytes
+	}
+
+	paths, err := journal.PlanAppend(truth.LogsDir(s.Dir), s.Events, rotate)
+	if err != nil {
+		return nil, err
+	}
+	ops := make(Ops, 0, len(paths))
+	for _, p := range paths {
+		ops = append(ops, Op{Kind: OpAppend, Path: p})
+	}
+
+	ops = append(ops, planFiles([]File{
+		{Path: truth.StatePath(s.Dir), Bytes: s.State},
+		{Path: truth.ConfigPath(s.Dir), Bytes: s.Config},
+		{Path: truth.TreePath(s.Dir), Bytes: s.Tree},
+	})...)
+	return ops, nil
+}
+
+// planFiles is writeFiles' read-only twin: which of files would be written,
+// in order, skipping the ones whose Bytes is nil exactly as writeFiles does.
+func planFiles(files []File) Ops {
+	var ops Ops
+	for _, f := range files {
+		if f.Bytes == nil {
+			continue
+		}
+		ops = append(ops, Op{Kind: OpWrite, Path: f.Path})
+	}
+	return ops
 }
 
 // writeTruth writes one subject's directories, journal lines, and truth files,

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/colchuck-ai/para/internal/mdfile"
 	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/rebuild"
 )
@@ -303,7 +304,7 @@ func TestClaudeSurfaceIsTheConstantCostRefresh(t *testing.T) {
 	claudeOn(t, root)
 	plantSkill(t, root, "signups-report", "Signups report")
 
-	artifacts, err := env(t, root).ClaudeSurface()
+	artifacts, err := env(t, root).ClaudeSurface(nil, nil)
 	if err != nil {
 		t.Fatalf("ClaudeSurface: %v", err)
 	}
@@ -321,5 +322,113 @@ func TestClaudeSurfaceIsTheConstantCostRefresh(t *testing.T) {
 		if !slices.Contains(a.Derived, '@') {
 			t.Errorf("%s = %q, want a pointer file of @ imports", a.Path, a.Derived)
 		}
+	}
+}
+
+// TestClaudeSurfaceAppendsBehindForeignContent is the constant-cost path's
+// half of R2/R3: a skill mutation refreshes CLAUDE.md through ClaudeSurface
+// rather than a full Derive (see this file's doc comment), and that shortcut
+// must not bypass the append semantics render.Claude.Render depends on
+// render.In.Existing for. A CLAUDE.md that predates para, sitting at one of
+// the eight locations before a skill is ever added, must keep its prose.
+func TestClaudeSurfaceAppendsBehindForeignContent(t *testing.T) {
+	root := plantTree(t)
+	claudeOn(t, root)
+	plantSkill(t, root, "signups-report", "Signups report")
+	foreign := "# Team notes\n\nRun `make check` before every commit.\n"
+	write(t, root, "projects/CLAUDE.md", foreign)
+
+	artifacts, err := env(t, root).ClaudeSurface(nil, nil)
+	if err != nil {
+		t.Fatalf("ClaudeSurface: %v", err)
+	}
+	for _, a := range artifacts {
+		if a.Path != "projects/CLAUDE.md" {
+			continue
+		}
+		if !strings.HasPrefix(string(a.Derived), foreign) {
+			t.Fatalf("projects/CLAUDE.md derived =\n%s\nwant it to start with the foreign prose\n%s", a.Derived, foreign)
+		}
+		return
+	}
+	t.Fatal("ClaudeSurface did not report projects/CLAUDE.md")
+}
+
+// TestRebuildResidueRemovesOnlyParasBlock is R5 at the rebuild altitude: with
+// `emit.claude` off, a root CLAUDE.md holding a foreign block plus para's ends
+// with para's block gone, the foreign block byte-identical, and the file still
+// there — the same guarantee TestWithoutClaudeBlockRemovesOnlyTheBlock makes
+// for the primitive, now through a real rebuild.Run.
+func TestRebuildResidueRemovesOnlyParasBlock(t *testing.T) {
+	root := plantTree(t)
+	foreign := "<!-- BEGIN BEADS INTEGRATION -->\nSee `bd prime` for workflow context.\n<!-- END BEADS INTEGRATION -->\n"
+	block := mdfile.BeginMarker + "\n@AGENTS.md\n@.agents/rules/para-x.md\n" + mdfile.EndMarker + "\n"
+	write(t, root, "CLAUDE.md", foreign+block)
+
+	res := run(t, root, rebuild.Options{})
+
+	if !slices.Contains(res.Changed, "CLAUDE.md") {
+		t.Errorf("rebuild.Changed = %v, want it to include CLAUDE.md", res.Changed)
+	}
+	if slices.Contains(res.Removed, "CLAUDE.md") {
+		t.Errorf("rebuild.Removed = %v, want CLAUDE.md not removed", res.Removed)
+	}
+	got := read(t, root, "CLAUDE.md")
+	if got != foreign {
+		t.Errorf("CLAUDE.md =\n%s\nwant only the foreign block\n%s", got, foreign)
+	}
+}
+
+// TestRebuildResidueDeletesAClaudeFileEmptiedByRemoval is R6: a CLAUDE.md
+// holding nothing but para's block, once the block comes out, is empty —
+// and an empty file carries no information, so it is deleted rather than
+// left behind.
+func TestRebuildResidueDeletesAClaudeFileEmptiedByRemoval(t *testing.T) {
+	root := plantTree(t)
+	block := mdfile.BeginMarker + "\n@AGENTS.md\n@.agents/rules/para-x.md\n" + mdfile.EndMarker + "\n"
+	write(t, root, "CLAUDE.md", block)
+
+	res := run(t, root, rebuild.Options{})
+
+	if !slices.Contains(res.Removed, "CLAUDE.md") {
+		t.Errorf("rebuild.Removed = %v, want it to include CLAUDE.md", res.Removed)
+	}
+	if exists(t, root, "CLAUDE.md") {
+		t.Error("CLAUDE.md survived a removal that emptied it")
+	}
+}
+
+// TestRebuildResidueLeavesAMarkerlessClaudeFileAlone is R7: a CLAUDE.md para
+// has never written — no begin marker — is never modified and never deleted,
+// and is not reported as a write.
+func TestRebuildResidueLeavesAMarkerlessClaudeFileAlone(t *testing.T) {
+	root := plantTree(t)
+	foreign := "# Team notes\n\nRun `make check` before every commit.\n"
+	write(t, root, "CLAUDE.md", foreign)
+
+	res := run(t, root, rebuild.Options{})
+
+	if slices.Contains(res.Changed, "CLAUDE.md") || slices.Contains(res.Removed, "CLAUDE.md") {
+		t.Errorf("rebuild touched CLAUDE.md (changed=%v removed=%v), want it left alone", res.Changed, res.Removed)
+	}
+	if got := read(t, root, "CLAUDE.md"); got != foreign {
+		t.Errorf("CLAUDE.md =\n%s\nwant it byte-identical to\n%s", got, foreign)
+	}
+}
+
+// TestRebuildResidueRejectsADamagedClaudeBlock is R4's rebuild-altitude case: a
+// begin marker with no matching end marker is a validation error naming the
+// path, not a silent overwrite.
+func TestRebuildResidueRejectsADamagedClaudeBlock(t *testing.T) {
+	root := plantTree(t)
+	damaged := mdfile.BeginMarker + "\nwhatever an older para version said\n"
+	write(t, root, "CLAUDE.md", damaged)
+
+	_, err := rebuild.Run(env(t, root), rebuild.Options{})
+	if err == nil {
+		t.Fatal("rebuild.Run on a damaged block returned no error")
+	}
+	if !strings.Contains(err.Error(), "CLAUDE.md") {
+		t.Errorf("error = %q, want it to name the path CLAUDE.md", err)
 	}
 }

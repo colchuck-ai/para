@@ -12,6 +12,7 @@ import (
 	"github.com/colchuck-ai/para/internal/doctor"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/mdfile"
 	"github.com/colchuck-ai/para/internal/mutate"
 	"github.com/colchuck-ai/para/internal/rebuild"
 	"github.com/colchuck-ai/para/internal/view"
@@ -237,6 +238,22 @@ func TestCollision(t *testing.T) {
 	}
 }
 
+// TestCollisionSingularNoun is R6: growing locator.ReservedWords to
+// seventeen means the seven singular nouns are reserved too, so an entity
+// directory named "project" — legal before R6 — is now the same §1.4
+// collision TestCollision pins for the plural "skills".
+func TestCollisionSingularNoun(t *testing.T) {
+	root := cleanTree(t)
+	write(t, root, "projects/project/.para/state.toml", "name = \"Project\"\ndescription = \"A project named with a noun.\"\n")
+
+	rep := run(t, root, doctor.Options{})
+
+	got := findings(rep, doctor.KindCollision)
+	if len(got) != 1 || !strings.HasPrefix(got[0], "projects/project:") {
+		t.Fatalf("collision findings = %v, want one for projects/project", got)
+	}
+}
+
 // TestInvalid walks the truth failures §10 lists: unparseable TOML, a missing
 // required field, an enum out of range, and a measurement whose shape
 // contradicts its key-result's type.
@@ -355,7 +372,7 @@ func TestScopeUnresolved(t *testing.T) {
 	root := cleanTree(t)
 	e := mutate.NewEnv(root, clock.Fixed{At: now(t)})
 	var f mutate.Fields
-	f.SetList(kindmeta.FieldScope, []string{"projects.acme", "projects.gone"})
+	f.SetList(kindmeta.FieldScope, []string{"project.acme", "project.gone"})
 	if _, err := e.Set(loc(t, "skills.report"), f, ""); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
@@ -363,8 +380,8 @@ func TestScopeUnresolved(t *testing.T) {
 	rep := run(t, root, doctor.Options{})
 
 	got := findings(rep, doctor.KindScopeUnresolved)
-	if len(got) != 1 || !strings.Contains(got[0], "projects.gone") {
-		t.Fatalf("scope-unresolved findings = %v, want one naming projects.gone", got)
+	if len(got) != 1 || !strings.Contains(got[0], "project.gone") {
+		t.Fatalf("scope-unresolved findings = %v, want one naming project.gone", got)
 	}
 	assertOnly(t, rep, doctor.KindScopeUnresolved)
 }
@@ -378,8 +395,8 @@ func TestOrphanRule(t *testing.T) {
 	rep := run(t, root, doctor.Options{})
 
 	got := findings(rep, doctor.KindOrphanRule)
-	if len(got) != 1 || !strings.Contains(got[0], "skills.gone") {
-		t.Fatalf("orphan-rule findings = %v, want one naming skills.gone", got)
+	if len(got) != 1 || !strings.Contains(got[0], "skill.gone") {
+		t.Fatalf("orphan-rule findings = %v, want one naming skill.gone", got)
 	}
 }
 
@@ -410,8 +427,8 @@ func TestMirrorFindings(t *testing.T) {
 		rep := run(t, root, doctor.Options{})
 
 		got := findings(rep, doctor.KindOrphanMirror)
-		if len(got) != 1 || !strings.Contains(got[0], "skills.gone") {
-			t.Fatalf("orphan-mirror findings = %v, want one naming skills.gone", got)
+		if len(got) != 1 || !strings.Contains(got[0], "skill.gone") {
+			t.Fatalf("orphan-mirror findings = %v, want one naming skill.gone", got)
 		}
 	})
 
@@ -520,7 +537,7 @@ func TestMissingMirrorIsStale(t *testing.T) {
 	rep := run(t, root, doctor.Options{})
 
 	got := findings(rep, doctor.KindStaleProjection)
-	want := []string{".claude/skills/para-report: is missing; skills.report has no mirror"}
+	want := []string{".claude/skills/para-report: is missing; skill.report has no mirror"}
 	if !slices.Equal(got, want) {
 		t.Errorf("stale-projection findings = %v, want %v", got, want)
 	}
@@ -553,7 +570,7 @@ func TestStaleProjection(t *testing.T) {
 func TestStaleProjectionDatesAnOlderDay(t *testing.T) {
 	root := cleanTree(t)
 	e := mutate.NewEnv(root, clock.Fixed{At: now(t)})
-	if _, err := e.Note(loc(t, "projects.acme"), "an older note", "2026-02-01"); err != nil {
+	if _, err := e.Note(loc(t, "projects.acme"), "an older note", "2026-02-01", false); err != nil {
 		t.Fatalf("Note: %v", err)
 	}
 
@@ -850,15 +867,39 @@ func TestDoctorAtAnArchiveStub(t *testing.T) {
 // TestDoctorReportsTheBlockLeftByTurningTheKeyOff is the reporting half of
 // Phase 13's carried-forward debt. `emit.gitattributes = false` used to leave
 // para's block in a file doctor said nothing about, so the tree was clean by
-// doctor's account and wrong by §9's.
+// doctor's account and wrong by §9's. R12: this is the mixed-content case —
+// other lines beside para's block — so the file is shortened, not deleted
+// (R6), and doctor names the block as the cause.
 func TestDoctorReportsTheBlockLeftByTurningTheKeyOff(t *testing.T) {
 	root := cleanTree(t)
+	existing, err := os.ReadFile(filepath.Join(root, ".gitattributes"))
+	if err != nil {
+		t.Fatalf("reading .gitattributes: %v", err)
+	}
+	write(t, root, ".gitattributes", "*.png binary\n"+string(existing))
 	write(t, root, ".para/config.toml", "emit.gitattributes = false\n")
 
 	rep := run(t, root, doctor.Options{})
 
 	got := findings(rep, doctor.KindStaleProjection)
 	want := ".gitattributes: still holds para's block; emit.gitattributes is off"
+	if !slices.Contains(got, want) {
+		t.Errorf("stale-projection findings = %v, want one of them to be %q", got, want)
+	}
+}
+
+// TestDoctorReportsTheEmptiedGitAttributesAsResidue is R13's .gitattributes
+// twin: with nothing but para's block in the file, turning the key off means
+// the file should not exist at all (R6), and doctor says so with the same
+// shape mirror.ResidueDetail already uses for CLAUDE.md.
+func TestDoctorReportsTheEmptiedGitAttributesAsResidue(t *testing.T) {
+	root := cleanTree(t)
+	write(t, root, ".para/config.toml", "emit.gitattributes = false\n")
+
+	rep := run(t, root, doctor.Options{})
+
+	got := findings(rep, doctor.KindStaleProjection)
+	want := ".gitattributes: should not exist; emit.gitattributes is off"
 	if !slices.Contains(got, want) {
 		t.Errorf("stale-projection findings = %v, want one of them to be %q", got, want)
 	}
@@ -877,5 +918,40 @@ func TestDoctorIsCleanOnceTheBlockIsGone(t *testing.T) {
 	rep := run(t, root, doctor.Options{})
 	if len(rep.Findings) != 0 {
 		t.Errorf("doctor after rebuild = %v, want clean", rep.Findings)
+	}
+}
+
+// TestDoctorIsCleanOnAThirdPartyOnlyClaudeFile is R11: `emit.claude` off,
+// CLAUDE.md present holding only third-party content, no para block at all —
+// the exact state the bug report observed a false stale-projection in.
+// Nothing about this file is para's to have an opinion on.
+func TestDoctorIsCleanOnAThirdPartyOnlyClaudeFile(t *testing.T) {
+	root := cleanTree(t)
+	foreign := "# Team notes\n\nRun `make check` before every commit.\n"
+	write(t, root, "CLAUDE.md", foreign)
+
+	rep := run(t, root, doctor.Options{})
+
+	if !rep.Clean() {
+		t.Fatalf("a third-party-only CLAUDE.md with emit.claude off is not clean: %v", lines(rep))
+	}
+}
+
+// TestDoctorReportsTheClaudeBlockLeftByTurningTheKeyOff is R12's CLAUDE.md
+// twin of TestDoctorReportsTheBlockLeftByTurningTheKeyOff: `emit.claude` off,
+// CLAUDE.md holding para's block *and* other content, reported with the same
+// shared sentence .gitattributes already uses.
+func TestDoctorReportsTheClaudeBlockLeftByTurningTheKeyOff(t *testing.T) {
+	root := cleanTree(t)
+	foreign := "# Team notes\n\nRun `make check` before every commit.\n"
+	block := mdfile.BeginMarker + "\n@AGENTS.md\n" + mdfile.EndMarker + "\n"
+	write(t, root, "CLAUDE.md", foreign+block)
+
+	rep := run(t, root, doctor.Options{})
+
+	got := findings(rep, doctor.KindStaleProjection)
+	want := "CLAUDE.md: still holds para's block; emit.claude is off"
+	if !slices.Contains(got, want) {
+		t.Errorf("stale-projection findings = %v, want one of them to be %q", got, want)
 	}
 }

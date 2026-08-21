@@ -1,0 +1,61 @@
+# The para-0o6 regression, reproduced end to end (R18): a third-party tool's
+# marker-delimited block in a root CLAUDE.md survives every command para runs,
+# in both emit.claude states. The scenario is the bug report's own repro — a
+# second tool (beads, via `bd setup claude`) writes CLAUDE.md before para's
+# surface is ever turned on — and the fix is that CLAUDE.md is no longer
+# wholly para's to overwrite or delete (§2.2, §6.1).
+
+env PARA_NOW=2026-03-05T17:00:00Z
+env PARA_TZ=America/Los_Angeles
+
+exec para init brain
+cd brain
+
+# emit.claude is off by default (§26), so a root CLAUDE.md at this point is
+# somebody else's file in full, markers and all. doctor has no opinion on it —
+# R11's exact claim.
+cp $WORK/beads-claude.md CLAUDE.md
+exec para doctor
+stdout '^clean$'
+
+# A mutation that touches the skills surface but leaves emit.claude off: the
+# skill lands, and the foreign block is untouched byte for byte.
+exec para add skill daily-entry --name 'Daily entry' --description 'when logging a day'
+exec para doctor
+stdout '^clean$'
+cmp CLAUDE.md $WORK/beads-claude.md
+
+# --- turning the surface on ---------------------------------------------------
+#
+# The file gains para's block and keeps the foreign one: AppendDelimited finds
+# no para marker in a file that predates it, so it appends rather than
+# replaces (§6.1).
+exec para config set emit.claude true
+exec para doctor
+stdout '^clean$'
+grep '<!-- BEGIN BEADS INTEGRATION v:1 -->' CLAUDE.md
+grep '^@AGENTS\.md$' CLAUDE.md
+grep '^@\.agents/rules/para-daily-entry\.md$' CLAUDE.md
+
+# A further mutation refreshes para's block in place and still leaves the
+# foreign one exactly where it was.
+exec para add skill probe --name Probe --description 'forces a block refresh'
+exec para doctor
+stdout '^clean$'
+grep '<!-- BEGIN BEADS INTEGRATION v:1 -->' CLAUDE.md
+grep '^@\.agents/rules/para-probe\.md$' CLAUDE.md
+
+# --- turning it off again -----------------------------------------------------
+#
+# Para's block goes; the foreign one remains exactly as it was first written —
+# byte-identical to the file before para ever touched it.
+exec para config set emit.claude false
+exec para doctor
+stdout '^clean$'
+! grep 'para:begin' CLAUDE.md
+cmp CLAUDE.md $WORK/beads-claude.md
+
+-- beads-claude.md --
+<!-- BEGIN BEADS INTEGRATION v:1 -->
+Use `bd ready` to find work and `bd close <id>` to finish it.
+<!-- END BEADS INTEGRATION -->

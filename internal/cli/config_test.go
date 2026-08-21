@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -37,16 +38,16 @@ func TestConfigShowPrintsSection22sChain(t *testing.T) {
 		"projects/acme-migration/.para/state.toml": "name = \"Acme migration\"\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "show", "project.stale-after", "projects.acme-migration")
+	code, stdout, stderr := run(t, root, "config", "show", "project.stale-after", "project.acme-migration")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	want := "30\n" +
+	want := "30 days\n" +
 		"\n" +
-		"  projects.acme-migration      —\n" +
-		"→ projects                     30\n" +
-		"  <root>                       14\n"
+		"  project.acme-migration      —\n" +
+		"→ project                     30 days\n" +
+		"  <root>                      14 days\n"
 	if stdout != want {
 		t.Errorf("stdout =\n%q\nwant\n%q", stdout, want)
 	}
@@ -62,7 +63,7 @@ func TestConfigShowAtTheRootWhenNoLocatorIsGiven(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	want := "14\n\n→ <root>      14\n"
+	want := "14 days\n\n→ <root>      14 days\n"
 	if stdout != want {
 		t.Errorf("stdout =\n%q\nwant\n%q", stdout, want)
 	}
@@ -112,7 +113,7 @@ func TestConfigShowJSONCarriesTheWholeChain(t *testing.T) {
 		"projects/acme-migration/.para/state.toml": "name = \"Acme migration\"\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "show", "--json", "project.stale-after", "projects.acme-migration")
+	code, stdout, stderr := run(t, root, "config", "show", "--json", "project.stale-after", "project.acme-migration")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
@@ -138,17 +139,21 @@ func TestConfigShowJSONCarriesTheWholeChain(t *testing.T) {
 	if got.Key != "project.stale-after" || got.Value != 30 || !got.Set || got.Default {
 		t.Errorf("got %+v, want project.stale-after = 30, set, not default", got)
 	}
-	if got.Source == nil || *got.Source != "projects" {
-		t.Errorf("source = %v, want %q", got.Source, "projects")
+	// The subject's own locator (R24), not just the chain's.
+	if got.Locator != "project.acme-migration" {
+		t.Errorf("locator = %q, want %q", got.Locator, "project.acme-migration")
+	}
+	if got.Source == nil || *got.Source != "project" {
+		t.Errorf("source = %v, want %q", got.Source, "project")
 	}
 	if len(got.Chain) != 3 {
 		t.Fatalf("chain has %d levels, want 3", len(got.Chain))
 	}
-	if got.Chain[0].Level != "projects.acme-migration" || got.Chain[0].Set {
+	if got.Chain[0].Level != "project.acme-migration" || got.Chain[0].Set {
 		t.Errorf("chain[0] = %+v, want the unset entity level", got.Chain[0])
 	}
-	if got.Chain[1].Level != "projects" || !got.Chain[1].Winner {
-		t.Errorf("chain[1] = %+v, want projects marked as the winner", got.Chain[1])
+	if got.Chain[1].Level != "project" || !got.Chain[1].Winner {
+		t.Errorf("chain[1] = %+v, want project marked as the winner", got.Chain[1])
 	}
 	if got.Chain[2].Level != "" || got.Chain[2].File != ".para/config.toml" {
 		t.Errorf("chain[2] = %+v, want the root level", got.Chain[2])
@@ -170,7 +175,7 @@ func TestConfigSetWritesTheRootByDefaultAndSaysSo(t *testing.T) {
 		".para/config.toml",
 		"ACTIVITY.md")
 	assertFile(t, root, ".para/config.toml", "project.stale-after = 30\n")
-	assertContains(t, root, "ACTIVITY.md", "Set **project.stale-after** to 30")
+	assertContains(t, root, "ACTIVITY.md", "Set **project.stale-after** to 30 days")
 }
 
 // §22: --at is how the chain gets built deliberately rather than by accident.
@@ -180,7 +185,7 @@ func TestConfigSetAtWritesTheNamedLevel(t *testing.T) {
 		"projects/.para/state.toml": "name = \"Projects\"\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "set", "--at", "projects", "project.stale-after", "30")
+	code, stdout, stderr := run(t, root, "config", "set", "--at", "project", "project.stale-after", "30")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
@@ -201,7 +206,7 @@ func TestConfigSetOnASkillWritesInsideTheSkill(t *testing.T) {
 		".agents/skills/para-signups-report/.para/state.toml": "name = \"Signups report\"\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "set", "--at", "skills.signups-report", "review.cadence", "90")
+	code, stdout, stderr := run(t, root, "config", "set", "--at", "skill.signups-report", "review.cadence", "90")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
@@ -233,6 +238,88 @@ func TestConfigSetToTheStoredValueIsANoOp(t *testing.T) {
 	}
 }
 
+// TestConfigSetDryRunWritesNothingAndMatchesTheRealRun is para-ato's
+// `config set` case of the same property add_test.go's own dry-run test
+// checks: the rehearsal's stdout is the real run's stdout plus the trailer,
+// and the rehearsal itself writes nothing.
+func TestConfigSetDryRunWritesNothingAndMatchesTheRealRun(t *testing.T) {
+	root := plantTree(t, map[string]string{".para/config.toml": ""})
+	path := filepath.Join(root, ".para", "config.toml")
+	before := statOf(t, path)
+
+	dryCode, dryOut, dryErr := run(t, root, "config", "set", "project.stale-after", "30", "--dry-run")
+	if dryCode != 0 {
+		t.Fatalf("--dry-run: exit %d, stderr %q", dryCode, dryErr)
+	}
+	if after := statOf(t, path); after != before {
+		t.Errorf("--dry-run rewrote %s", path)
+	}
+	if !strings.Contains(dryOut, "dry-run: nothing was written") {
+		t.Errorf("--dry-run: stdout = %q, want the dry-run trailer", dryOut)
+	}
+
+	realCode, realOut, realErr := run(t, root, "config", "set", "project.stale-after", "30")
+	if realCode != 0 {
+		t.Fatalf("config set: exit %d, stderr %q", realCode, realErr)
+	}
+	want := strings.TrimSuffix(dryOut, "dry-run: nothing was written\n")
+	if realOut != want {
+		t.Errorf("real run's stdout =\n%q\nwant (dry run minus its trailer)\n%q", realOut, want)
+	}
+}
+
+// TestConfigSetDryRunOfANoOpStillSaysNoChangeAndTrails is writeLevel's other
+// branch: a value already stored writes nothing whether or not --dry-run was
+// asked for, and the trailer still closes the rehearsal so a script grepping
+// for it does not have to special-case the no-op.
+func TestConfigSetDryRunOfANoOpStillSaysNoChangeAndTrails(t *testing.T) {
+	root := plantTree(t, map[string]string{".para/config.toml": "project.stale-after = 30\n"})
+	path := filepath.Join(root, ".para", "config.toml")
+	before := statOf(t, path)
+
+	code, stdout, stderr := run(t, root, "config", "set", "project.stale-after", "30", "--dry-run")
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	want := "no change\ndry-run: nothing was written\n"
+	if stdout != want {
+		t.Errorf("stdout = %q, want %q", stdout, want)
+	}
+	if after := statOf(t, path); after != before {
+		t.Errorf("the file was rewritten: %v then %v", before, after)
+	}
+}
+
+// TestConfigUnsetDryRunWritesNothingAndMatchesTheRealRun proves --dry-run on
+// `config unset` — the scope this bead extended beyond `config set` alone,
+// since writeLevel is the one function both share.
+func TestConfigUnsetDryRunWritesNothingAndMatchesTheRealRun(t *testing.T) {
+	root := plantTree(t, map[string]string{".para/config.toml": "project.stale-after = 30\n"})
+	path := filepath.Join(root, ".para", "config.toml")
+	before := statOf(t, path)
+
+	dryCode, dryOut, dryErr := run(t, root, "config", "unset", "project.stale-after", "--dry-run")
+	if dryCode != 0 {
+		t.Fatalf("--dry-run: exit %d, stderr %q", dryCode, dryErr)
+	}
+	if after := statOf(t, path); after != before {
+		t.Errorf("--dry-run rewrote %s", path)
+	}
+	if !strings.Contains(dryOut, "dry-run: nothing was written") {
+		t.Errorf("--dry-run: stdout = %q, want the dry-run trailer", dryOut)
+	}
+
+	realCode, realOut, realErr := run(t, root, "config", "unset", "project.stale-after")
+	if realCode != 0 {
+		t.Fatalf("config unset: exit %d, stderr %q", realCode, realErr)
+	}
+	want := strings.TrimSuffix(dryOut, "dry-run: nothing was written\n")
+	if realOut != want {
+		t.Errorf("real run's stdout =\n%q\nwant (dry run minus its trailer)\n%q", realOut, want)
+	}
+}
+
 func TestConfigSetRefusesWhatItCannotStore(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -256,13 +343,13 @@ func TestConfigSetRefusesWhatItCannotStore(t *testing.T) {
 		},
 		{
 			name:    "--at naming something that does not exist",
-			args:    []string{"config", "set", "--at", "projects.nope", "project.stale-after", "30"},
-			wantErr: "projects.nope",
+			args:    []string{"config", "set", "--at", "project.nope", "project.stale-after", "30"},
+			wantErr: "project.nope",
 		},
 		{
 			name:    "--at naming an illegal locator",
-			args:    []string{"config", "set", "--at", "projects.a.b", "project.stale-after", "30"},
-			wantErr: "projects.a.b",
+			args:    []string{"config", "set", "--at", "project.a.b", "project.stale-after", "30"},
+			wantErr: "not a chain of 2",
 		},
 	}
 
@@ -290,7 +377,7 @@ func TestConfigUnsetRemovesTheValueAtOneLevel(t *testing.T) {
 		"projects/.para/config.toml": "emit.claude = true\nproject.stale-after = 30\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "unset", "--at", "projects", "project.stale-after")
+	code, stdout, stderr := run(t, root, "config", "unset", "--at", "project", "project.stale-after")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
@@ -300,7 +387,7 @@ func TestConfigUnsetRemovesTheValueAtOneLevel(t *testing.T) {
 		"projects/.para/config.toml",
 		"projects/ACTIVITY.md")
 	assertFile(t, root, "projects/.para/config.toml", "emit.claude = true\n")
-	assertContains(t, root, "projects/ACTIVITY.md", "Unset **project.stale-after** (was 30)")
+	assertContains(t, root, "projects/ACTIVITY.md", "Unset **project.stale-after** (was 30 days)")
 	// §7: unset removes a value and resolution continues up the chain.
 	assertFile(t, root, ".para/config.toml", "project.stale-after = 14\n")
 }
@@ -323,27 +410,32 @@ func TestConfigUnsetOfAnAbsentKeyIsANoOp(t *testing.T) {
 	}
 }
 
+// TestConfigListPrintsEveryKnobAndWhereItCameFrom confirms list resolves at
+// the tree root and nowhere else (R12): list takes no address argument,
+// unlike set/unset/show, so a value set below the root is invisible to it
+// even though config show would find it by walking up from there.
 func TestConfigListPrintsEveryKnobAndWhereItCameFrom(t *testing.T) {
 	root := plantTree(t, map[string]string{
-		".para/config.toml":          "emit.claude = true\n",
+		".para/config.toml":          "emit.claude = true\nproject.stale-after = 30\n",
 		"projects/.para/state.toml":  "name = \"Projects\"\n",
-		"projects/.para/config.toml": "project.stale-after = 30\n",
+		"projects/.para/config.toml": "review.cadence = 90\n",
 	})
 
-	code, stdout, stderr := run(t, root, "config", "list", "projects")
+	code, stdout, stderr := run(t, root, "config", "list")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	// Every key para recognises, resolved at that level: the set ones name
-	// the level they came from, the defaulted ones say so, and the unset
-	// ones are visible rather than absent — a knob nobody can find is a
-	// knob that will be wrong (§20).
+	// Every key para recognises, resolved at the root: the set ones name the
+	// level they came from, the defaulted ones say so, and the unset ones
+	// are visible rather than absent — a knob nobody can find is a knob
+	// that will be wrong (§20). review.cadence is set only at projects/, so
+	// list — root-only — does not see it; config show would.
 	want := map[string][]string{
 		"emit.claude":             {"true", "<root>"},
 		"emit.claude-skills":      {"symlink", "(default)"},
 		"emit.gitattributes":      {"true", "(default)"},
-		"project.stale-after":     {"30", "projects"},
+		"project.stale-after":     {"30 days", "<root>"},
 		"review.cadence":          {"—", "—"},
 		"key-result.at-risk-pace": {"—", "—"},
 		"log.rotate-bytes":        {"4194304", "(default)"},
@@ -359,12 +451,33 @@ func TestConfigListPrintsEveryKnobAndWhereItCameFrom(t *testing.T) {
 	}
 }
 
-// listRows splits `config list` output into key → [value, source]. The
-// columns are aligned with runs of spaces, and no cell contains one.
+// TestConfigListRefusesAnAddressArgument is the new half of R12's rule:
+// list is the one config subcommand that takes no address argument at all,
+// so giving it one is cobra's own refusal (list has no subcommands to
+// dispatch "project" to) rather than a silent scope change.
+func TestConfigListRefusesAnAddressArgument(t *testing.T) {
+	root := plantTree(t, map[string]string{".para/config.toml": ""})
+
+	code, _, stderr := run(t, root, "config", "list", "project")
+
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr, `unknown command "project"`) {
+		t.Errorf("stderr = %q, want cobra's unknown-command refusal", stderr)
+	}
+}
+
+// columnGap is two or more spaces: what separates `config list`'s columns,
+// as opposed to the single space inside a cell like "30 days" (para-xbb) — a
+// TypeDays value is the one cell that is not a single token.
+var columnGap = regexp.MustCompile(`\s{2,}`)
+
+// listRows splits `config list` output into key → [value, source].
 func listRows(stdout string) map[string][]string {
 	rows := make(map[string][]string)
 	for _, line := range strings.Split(strings.TrimRight(stdout, "\n"), "\n") {
-		fields := strings.Fields(line)
+		fields := columnGap.Split(strings.TrimSpace(line), -1)
 		if len(fields) == 3 {
 			rows[fields[0]] = fields[1:]
 		}

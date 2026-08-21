@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/doctor"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
@@ -14,15 +15,17 @@ import (
 	"github.com/colchuck-ai/para/internal/tree"
 )
 
-// newRebuildCmd implements `para rebuild [<locator>] [--dry-run]` (§21.1).
+// newRebuildCmd implements `para rebuild [<noun> [<chain>]] [--dry-run]`
+// (R3, R17, R18).
 func newRebuildCmd() *cobra.Command {
 	var dryRun bool
+	var archived archivedFlag
 
 	cmd := &cobra.Command{
-		Use:   "rebuild [<locator>]",
+		Use:   "rebuild [<noun> [<chain>]]",
 		Short: "regenerate every projection from truth",
-		Long: "Regenerate every generated file under the locator — the whole tree by\n" +
-			"default — from state.toml, tree.toml, and the journals. It is the answer\n" +
+		Long: "Regenerate every generated file under the noun and chain — the whole tree\n" +
+			"by default — from state.toml, tree.toml, and the journals. It is the answer\n" +
 			"to a hand-edited generated file, a hand-mv that left frontmatter stale, a\n" +
 			"merge that resolved truth and left the projections wrong, and a new para\n" +
 			"version that renders a template differently.\n\n" +
@@ -31,17 +34,15 @@ func newRebuildCmd() *cobra.Command {
 			"README.md's body, an AGENTS.md's prose outside the markers.\n\n" +
 			"ACTIVITY.md is re-derived in full, from every rotated journal file, which\n" +
 			"is the one thing a mutation never does.",
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, cwd, err := findTree()
 			if err != nil {
 				return err
 			}
-			var scope locator.Locator
-			if len(args) == 1 {
-				if scope, err = resolveLocatorArg(root, cwd, args[0]); err != nil {
-					return err
-				}
+			scope, _, err := parseAddressArgs(root, cwd, args, scopeArity, archived.value)
+			if err != nil {
+				return err
 			}
 
 			res, runErr := rebuild.Run(rebuild.NewEnv(root), rebuild.Options{Scope: scope, DryRun: dryRun})
@@ -59,6 +60,7 @@ func newRebuildCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "list what would change without writing")
+	archived.register(cmd)
 	return cmd
 }
 
@@ -106,12 +108,13 @@ func tense(did, would string, dryRun bool) string {
 	return did
 }
 
-// newDoctorCmd implements `para doctor [<locator>]` (§21.2).
+// newDoctorCmd implements `para doctor [<noun> [<chain>]]` (R3, R17, R18).
 func newDoctorCmd() *cobra.Command {
 	var read readFlags
+	var archived archivedFlag
 
 	cmd := &cobra.Command{
-		Use:   "doctor [<locator>]",
+		Use:   "doctor [<noun> [<chain>]]",
 		Short: "scan the tree deeply and report what is wrong",
 		Long: "Walk every directory — including inside content, which the fast walk\n" +
 			"never enters — and report what a read would get wrong: entities the walk\n" +
@@ -124,17 +127,15 @@ func newDoctorCmd() *cobra.Command {
 			"invalid, and scope-unresolved it cannot.\n\n" +
 			"Exit 0 clean, 1 on any error, 2 when only advisories are present — so CI\n" +
 			"can gate on 1 and ignore 2.",
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openRead(cmd)
 			if err != nil {
 				return err
 			}
-			var scope locator.Locator
-			if len(args) == 1 {
-				if scope, err = resolveLocatorArg(env.Root, cwd, args[0]); err != nil {
-					return err
-				}
+			scope, _, err := parseAddressArgs(env.Root, cwd, args, scopeArity, archived.value)
+			if err != nil {
+				return err
 			}
 
 			rep, err := doctor.Run(env, doctor.Options{Scope: scope})
@@ -164,6 +165,7 @@ func newDoctorCmd() *cobra.Command {
 	// journal line, which is quoted back exactly as the line stores it so that
 	// the line can be found.
 	read.register(cmd)
+	archived.register(cmd)
 	cmd.Flags().Lookup("local").Usage = "accepted for consistency; doctor prints no timestamp to convert"
 	return cmd
 }
@@ -214,11 +216,30 @@ type findingOutput struct {
 	Path     string `json:"path"`
 	// Line is a journal finding's line, and absent everywhere else.
 	Line int `json:"line,omitempty"`
-	// Locator names the entity at fault where the path addresses one. An
-	// orphan is precisely a directory whose locator para cannot derive, so it
-	// is absent rather than guessed.
+	// Locator names the entity at fault where the path addresses one, in the
+	// dotted address form (R24). An orphan is precisely a directory whose
+	// locator para cannot derive, so it is absent rather than guessed — and a
+	// stub is the same absence for a different reason (R11): it has no kind,
+	// so nothing can name it in a grammar whose first token is one.
 	Locator string `json:"locator,omitempty"`
 	Detail  string `json:"detail"`
+}
+
+// findingLocatorString is a Finding's Locator, in the dotted form, or "" for
+// the empty Locator every locator-less finding carries — which includes one
+// of `misplaced`'s two shapes (a path locator.FromPath itself refuses never
+// gets a Locator at all). The other shape `misplaced` has, and `collision`
+// always, sets Locator to precisely a position that derives no valid kind (a
+// reserved word in an id position, or a position no shape admits), which is
+// by construction a position that derives no address either — so the raw
+// internal Locator string is shown there, the same way a stub (R11) has no
+// noun to print because it has no kind at all.
+func findingLocatorString(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }
 
 func doctorOutputOf(rep doctor.Report) doctorOutput {
@@ -235,7 +256,7 @@ func doctorOutputOf(rep doctor.Report) doctorOutput {
 			Finding:  string(f.Kind),
 			Path:     f.Path,
 			Line:     f.Line,
-			Locator:  f.Locator.String(),
+			Locator:  findingLocatorString(f.Locator),
 			Detail:   f.Detail,
 		})
 	}

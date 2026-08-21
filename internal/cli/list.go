@@ -7,37 +7,41 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/query"
 	"github.com/colchuck-ai/para/internal/view"
 )
 
-// newListCmd implements `para list [<locator>] [filters]` (§16.2).
+// newListCmd implements `para list [<kind>] [<noun> [<chain>]]` (R19): the
+// one command whose meaning depends on lookahead, resolved by
+// parseListArgs.
 func newListCmd() *cobra.Command {
 	var read readFlags
 	var filter filterFlags
+	var archived archivedFlag
 
 	cmd := &cobra.Command{
-		Use:   "list [<locator>]",
-		Short: "list the entities beneath a locator, at any depth",
-		Long: "List entities beneath the given locator, defaulting to the whole tree.\n\n" +
-			"Containers are transparent: `objectives` and `key-results` are never rows and\n" +
-			"are always traversed through. `archive/` is not traversed unless you name it —\n" +
-			"archived things are not hidden, they are somewhere else. Items whose status is\n" +
-			"terminal are withheld unless --all, and the count of them is reported.",
-		Args: cobra.MaximumNArgs(1),
+		Use:   "list [<kind>] [<noun> [<chain>]]",
+		Short: "list the entities beneath a scope, at any depth, optionally narrowed by kind",
+		Long: "List entities beneath the given scope, defaulting to the whole tree.\n\n" +
+			"A leading noun with nothing after it is a kind filter rather than a scope —\n" +
+			"`list key-result` finds every key-result, tree-wide — and a noun in front of\n" +
+			"a second noun-and-chain pair is that filter combined with a scope:\n" +
+			"`list key-result project acme` finds only the key-results inside project acme.\n" +
+			"`container` is not a legal filter: containers are transparent to `list` and are\n" +
+			"never rows. `archive/` is not traversed unless --archived says so — archived\n" +
+			"things are not hidden, they are somewhere else. Items whose status is terminal\n" +
+			"are withheld unless --all, and the count of them is reported.",
+		Args: cobra.MaximumNArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openRead(cmd)
 			if err != nil {
 				return err
 			}
-			var scope locator.Locator
-			if len(args) == 1 {
-				if scope, err = resolveLocatorArg(env.Root, cwd, args[0]); err != nil {
-					return err
-				}
+			la, err := parseListArgs(env.Root, cwd, args, archived.value)
+			if err != nil {
+				return err
 			}
-			opts, err := filter.options(scope)
+			opts, err := filter.options(la.Scope, la.Kind)
 			if err != nil {
 				return err
 			}
@@ -54,11 +58,17 @@ func newListCmd() *cobra.Command {
 	}
 	read.register(cmd)
 	filter.register(cmd)
+	archived.register(cmd)
 	return cmd
 }
 
 // printList is §26's shape: one row per entity, then the count line, then the
 // terminal-hiding line when anything was withheld.
+//
+// The noun and the chain are their own columns (R23), not folded into one
+// dotted address, because the noun column is what makes a mixed-kind listing
+// scannable — a project, an objective, and a key-result read as three rows
+// of one table rather than three different-shaped strings.
 func printList(out io.Writer, env *view.Env, res query.Result, read readFlags) {
 	// `list` prints no timestamp, only an age — but an age is a count of days on
 	// somebody's calendar, so `--local` reaches it here even though there is no
@@ -66,7 +76,8 @@ func printList(out io.Writer, env *view.Env, res query.Result, read readFlags) {
 	zone := read.zone(env)
 	var t table
 	for _, e := range res.Entities {
-		t.add(e.Locator.String(), e.Kind.String(), statusCell(e), ago(env.DaysSinceIn(e.Attention, zone)))
+		t.add(e.Kind.String(), entityChain(e.Locator), statusCell(e),
+			attentionKindCell(e), ago(env.DaysSinceIn(e.Attention, zone)))
 	}
 	t.write(out)
 
@@ -90,6 +101,18 @@ func statusCell(e view.Entity) string {
 		return dash
 	}
 	return e.EffectiveStatus
+}
+
+// attentionKindCell names what set the attention clock — "note" or
+// "measurement" — or a dash when nothing has (attention is still `created`).
+// It is deliberately just the kind, not a snippet: a snippet's width would
+// break `list`'s one-row-per-line scannability, which is what `review` and
+// `show` exist to give more room to (§18.6, §20).
+func attentionKindCell(e view.Entity) string {
+	if e.AttentionKind == "" {
+		return dash
+	}
+	return string(e.AttentionKind)
 }
 
 // listOutput is `list --json`: the rows, and the three counts that explain them.

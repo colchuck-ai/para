@@ -10,6 +10,7 @@ import (
 	"github.com/colchuck-ai/para/internal/clock"
 	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/doctor"
+	"github.com/colchuck-ai/para/internal/mdfile"
 	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/mutate"
 	"github.com/colchuck-ai/para/internal/ptoml"
@@ -80,9 +81,35 @@ func setClaude(t *testing.T, e *mutate.Env, root, key string, value ptoml.Value)
 		t.Fatalf("Encode: %v", err)
 	}
 	after, _ := f.Get(key)
-	res, err := e.ConfigChange(nil, key, config.Format(before), config.Format(after), data)
+	res, err := e.ConfigChange(nil, key, config.Format(before), config.Format(after), data, false)
 	if err != nil {
 		t.Fatalf("ConfigChange(%s): %v", key, err)
+	}
+	return res
+}
+
+// setClaudeDryRun rehearses the same config write setClaude performs, and
+// reports the config.toml as it stood *before* the write, so a caller can go
+// on to make the same real change and compare.
+func setClaudeDryRun(t *testing.T, e *mutate.Env, root, key string, value ptoml.Value) mutate.Result {
+	t.Helper()
+	path := filepath.Join(root, ".para", "config.toml")
+	f, err := config.Read(path)
+	if err != nil {
+		t.Fatalf("config.Read: %v", err)
+	}
+	before, _ := f.Get(key)
+	if _, err := f.Set(key, value); err != nil {
+		t.Fatalf("Set(%s): %v", key, err)
+	}
+	data, err := f.Encode()
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	after, _ := f.Get(key)
+	res, err := e.ConfigChange(nil, key, config.Format(before), config.Format(after), data, true)
+	if err != nil {
+		t.Fatalf("ConfigChange(%s) dry run: %v", key, err)
 	}
 	return res
 }
@@ -140,6 +167,28 @@ func TestConfigSetEmitClaudeWritesTheWholeSurface(t *testing.T) {
 		t.Errorf("Mirror = %v, want %v", res.Mirror, []mirror.Change{want})
 	}
 	assertClean(t, root)
+}
+
+// TestConfigSetEmitClaudeDryRunPreviewsTheWholeSurfaceWithoutWriting is
+// para-ato: before pendingConfig, WriteClaudeSurface's fresh resolver still
+// read the config.toml on disk, which a `config set --dry-run` never writes —
+// so the rehearsal would have answered every question with the flag still
+// off, and reported no change at all.
+func TestConfigSetEmitClaudeDryRunPreviewsTheWholeSurfaceWithoutWriting(t *testing.T) {
+	root := treeWithSkill(t)
+	e := env(t, root)
+	before := snapshot(t, root)
+
+	dry := setClaudeDryRun(t, e, root, config.KeyEmitClaude, ptoml.Bool(true))
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("the dry run wrote %v, want nothing", changed)
+	}
+
+	real := setClaude(t, env(t, root), root, config.KeyEmitClaude, ptoml.Bool(true))
+	assertEqual(t, "dry run's Wrote", dry.Wrote, real.Wrote)
+	if !slices.Equal(dry.Mirror, real.Mirror) {
+		t.Errorf("dry run's Mirror = %v, want %v", dry.Mirror, real.Mirror)
+	}
 }
 
 // TestConfigSetEmitClaudeOffSweepsTheSurface is the same command in reverse:
@@ -239,6 +288,49 @@ func TestAddingASkillKeepsEveryClaudeMdCorrect(t *testing.T) {
 	assertClean(t, root)
 }
 
+// TestAddDryRunOnASkillWithClaudeSurfaceOnPreviewsTheWholeReach is
+// TestAddingASkillKeepsEveryClaudeMdCorrect's rehearsal: a dry run must report
+// the same eight CLAUDE.md rewrites and the same mirror link the immediately
+// following real add produces, even though the skill it is naming does not
+// exist on disk yet. Before the fix, AddDryRun's report of a skill add under
+// emit.claude was silently missing this whole reach — tree.SkillIDs never saw
+// the not-yet-written skill, so the CLAUDE.md diff came back empty and the
+// mirror never saw it as missing.
+func TestAddDryRunOnASkillWithClaudeSurfaceOnPreviewsTheWholeReach(t *testing.T) {
+	root := treeWithSkill(t)
+	setClaude(t, env(t, root), root, config.KeyEmitClaude, ptoml.Bool(true))
+	before := snapshot(t, root)
+
+	f := fields("name", "Commit style", "description", "when writing a commit message")
+	dry, err := env(t, root).AddDryRun(loc(t, "skills.commit-style"), f)
+	if err != nil {
+		t.Fatalf("AddDryRun: %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("AddDryRun wrote %v, want nothing", changed)
+	}
+
+	real, err := env(t, root).Add(loc(t, "skills.commit-style"), f)
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	assertEqual(t, "AddDryRun's Wrote", dry.Wrote, real.Wrote)
+	if !slices.Equal(dry.Mirror, real.Mirror) {
+		t.Errorf("AddDryRun's Mirror = %v, want %v", dry.Mirror, real.Mirror)
+	}
+	for _, rel := range claudeLocations {
+		if !slices.Contains(dry.Wrote, rel) {
+			t.Errorf("AddDryRun's Wrote = %v, want it to carry %s", dry.Wrote, rel)
+		}
+	}
+	if !slices.Contains(dry.Mirror, mirror.Change{
+		Verb: mirror.VerbLinked, Path: ".claude/skills/para-commit-style",
+		Target: "../../.agents/skills/para-commit-style",
+	}) {
+		t.Errorf("AddDryRun's Mirror = %v, want a link for the new skill", dry.Mirror)
+	}
+}
+
 // TestRemovingASkillPrunesItsMirror is Phase 13's task 4 on the write path:
 // `remove skills.x` takes the rule *and* the mirror with it (§18.2, §6.1).
 func TestRemovingASkillPrunesItsMirror(t *testing.T) {
@@ -250,7 +342,7 @@ func TestRemovingASkillPrunesItsMirror(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanRemove: %v", err)
 	}
-	res, err := plan.Apply()
+	res, err := plan.Apply(false)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -296,7 +388,7 @@ func TestEditingASkillRefreshesACopiedMirror(t *testing.T) {
 func TestSkillMutationOnATreeWithTheSurfaceOffWritesNothingExtra(t *testing.T) {
 	root := treeWithSkill(t)
 
-	res, err := env(t, root).Note(loc(t, "skills.report"), "still useful", "")
+	res, err := env(t, root).Note(loc(t, "skills.report"), "still useful", "", false)
 	if err != nil {
 		t.Fatalf("Note: %v", err)
 	}
@@ -311,6 +403,53 @@ func TestSkillMutationOnATreeWithTheSurfaceOffWritesNothingExtra(t *testing.T) {
 	}
 	if lstatExists(root, ".claude") {
 		t.Error(".claude/ was created with emit.claude off")
+	}
+}
+
+// TestSkillMutationWithTheSurfaceOffPreservesAForeignClaudeFile is para-0o6
+// itself: a skill mutation refreshes the surface through WriteClaudeSurface
+// (§6.1), which used to treat any CLAUDE.md at a bare-off location as pure
+// residue and delete it outright — including content para never wrote. A
+// foreign CLAUDE.md must survive a skill mutation exactly as it survives a
+// full `rebuild`.
+func TestSkillMutationWithTheSurfaceOffPreservesAForeignClaudeFile(t *testing.T) {
+	root := treeWithSkill(t)
+	foreign := "<!-- BEGIN BEADS INTEGRATION -->\nSee `bd prime` for workflow context.\n<!-- END BEADS INTEGRATION -->\n"
+	writeFiles(t, root, map[string]string{"CLAUDE.md": foreign})
+
+	res, err := env(t, root).Note(loc(t, "skills.report"), "still useful", "", false)
+	if err != nil {
+		t.Fatalf("Note: %v", err)
+	}
+
+	if slices.Contains(res.Removed, "CLAUDE.md") {
+		t.Errorf("Removed = %v, want CLAUDE.md left alone", res.Removed)
+	}
+	if got := read(t, root, "CLAUDE.md"); got != foreign {
+		t.Errorf("CLAUDE.md =\n%s\nwant it byte-identical to\n%s", got, foreign)
+	}
+}
+
+// TestConfigSetEmitClaudeOffShortensAForeignClaudeFile is the `config set`
+// half of the same bug: turning `emit.claude` off after it was on must take
+// only para's block out of a CLAUDE.md that also holds foreign content, not
+// delete the file (R5).
+func TestConfigSetEmitClaudeOffShortensAForeignClaudeFile(t *testing.T) {
+	root := treeWithSkill(t)
+	setClaude(t, env(t, root), root, config.KeyEmitClaude, ptoml.Bool(true))
+	foreign := "<!-- BEGIN BEADS INTEGRATION -->\nSee `bd prime` for workflow context.\n<!-- END BEADS INTEGRATION -->\n"
+	writeFiles(t, root, map[string]string{"CLAUDE.md": foreign + read(t, root, "CLAUDE.md")})
+
+	res := setClaude(t, env(t, root), root, config.KeyEmitClaude, ptoml.Bool(false))
+
+	if slices.Contains(res.Removed, "CLAUDE.md") {
+		t.Errorf("Removed = %v, want CLAUDE.md shortened rather than deleted", res.Removed)
+	}
+	if got := read(t, root, "CLAUDE.md"); got != foreign {
+		t.Errorf("CLAUDE.md =\n%s\nwant only the foreign block\n%s", got, foreign)
+	}
+	if strings.Contains(read(t, root, "CLAUDE.md"), mdfile.BeginMarker) {
+		t.Error("CLAUDE.md still holds para's block after emit.claude turned off")
 	}
 }
 
@@ -338,7 +477,7 @@ func TestConfigSetOnASkillRefreshesTheMirror(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := e.ConfigChange(skill, config.KeyReviewCadence, "", "90", data)
+	res, err := e.ConfigChange(skill, config.KeyReviewCadence, "", "90", data, false)
 	if err != nil {
 		t.Fatalf("ConfigChange: %v", err)
 	}

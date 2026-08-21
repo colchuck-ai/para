@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/krvalue"
-	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/ptime"
 	"github.com/colchuck-ai/para/internal/tagexpr"
@@ -180,8 +180,15 @@ func (e *Env) normalise(kind kindmeta.Kind, field kindmeta.Field, raw string, st
 		// A deadline is also the one timestamp that is *supposed* to be in the
 		// future, so it takes neither of §15's bounds directly; `created` is
 		// checked against it in checkState.
-		if _, err := e.timestamp(field, raw); err != nil {
-			return "", err
+		//
+		// Validated through ptime.Deadline, not e.timestamp/ParseAt: a year and
+		// a year-month are due's own coarser precisions (para-xbb), which §15.1's
+		// floor-at-a-full-date grammar does not admit — checkState calls
+		// ptime.Deadline too, so gating here on the narrower ParseAt would
+		// refuse a value checkState would otherwise accept, which is exactly
+		// the bug (a `--due 2027` that ptime.Deadline itself parses fine).
+		if _, err := ptime.Deadline(raw); err != nil {
+			return "", paraerr.Newf(paraerr.KindValidation, "%s: %s", field, unwrapMessage(err))
 		}
 		return strings.TrimSpace(raw), nil
 
@@ -267,16 +274,19 @@ func normaliseList(field kindmeta.Field, values []string) ([]string, error) {
 				return nil, paraerr.Newf(paraerr.KindValidation, "%q is not a valid tag (letters, digits, and hyphens)", v)
 			}
 		case kindmeta.FieldScope:
-			// A scope entry is a fully-qualified locator — the same string
-			// every command prints (§5.2). Whether it resolves is deliberately
+			// A scope entry is a dotted address — the same string every
+			// command prints (§5.2, R24). Whether it resolves is deliberately
 			// not checked here: an entry may name something that has not been
 			// created yet, and an entry that names nothing is doctor's
-			// `scope-unresolved` finding to report (§5.4, §10).
-			loc, err := locator.Parse(v)
+			// `scope-unresolved` finding to report (§5.4, §10). This is the
+			// write-side half of truth.Check's FieldScope rule
+			// (internal/truth/check.go) — the same rule, so `add`/`set` and
+			// `doctor` cannot disagree about one entry.
+			addr, err := address.ParseDotted(v)
 			if err != nil {
-				return nil, paraerr.Newf(paraerr.KindValidation, "scope entry %q is not a locator: %s", v, unwrapMessage(err))
+				return nil, paraerr.Newf(paraerr.KindValidation, "scope entry %q: %s", v, unwrapMessage(err))
 			}
-			v = loc.String()
+			v = addr.String()
 		}
 		if seen[v] {
 			continue

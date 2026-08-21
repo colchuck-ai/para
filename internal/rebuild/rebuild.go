@@ -40,6 +40,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
@@ -94,7 +95,9 @@ type Result struct {
 	// slash-separated path — the form §23 prints.
 	Changed []string
 	// Removed names every generated file deleted because nothing generates it
-	// any more: a CLAUDE.md left by turning `emit.claude` off (§6.1). It is
+	// any more: a block-scoped file (CLAUDE.md or .gitattributes, §2.2, §6.1,
+	// §9) whose block was its only content, left behind by turning its
+	// `emit.*` key off and then emptied by taking the block out (R6). It is
 	// separate from Changed because the two need different words — "rewrote"
 	// beside a file that is gone would be a lie.
 	Removed []string
@@ -170,7 +173,7 @@ func Run(env *Env, opts Options) (Result, error) {
 	// old bytes, so the command you run to repair a tree finished and `doctor`
 	// stayed red.
 	if len(opts.Scope) == 0 || scopeHoldsSkill(subjects) {
-		changes, err := env.SyncMirror(opts.DryRun, pending)
+		changes, err := env.SyncMirror(opts.DryRun, pending, nil, nil)
 		res.Mirror = changes
 		if err != nil {
 			return res, err
@@ -299,7 +302,7 @@ func Subjects(root string, scope locator.Locator) ([]Subject, error) {
 		return nil, err
 	}
 	if !resolves {
-		return nil, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", scope)
+		return nil, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", rebuildAddr(scope))
 	}
 
 	nodes, err := tree.Subtree(root, scope)
@@ -329,9 +332,10 @@ type Artifact struct {
 	// differs from every possible answer.
 	Present bool
 	// Wanted reports whether the file should exist. It is false for residue —
-	// a CLAUDE.md left behind by turning `emit.claude` off (§6.1) — and that is
-	// the same question §10 asks, read the other way: what would be written now
-	// is nothing, and a file that is there differs from nothing.
+	// a block-scoped file (CLAUDE.md or .gitattributes, §2.2, §9) whose block
+	// was its only content, so taking the block out leaves nothing (R6) — and
+	// that is the same question §10 asks, read the other way: what would be
+	// written now is nothing, and a file that is there differs from nothing.
 	//
 	// §10's finding set is closed and has no row for residue, which is the
 	// argument for folding it into `stale-projection` rather than inventing a
@@ -366,7 +370,7 @@ func (e *Env) Derive(s Subject) ([]Artifact, error) {
 		// CLAUDE.md's import list is the one thing a renderer needs that is not
 		// in the subject's own truth (§6.1), and it is loaded only where that
 		// renderer is in the set.
-		if in.Rules, err = e.rules(); err != nil {
+		if in.Rules, err = e.rules(nil, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -399,18 +403,42 @@ func (e *Env) Derive(s Subject) ([]Artifact, error) {
 	return append(out, residue...), nil
 }
 
-// rules is CLAUDE.md's import list: one derived rule per skill that exists.
+// rules is CLAUDE.md's import list: one derived rule per skill that exists,
+// plus adding and minus removing — adding names the skills a caller has not
+// written to disk yet but is about to, so a rehearsal of adding a skill names
+// its own rule in the same list a real add would produce; removing names a
+// skill still on disk that a rehearsed `remove` is about to delete, so its
+// rehearsal does not go on naming a rule the real removal would take with it
+// (para-ato). RuleFilenames sorts and dedupes, so neither needs any particular
+// order relative to what tree.SkillIDs already returned.
 //
 // It asks the skills rather than listing .agents/rules/, because a rule is a
 // projection of a skill (§5.3) and §21.1 forbids deriving a projection from
 // one — the listing would import a rule this same rebuild is about to delete,
 // and would need a second pass to converge.
-func (e *Env) rules() ([]string, error) {
+func (e *Env) rules(adding, removing []string) ([]string, error) {
 	ids, err := tree.SkillIDs(e.Root)
 	if err != nil {
 		return nil, err
 	}
-	return render.RuleFilenames(ids), nil
+	return render.RuleFilenames(pendingSkillIDs(ids, adding, removing)), nil
+}
+
+// pendingSkillIDs is the one place a rehearsal's "as if" skill set is derived
+// — rules and SyncMirror both need the identical set, or a rehearsed skill
+// removal could report a different CLAUDE.md import list than the mirror it
+// syncs against, for no reason but having computed the same adjustment twice.
+func pendingSkillIDs(ids, adding, removing []string) []string {
+	if len(removing) == 0 {
+		return append(slices.Clone(ids), adding...)
+	}
+	out := make([]string, 0, len(ids)+len(adding))
+	for _, id := range ids {
+		if !slices.Contains(removing, id) {
+			out = append(out, id)
+		}
+	}
+	return append(out, adding...)
 }
 
 // load reads everything a subject's renderers need: its truth, its whole
@@ -453,4 +481,21 @@ func (e *Env) read(path string) ([]byte, error) {
 		return nil, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("reading %s", path))
 	}
 	return data, nil
+}
+
+// rebuildAddr is loc's dotted address (R24), the same conversion every other
+// package that names a Locator in an error message asks of address.String
+// (internal/mutate's relocateAddr; internal/cli's entityLocatorString and
+// findingLocatorString; internal/view's viewAddr; internal/doctor's
+// doctorAddr; internal/query's queryAddr). The scope reaching this refusal
+// was already built by the CLI's own parseAddressArgs, which resolves it
+// through address.Parse before rebuild ever sees it — so the raw Locator
+// string is a defensive fallback only, for the one case a scope built some
+// other way (a test, a future caller) does not round-trip.
+func rebuildAddr(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }

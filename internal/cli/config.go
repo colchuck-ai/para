@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mutate"
@@ -61,7 +62,7 @@ type scope struct {
 // — "" for the root, which is where `set` and `unset` write unless --at says
 // otherwise (§22).
 //
-// A named level must exist. A `config set --at projects.acme` against a
+// A named level must exist. A `config set --at project.acme` against a
 // project that is not there would otherwise write a config.toml into a
 // directory nothing reads, which is exactly the silent misconfiguration the
 // closed key set exists to prevent.
@@ -76,7 +77,7 @@ func openScope(cmd *cobra.Command, at string) (scope, error) {
 		return s, nil
 	}
 
-	loc, err := resolveLocatorArg(root, cwd, at)
+	loc, err := resolveConfigAt(root, cwd, at)
 	if err != nil {
 		return scope{}, err
 	}
@@ -85,10 +86,29 @@ func openScope(cmd *cobra.Command, at string) (scope, error) {
 		return scope{}, err
 	}
 	if !exists {
-		return scope{}, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", loc.String())
+		return scope{}, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", configLocatorString(loc))
 	}
 	s.locator = loc
 	return s, nil
+}
+
+// resolveConfigAt resolves --at (task P19.10, R24), and config show's own
+// second positional argument, which names the same thing spelled a
+// different way. Both now take the one-token dotted form (<noun>.<chain>,
+// optionally archive.-prefixed) rather than the old plural-bucket locator
+// string, since a flag value is one token and cannot carry a noun and a
+// chain as two — the same reasoning R24's whole table applies everywhere
+// else an address must be a single string. "." still works (R16), resolved
+// against cwd the same way every other address argument's does.
+func resolveConfigAt(root, cwd, at string) (locator.Locator, error) {
+	if at == "." {
+		return tree.ResolveDot(root, cwd)
+	}
+	addr, err := address.ParseDotted(at)
+	if err != nil {
+		return nil, err
+	}
+	return addr.ToLocator()
 }
 
 // file is the scope's own config.toml: the root-relative path for output,
@@ -104,6 +124,7 @@ func (s scope) file() (rel, abs string, err error) {
 
 func newConfigSetCmd() *cobra.Command {
 	var at string
+	var dryRun bool
 	cmd := &cobra.Command{
 		Use:   "set <key> <value>",
 		Short: "set a config key, at the root by default",
@@ -126,17 +147,19 @@ func newConfigSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return writeLevel(cmd.OutOrStdout(), s, key, func(f *config.File) (bool, error) {
+			return writeLevel(cmd.OutOrStdout(), s, key, dryRun, func(f *config.File) (bool, error) {
 				return f.Set(key, value)
 			})
 		},
 	}
-	cmd.Flags().StringVar(&at, "at", "", "the locator whose config.toml to write (default: the tree root)")
+	cmd.Flags().StringVar(&at, "at", "", "the dotted address (noun.chain) whose config.toml to write (default: the tree root)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	return cmd
 }
 
 func newConfigUnsetCmd() *cobra.Command {
 	var at string
+	var dryRun bool
 	cmd := &cobra.Command{
 		Use:   "unset <key>",
 		Short: "remove a config key, at the root by default",
@@ -153,27 +176,32 @@ func newConfigUnsetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return writeLevel(cmd.OutOrStdout(), s, key, func(f *config.File) (bool, error) {
+			return writeLevel(cmd.OutOrStdout(), s, key, dryRun, func(f *config.File) (bool, error) {
 				return f.Unset(key), nil
 			})
 		},
 	}
-	cmd.Flags().StringVar(&at, "at", "", "the locator whose config.toml to write (default: the tree root)")
+	cmd.Flags().StringVar(&at, "at", "", "the dotted address (noun.chain) whose config.toml to write (default: the tree root)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	return cmd
 }
 
 // writeLevel applies edit to the scope's own config.toml and reports what it
-// wrote.
+// wrote, or — under dryRun — reports what it would write and writes nothing
+// (para-ato; `set` is the case the bead named, `unset` is wired the same way
+// since it shares this whole function).
 //
 // A change that changes nothing writes nothing and says so (§23): a config file
 // rewritten with identical bytes would still churn its mtime, and every re-run
-// of a provisioning script would look like a change.
+// of a provisioning script would look like a change. edit itself never writes —
+// it mutates an in-memory config.File — so the "no change" branch below is the
+// same computation whether or not dryRun was asked for.
 //
 // A change that does land is recorded in the level's own journal (§8.1), which
 // is why this goes through mutate rather than writing the file directly: the
 // config.toml, the event, and that level's ACTIVITY.md are one mutation, and a
 // crash between them would leave the file changed with nothing to say so.
-func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (bool, error)) error {
+func writeLevel(out io.Writer, s scope, key string, dryRun bool, edit func(*config.File) (bool, error)) error {
 	if len(s.locator) > 0 && config.RootOnly(key) {
 		// The keys that are not chain-resolved (see Resolver.RenderConfig and
 		// config.RootOnly). Writing one at a level nothing reads would be exactly
@@ -191,6 +219,7 @@ func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (boo
 	if err != nil {
 		return err
 	}
+	spec, _ := config.Lookup(key)
 	before, _ := f.Get(key)
 	changed, err := edit(&f)
 	if err != nil {
@@ -198,6 +227,9 @@ func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (boo
 	}
 	if !changed {
 		fmt.Fprintln(out, "no change")
+		if dryRun {
+			fmt.Fprintln(out, dryRunLine)
+		}
 		return nil
 	}
 	data, err := f.Encode()
@@ -206,20 +238,23 @@ func writeLevel(out io.Writer, s scope, key string, edit func(*config.File) (boo
 	}
 	after, _ := f.Get(key)
 
-	res, err := s.env.ConfigChange(s.locator, key, config.Format(before), config.Format(after), data)
+	res, err := s.env.ConfigChange(s.locator, key, spec.FormatValue(before), spec.FormatValue(after), data, dryRun)
 	if err != nil {
 		return err
 	}
 	// Not just the file list: setting either `emit.claude` key writes or sweeps
 	// the whole Claude surface in the same command (§6.1, §26).
 	printEffects(out, res)
+	if dryRun {
+		fmt.Fprintln(out, dryRunLine)
+	}
 	return nil
 }
 
 func newConfigShowCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "show <key> [<locator>]",
+		Use:   "show <key> [<noun.chain>]",
 		Short: "print a resolved config value and the chain that produced it",
 		Long: "Print a resolved config value and the chain that produced it.\n\n" +
 			"Every level consulted is listed, nearest first, with an arrow on the one\n" +
@@ -256,25 +291,25 @@ func newConfigShowCmd() *cobra.Command {
 	return cmd
 }
 
+// newConfigListCmd implements `para config list [--prefix …]` (R12): unlike
+// set, unset, and show, list takes no address argument at all — R12's own
+// table gives it none, and §22's worked example agrees — so it always
+// resolves at the tree root.
 func newConfigListCmd() *cobra.Command {
 	var (
 		asJSON bool
 		prefix string
 	)
 	cmd := &cobra.Command{
-		Use:   "list [<locator>]",
-		Short: "list every config key as resolved at a locator",
-		Long: "List every config key para recognises, resolved at a locator (the tree\n" +
-			"root by default), with the level each value came from.\n\n" +
+		Use:   "list [--prefix …]",
+		Short: "list every config key as resolved at the tree root",
+		Long: "List every config key para recognises, resolved at the tree root, with\n" +
+			"the level each value came from.\n\n" +
 			"Keys nothing sets are listed too: a knob nobody can find is a knob that\n" +
 			"will be wrong.",
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			at := ""
-			if len(args) == 1 {
-				at = args[0]
-			}
-			s, err := openScope(cmd, at)
+			s, err := openScope(cmd, "")
 			if err != nil {
 				return err
 			}
@@ -325,12 +360,12 @@ func formatChain(res config.Resolution) string {
 	for i, l := range res.Levels {
 		r := row{label: l.Label(), value: unset, winner: i == res.Winner}
 		if l.Set {
-			r.value = config.Format(l.Value)
+			r.value = res.Spec.FormatValue(l.Value)
 		}
 		rows = append(rows, r)
 	}
 	if res.FromDefault {
-		rows = append(rows, row{label: defaultLabel, value: config.Format(res.Value), winner: true})
+		rows = append(rows, row{label: defaultLabel, value: res.Spec.FormatValue(res.Value), winner: true})
 	}
 
 	// §22's example puts the value column six spaces past the longest
@@ -344,7 +379,7 @@ func formatChain(res config.Resolution) string {
 	var b strings.Builder
 	value := unset
 	if res.Found {
-		value = config.Format(res.Value)
+		value = res.Spec.FormatValue(res.Value)
 	}
 	b.WriteString(value)
 	b.WriteString("\n\n")
@@ -389,7 +424,7 @@ func resolvedValue(res config.Resolution) string {
 	if !res.Found {
 		return unset
 	}
-	return config.Format(res.Value)
+	return res.Spec.FormatValue(res.Value)
 }
 
 // resolvedSource names where a value came from: the level that supplied it,
@@ -404,15 +439,32 @@ func resolvedSource(res config.Resolution) string {
 	return unset
 }
 
-// levelJSON is one link of the chain in --json form. Level is the locator
-// itself — empty for the root — rather than the <root> label, because JSON
-// is read by programs and a program wants the locator.
+// levelJSON is one link of the chain in --json form. Level is the dotted
+// address (R24) — empty for the root — rather than the <root> label, because
+// JSON is read by programs and a program wants the address, not the prose.
 type levelJSON struct {
 	Level  string `json:"level"`
 	File   string `json:"file"`
 	Set    bool   `json:"set"`
 	Value  any    `json:"value"`
 	Winner bool   `json:"winner"`
+}
+
+// configLocatorString is loc's dotted address (R24), or "" for the empty
+// locator every root-level config subject carries. loc ordinarily names a
+// real, already-resolved entity or container, so address.String ordinarily
+// succeeds — but openScope only checks tree.Exists, not the reserved-word
+// legality the walk's own classify() gates on, so a legacy tree with a
+// collision-shaped id (a directory named one of R6's seventeen reserved
+// words) can still reach here. The raw Locator string is the fallback for
+// exactly that case — the same position a doctor `collision` finding would
+// also show unconverted, since it derives no address either.
+func configLocatorString(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }
 
 // showPayload is `config show --json`. Set and Default answer different
@@ -432,7 +484,7 @@ type showPayload struct {
 func showJSON(s scope, res config.Resolution) showPayload {
 	out := showPayload{
 		Key:     res.Key,
-		Locator: s.locator.String(),
+		Locator: configLocatorString(s.locator),
 		Set:     res.Found && !res.FromDefault,
 		Default: res.FromDefault,
 		Source:  sourceJSON(res),
@@ -442,7 +494,7 @@ func showJSON(s scope, res config.Resolution) showPayload {
 		out.Value = jsonValue(res.Value)
 	}
 	for i, l := range res.Levels {
-		link := levelJSON{Level: l.Locator.String(), File: l.File, Set: l.Set, Winner: i == res.Winner}
+		link := levelJSON{Level: configLocatorString(l.Locator), File: l.File, Set: l.Set, Winner: i == res.Winner}
 		if l.Set {
 			link.Value = jsonValue(l.Value)
 		}
@@ -466,7 +518,7 @@ type listPayload struct {
 }
 
 func listJSON(s scope, rows []config.Resolution) listPayload {
-	out := listPayload{Locator: s.locator.String(), Keys: make([]keyPayload, 0, len(rows))}
+	out := listPayload{Locator: configLocatorString(s.locator), Keys: make([]keyPayload, 0, len(rows))}
 	for _, res := range rows {
 		k := keyPayload{
 			Key:     res.Key,
@@ -491,7 +543,7 @@ func sourceJSON(res config.Resolution) *string {
 	if !ok {
 		return nil
 	}
-	s := src.Locator.String()
+	s := configLocatorString(src.Locator)
 	return &s
 }
 

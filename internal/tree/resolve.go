@@ -3,6 +3,7 @@ package tree
 import (
 	"path/filepath"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
@@ -40,7 +41,7 @@ func KindAt(loc locator.Locator) (kindmeta.Kind, error) {
 	if len(loc) == 0 {
 		return kindmeta.KindUnknown, nil
 	}
-	if kindmeta.IsContainer(loc) {
+	if isContainerPosition(loc) {
 		return kindmeta.KindContainer, nil
 	}
 	info, err := kindmeta.KindOf(loc)
@@ -48,6 +49,44 @@ func KindAt(loc locator.Locator) (kindmeta.Kind, error) {
 		return kindmeta.KindUnknown, err
 	}
 	return info.Kind, nil
+}
+
+// isContainerPosition reports whether loc names a legal container position
+// (§1.2): the four buckets, the three archived mirrors, objectives/ under a
+// project, and key-results/ under an objective.
+//
+// This was kindmeta.IsContainer until Phase 17 task P17.6 deleted it: a
+// container's name is always a reserved word and a reserved word can never
+// be an id, so every container locator is one KindOf is defined to refuse —
+// and once an address's noun is spoken (R5), nothing needs to infer a
+// container from a locator's shape any more, except the walk. The walk
+// still finds containers as bare directories on disk with no noun attached
+// (walk.go's own classify), so the position table survives here, its one
+// remaining caller — using address.IsBucket for the bucket case, since that
+// list moved there with the rest of what IsContainer used to answer, and
+// kindmeta.KindOf for the parent-kind case, exactly as IsContainer did.
+func isContainerPosition(loc locator.Locator) bool {
+	if len(loc) == 0 {
+		return false
+	}
+	last := loc[len(loc)-1]
+
+	if address.IsBucket(loc) {
+		return true
+	}
+
+	parent, err := kindmeta.KindOf(loc[:len(loc)-1])
+	if err != nil {
+		return false
+	}
+	switch last {
+	case "objectives":
+		return parent.Kind == kindmeta.KindProject
+	case "key-results":
+		return parent.Kind == kindmeta.KindObjective
+	default:
+		return false
+	}
 }
 
 // Exists reports whether loc currently addresses a live container or

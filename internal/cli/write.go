@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/clock"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/krvalue"
-	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mutate"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/tree"
@@ -46,40 +46,71 @@ type fieldFlags struct {
 // help is the one-line description each field's flag carries. A field with no
 // entry would be a field nobody could be told about, so the map is keyed by the
 // same §15 row order register walks.
+// FieldStatus carries no entry: registerForKind, its one reader, always
+// builds status's help from statusHelpForKind instead, because status is
+// the one field whose legal vocabulary genuinely varies by kind rather than
+// merely being present or absent.
 var fieldHelp = map[kindmeta.Field]string{
 	kindmeta.FieldName:        "the thing's name",
 	kindmeta.FieldDescription: "one line: what it is, or when to use it",
-	// The vocabulary is a kind's, not the tree's (§1.7): a key-result's status
-	// is derived, with exactly one value carved out as settable. Naming that
-	// exception here is cheaper than a reader discovering it as a refusal.
-	kindmeta.FieldStatus: "one of " + strings.Join(kindmeta.AllStatuses(), ", ") +
-		"; a key-result takes only " + strings.Join(kindmeta.SettableStatuses(kindmeta.KindKeyResult), ", "),
-	kindmeta.FieldPriority: "one of " + strings.Join(kindmeta.Priorities(), ", "),
-	kindmeta.FieldDue:      "a deadline, in progressive precision",
-	kindmeta.FieldTags:     "a comma-separated list, replacing whatever is there",
-	kindmeta.FieldCreated:  "the creation time; defaults to now, never in the future",
-	kindmeta.FieldType:     "a key-result's measurement grammar: " + strings.Join(krvalue.TypeNames(), ", "),
-	kindmeta.FieldStart:    "a key-result's baseline; defaults to its first measurement",
-	kindmeta.FieldTarget:   "a key-result's target",
-	kindmeta.FieldScope:    "a skill's scope: a comma-separated locator list, or omit for the whole tree",
+	kindmeta.FieldPriority:    "one of " + strings.Join(kindmeta.Priorities(), ", "),
+	kindmeta.FieldDue:         "a deadline, in progressive precision (year, year-month, or finer)",
+	kindmeta.FieldTags:        "a comma-separated list, replacing whatever is there",
+	kindmeta.FieldCreated:     "the creation time; defaults to now, never in the future",
+	// type, start, target, and scope each belong to exactly one kind, so
+	// naming it here was never disambiguating anything — it only read as an
+	// apology for the flag being offered everywhere. The one subcommand that
+	// registers each of these already says which kind it is.
+	kindmeta.FieldType:   "the measurement grammar: " + strings.Join(krvalue.TypeNames(), ", "),
+	kindmeta.FieldStart:  "the baseline; defaults to the first measurement",
+	kindmeta.FieldTarget: "the target",
+	kindmeta.FieldScope:  "a comma-separated locator list, or omit for the whole tree",
 }
 
-func (f *fieldFlags) register(cmd *cobra.Command) {
+// statusHelpForKind is registerForKind's status text: the settable
+// vocabulary kind actually has, with no footnote about any other kind's
+// restriction, because the subcommand that shows this text simply does not
+// register the values it cannot take.
+func statusHelpForKind(kind kindmeta.Kind) string {
+	return "one of " + strings.Join(kindmeta.SettableStatuses(kind), ", ")
+}
+
+// registerForKind is add's and set's per-noun registration (R3, task
+// P19.3/P19.5): only the fields kindmeta.Has(kind, field) gives kind, in
+// AllFields order — so a project's `add --help` shows seven flags and a
+// key-result's nine, instead of every command offering all eleven and
+// refusing the wrong ones at mutate-time.
+//
+// atCreation distinguishes the one thing add may do that set may not: set
+// a field fixed at creation. add passes true and gets all of Has(kind,
+// field); set passes false and additionally drops any field RequiredFixed
+// — key-result's type, the one row §15 marks that way — the same
+// distinction completeFieldValue already draws for value completion.
+func (f *fieldFlags) registerForKind(cmd *cobra.Command, kind kindmeta.Kind, atCreation bool) {
 	f.values = map[kindmeta.Field]*string{}
-	// AllFields, not the map: §15's row order is declared once and the map is
-	// only ever asked for one key's help text (§0.2 — no map iteration reaches
-	// output, and flag registration order reaches --help).
 	for _, field := range kindmeta.AllFields() {
+		if !fieldApplies(kind, field, atCreation) {
+			continue
+		}
+		help := fieldHelp[field]
+		if field == kindmeta.FieldStatus {
+			help = statusHelpForKind(kind)
+		}
 		var v string
 		f.values[field] = &v
-		cmd.Flags().StringVar(&v, string(field), "", fieldHelp[field])
-		// Registered here, where the role is known: these are values being
-		// stored, so the kind the locator names decides the vocabulary and
-		// whether the flag applies at all. `add` is the creation, so it alone
-		// may set a field that is fixed at creation. The error is the "already
-		// registered" one, which cannot happen on a freshly built command.
-		_ = cmd.RegisterFlagCompletionFunc(string(field),
-			completeFieldValue(field, cmd.Name() == "add"))
+		cmd.Flags().StringVar(&v, string(field), "", help)
+		// The value vocabulary is per-noun (task P21.8): kind is already
+		// fixed here, so a key-result's `--status` offers only `dropped`
+		// without a special case, and no other kind offers it at all. scope
+		// is the one field whose vocabulary is not a closed set of values to
+		// choose from but a list of *addresses* to reference, so it takes
+		// completeScopeValue instead of the fixed set fieldVocabulary would
+		// give it (nil, since scope has no closed vocabulary of its own).
+		if field == kindmeta.FieldScope {
+			_ = cmd.RegisterFlagCompletionFunc(string(field), completeScopeValue)
+		} else {
+			_ = cmd.RegisterFlagCompletionFunc(string(field), fixed(fieldVocabulary(kind, field)))
+		}
 	}
 }
 
@@ -102,51 +133,194 @@ func (f *fieldFlags) collect(cmd *cobra.Command) mutate.Fields {
 	return out
 }
 
-func newAddCmd() *cobra.Command {
-	var f fieldFlags
+// newNounDispatchCmd builds a noun-dispatching parent command shared by
+// add, set, and unset (R3): one subcommand per addressable noun (from
+// buildSub, over kindmeta.AllKinds() — the six that exclude container), and
+// a RunE that only ever runs when cobra's dispatch does not match any of
+// them, since every recognized noun is its own subcommand and is reached
+// directly.
+//
+// Without that RunE, an unmatched first argument — a typo, or container,
+// which none of the three registers a subcommand for — would fall through
+// to cobra printing this command's own help and exiting 0: a silent no-op
+// indistinguishable from success. containerWhy names each verb's own reason
+// container is refused (§13's "naming a container where an entity is
+// required is an error that says so" — the reason differs by verb, the
+// refusal does not), and a bare `para <verb>` with no args still shows help
+// and exits 0, matching every other cobra parent-dispatch command.
+func newNounDispatchCmd(use, short, long, containerWhy string, buildSub func(kindmeta.Kind) *cobra.Command) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add <locator>",
-		Short: "create an entity",
-		Long: "Create the entity a locator names.\n\n" +
-			"A project is created with its objectives/ container and an objective\n" +
-			"with its key-results/, because a uniform shape is what lets an agent or\n" +
-			"a human look somewhere and trust that absence means none.\n\n" +
-			"The new entity's journal starts empty — `created` is a field, not an\n" +
-			"event — and the parent logs that its set of children changed.",
-		Args: cobra.ExactArgs(1),
+		Use:   use,
+		Short: short,
+		Long:  long,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			if args[0] == kindmeta.KindContainer.String() {
+				return paraerr.New(paraerr.KindValidation, containerWhy)
+			}
+			return paraerr.Newf(paraerr.KindValidation,
+				"%q is not a noun %s takes (one of: %s)", args[0], cmd.Name(), strings.Join(addableNounWords(), ", "))
+		},
+	}
+	for _, kind := range kindmeta.AllKinds() {
+		cmd.AddCommand(buildSub(kind))
+	}
+	return cmd
+}
+
+// addableNounWords is R2's seven words minus container, the six add, set,
+// and unset each register a subcommand for — used both for their help's
+// noun list and for naming what a bad noun should have been.
+func addableNounWords() []string {
+	kinds := kindmeta.AllKinds()
+	words := make([]string, len(kinds))
+	for i, k := range kinds {
+		words[i] = k.String()
+	}
+	return words
+}
+
+// newAddCmd implements `para add <noun> <chain>` (R3, R15). container is
+// refused because it is created eagerly by its parent (§18.1) and never
+// directly.
+func newAddCmd() *cobra.Command {
+	return newNounDispatchCmd(
+		"add <noun> <chain> --name … [--field …]",
+		"create an entity",
+		"Create the entity a noun and a chain name — one subcommand per noun, so\n"+
+			"`para add <noun> --help` shows exactly that kind's own fields.\n\n"+
+			"A project is created with its objectives/ container and an objective\n"+
+			"with its key-results/, because a uniform shape is what lets an agent or\n"+
+			"a human look somewhere and trust that absence means none.\n\n"+
+			"The new entity's journal starts empty — `created` is a field, not an\n"+
+			"event — and the parent logs that its set of children changed.\n\n"+
+			"Nouns: "+strings.Join(addableNounWords(), ", ")+".",
+		"container is refused: a container is created eagerly by its parent and never directly",
+		newAddNounCmd,
+	)
+}
+
+// newAddNounCmd is one noun's `add` subcommand: its own chain arity (via
+// chainToLocator, P19.1), its own field flags (via fieldFlags.registerForKind,
+// this task), and its own --archived refusal (R8, carried over from the
+// single command P19.2 registered it on).
+func newAddNounCmd(kind kindmeta.Kind) *cobra.Command {
+	var f fieldFlags
+	var archived archivedFlag
+	var dryRun bool
+	const archivedWhy = "nothing is created under archive/"
+
+	cmd := &cobra.Command{
+		Use:   kind.String() + " <chain> --name … [--field …]",
+		Short: "create " + withArticle(kind.String()),
+		Long: "Create the " + kind.String() + " the chain names.\n\n" +
+			"\".\" is deliberately not accepted: it resolves to something that\n" +
+			"already exists, and add is for something that does not." +
+			addLongSuffix(kind),
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := archived.check(archivedWhy); err != nil {
+				return err
+			}
 			env, _, err := openEnv(cmd)
 			if err != nil {
 				return err
 			}
-			// "." is deliberately not accepted here: it resolves to something
-			// that already exists (§14), and `add` is for something that does
-			// not.
-			loc, err := locator.Parse(args[0])
+			var chain string
+			if len(args) == 1 {
+				chain = args[0]
+			}
+			loc, err := chainToLocator(kind.String(), chain, false, false)
 			if err != nil {
 				return err
 			}
-			res, err := env.Add(loc, f.collect(cmd))
+			fields := f.collect(cmd)
+			var res mutate.Result
+			if dryRun {
+				res, err = env.AddDryRun(loc, fields)
+			} else {
+				res, err = env.Add(loc, fields)
+			}
 			if err != nil {
 				return err
 			}
-			printResult(cmd.OutOrStdout(), []string{fmt.Sprintf("added  %s  %s", res.Locator, res.Kind)}, res)
+			out := cmd.OutOrStdout()
+			path, err := res.Locator.Path()
+			if err != nil {
+				return err
+			}
+			printResult(out, []string{
+				fmt.Sprintf("added  %s  %s", entityLocatorString(res.Locator), res.Kind),
+				fmt.Sprintf("path   %s", path),
+			}, res)
+			if dryRun {
+				fmt.Fprintln(out, dryRunLine)
+			}
 			return nil
 		},
 	}
-	f.register(cmd)
+	f.registerForKind(cmd, kind, true)
+	archived.registerRefused(cmd, archivedWhy)
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	return cmd
 }
 
+// addLongSuffix is the one noun-specific addition to add's otherwise
+// generic --help text: a skill's directory is prefixed para- on disk (R3,
+// internal/locator's skills.<id> case) so the .claude/skills/ mirror can
+// never collide with a skill some other tool put there, while the address
+// itself stays unprefixed. Nothing about that split is guessable from the
+// command or its output otherwise, so it is named here rather than left to
+// the `path` line to explain on its own (para-z93).
+func addLongSuffix(kind kindmeta.Kind) string {
+	if kind != kindmeta.KindSkill {
+		return ""
+	}
+	return "\n\n" +
+		"A skill's directory is named para-<id> under .agents/skills/ — the\n" +
+		"address stays skill.<id>. The prefix namespaces the .claude/skills/\n" +
+		"mirror; `added` prints the real path so the two are never guessed."
+}
+
+// newSetCmd implements `para set <noun> <chain> --field value […]` (R3),
+// the same noun-dispatching shape add's subcommand takes. container is
+// refused for the same reason naming a bare noun is (§13): it holds name,
+// description, and created and nothing you would want to set.
 func newSetCmd() *cobra.Command {
+	return newNounDispatchCmd(
+		"set <noun> <chain> --field value […]",
+		"change stored fields",
+		"Change any number of a noun's stored fields at once — one subcommand\n"+
+			"per noun, so `para set <noun> --help` shows exactly that kind's own\n"+
+			"settable fields.\n\n"+
+			"One journal event per field that actually changed, and one\n"+
+			"write-through pass at the end. Setting a field to the value it already\n"+
+			"holds writes nothing and exits 0 — without that rule a loop would buy\n"+
+			"permanent silence from every check in `para review`.\n\n"+
+			"Nouns: "+strings.Join(addableNounWords(), ", ")+".",
+		"container is refused: containers hold name, description, and created and nothing you would want to set",
+		newSetNounCmd,
+	)
+}
+
+// newSetNounCmd is one noun's `set` subcommand: dispatchedChainToLocator
+// resolves the chain (or ".", checked against this kind) rather than
+// chainToLocator alone, since set — unlike add — addresses something that
+// must already exist and so may be found by standing in it.
+func newSetNounCmd(kind kindmeta.Kind) *cobra.Command {
 	var (
-		f    fieldFlags
-		note string
+		f        fieldFlags
+		archived archivedFlag
+		note     string
+		dryRun   bool
 	)
 	cmd := &cobra.Command{
-		Use:   "set <locator> [flags]",
-		Short: "change stored fields",
-		Long: "Change any number of stored fields at once.\n\n" +
+		Use:   kind.String() + " <chain> --field value […]",
+		Short: "change " + withArticle(kind.String()) + "'s stored fields",
+		Long: "Change any number of stored fields, at once, on the " + kind.String() + " the\n" +
+			"chain names.\n\n" +
 			"One journal event per field that actually changed, and one\n" +
 			"write-through pass at the end. Setting a field to the value it already\n" +
 			"holds writes nothing and exits 0 — without that rule a loop would buy\n" +
@@ -157,39 +331,75 @@ func newSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, err := dispatchedChainToLocator(env.Root, cwd, kind, args[0], archived.value)
 			if err != nil {
 				return err
 			}
-			res, err := env.Set(loc, f.collect(cmd), note)
+			var res mutate.Result
+			if dryRun {
+				res, err = env.SetDryRun(loc, f.collect(cmd), note)
+			} else {
+				res, err = env.Set(loc, f.collect(cmd), note)
+			}
 			if err != nil {
 				return err
 			}
-			printResult(cmd.OutOrStdout(), summariseSet(res), res)
+			out := cmd.OutOrStdout()
+			printResult(out, summariseSet(res), res)
+			if dryRun {
+				fmt.Fprintln(out, dryRunLine)
+			}
 			return nil
 		},
 	}
-	f.register(cmd)
+	f.registerForKind(cmd, kind, false)
+	archived.register(cmd)
 	cmd.Flags().StringVar(&note, "note", "", "the reason, recorded with the change; required when setting status to blocked")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	return cmd
 }
 
+// newUnsetCmd implements `para unset <noun> <chain> <field>...` (R3), the
+// same noun-dispatching shape as add and set.
 func newUnsetCmd() *cobra.Command {
+	return newNounDispatchCmd(
+		"unset <noun> <chain> <field>...",
+		"remove stored fields",
+		"Remove stored fields, which is different from setting them to nothing:\n"+
+			"`para unset skill x scope` widens a skill back to the whole tree,\n"+
+			"because absence already says everywhere.\n\n"+
+			"`created` cannot be unset — everything has a creation time — and\n"+
+			"neither can a field the kind requires or one fixed at creation.\n\n"+
+			"Nouns: "+strings.Join(addableNounWords(), ", ")+".",
+		"container is refused: containers hold name, description, and created and nothing you would want to unset",
+		newUnsetNounCmd,
+	)
+}
+
+// newUnsetNounCmd is one noun's `unset` subcommand. It does not itself
+// re-validate the field names against kindmeta.UnsettableFields(kind) — the
+// noun-dispatch rewiring changes how the locator is found, not the field
+// rule, and mutate.Unset already names an inapplicable field clearly
+// (fields.go's unknownField/unsetRefused), the same "one rule, one
+// function" reason registerForKind reuses fieldApplies rather than
+// re-deriving it.
+func newUnsetNounCmd(kind kindmeta.Kind) *cobra.Command {
+	var archived archivedFlag
+	var dryRun bool
 	cmd := &cobra.Command{
-		Use:   "unset <locator> <field>...",
-		Short: "remove stored fields",
-		Long: "Remove stored fields, which is different from setting them to nothing:\n" +
-			"`para unset skills.x scope` widens a skill back to the whole tree,\n" +
-			"because absence already says everywhere.\n\n" +
+		Use:   kind.String() + " <chain> <field>...",
+		Short: "remove " + withArticle(kind.String()) + "'s stored fields",
+		Long: "Remove stored fields from the " + kind.String() + " the chain names,\n" +
+			"which is different from setting them to nothing.\n\n" +
 			"`created` cannot be unset — everything has a creation time — and\n" +
-			"neither can a field the kind requires or one fixed at creation.",
+			"neither can a field the " + kind.String() + " requires or one fixed at creation.",
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openEnv(cmd)
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, err := dispatchedChainToLocator(env.Root, cwd, kind, args[0], archived.value)
 			if err != nil {
 				return err
 			}
@@ -197,14 +407,25 @@ func newUnsetCmd() *cobra.Command {
 			for _, name := range args[1:] {
 				fields = append(fields, kindmeta.Field(name))
 			}
-			res, err := env.Unset(loc, fields)
+			var res mutate.Result
+			if dryRun {
+				res, err = env.UnsetDryRun(loc, fields)
+			} else {
+				res, err = env.Unset(loc, fields)
+			}
 			if err != nil {
 				return err
 			}
-			printResult(cmd.OutOrStdout(), summariseSet(res), res)
+			out := cmd.OutOrStdout()
+			printResult(out, summariseSet(res), res)
+			if dryRun {
+				fmt.Fprintln(out, dryRunLine)
+			}
 			return nil
 		},
 	}
+	archived.register(cmd)
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
 	return cmd
 }
 
@@ -217,41 +438,100 @@ func summariseSet(res mutate.Result) []string {
 	return changeLines(res)
 }
 
+// newNoteCmd implements `para note <noun> <chain> <text>` (R3, entity-only
+// per R17). container is refused explicitly: unlike move/remove/archive/
+// unarchive, Env.Note's own e.load does not itself refuse a container — a
+// container is a legitimate journal subject structurally (§3.1's `note`
+// event may land on "any entity or container") — but §13's argument table
+// still groups note with the entity-required commands, so typing the noun
+// by hand must be refused here, at the one point nothing else covers it.
 func newNoteCmd() *cobra.Command {
 	var at string
+	var noAttention bool
+	var archived archivedFlag
+	var dryRun bool
 	cmd := &cobra.Command{
-		Use:   "note <locator> <text>",
+		Use:   "note <noun> <chain> <text>",
 		Short: "record a note against an entity",
 		Long: "Record a note.\n\n" +
 			"One of the two verbs that move the clock, which is why it is a verb of\n" +
 			"its own rather than a field: `attention` is the newest note or\n" +
-			"measurement, and every staleness check in `para review` reads it.",
-		Args: cobra.ExactArgs(2),
+			"measurement, and every staleness check in `para review` reads it.\n\n" +
+			"--no-attention records the note without moving the clock: for something\n" +
+			"true about the entity that is not the recurring activity a stale-after\n" +
+			"threshold is watching for, so it cannot buy false silence from one.",
+		// Exactly two shapes: "." <text> (the whole noun-and-chain pair
+		// collapsed to one token, R16) or <noun> <chain> <text>. Neither
+		// RangeArgs nor ExactArgs can express that disjunction — both admit
+		// <noun> <text> with the chain missing, which parseAddressArgs would
+		// then silently take the text as the chain, leaving nothing for
+		// env.Note's own text argument — so the shape is checked directly.
+		Args: noteArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if args[0] == address.Container.String() {
+				return paraerr.New(paraerr.KindValidation,
+					"container is refused: it holds name, description, and created and nothing you would note against")
+			}
 			env, cwd, err := openEnv(cmd)
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, rest, err := parseAddressArgs(env.Root, cwd, args, entityArity, archived.value)
 			if err != nil {
 				return err
 			}
-			res, err := env.Note(loc, args[1], at)
+			var res mutate.Result
+			if dryRun {
+				res, err = env.NoteDryRun(loc, rest[0], at, noAttention)
+			} else {
+				res, err = env.Note(loc, rest[0], at, noAttention)
+			}
 			if err != nil {
 				return err
 			}
-			printResult(cmd.OutOrStdout(), []string{fmt.Sprintf("noted  %s", res.Locator)}, res)
+			out := cmd.OutOrStdout()
+			printResult(out, []string{fmt.Sprintf("noted  %s", entityLocatorString(res.Locator))}, res)
+			if dryRun {
+				fmt.Fprintln(out, dryRunLine)
+			}
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&at, "at", "", "when it happened, in progressive precision; defaults to now")
+	cmd.Flags().StringVar(&at, "at", "", "when it happened, in progressive precision starting at a full date; defaults to now")
+	cmd.Flags().BoolVar(&noAttention, "no-attention", false, "record the note without moving the attention clock")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "rehearse: report what would happen and write nothing")
+	archived.register(cmd)
 	return cmd
 }
 
+// noteArgs is `note <noun> <chain> <text>`'s arity (R16): exactly two args
+// when "." replaces the noun-and-chain pair, exactly three otherwise with a
+// real noun in the first slot. Two shapes cobra's own validators cannot
+// tell apart from a valid one, so both are refused here rather than
+// reaching RunE, where either would leave an argument silently absorbed by
+// the wrong slot: <noun> <text> (a genuinely missing chain, the text taking
+// its place) and ". <extra> <text>" (a stray third argument, the middle one
+// taking the text's place and the real text silently dropped).
+func noteArgs(cmd *cobra.Command, args []string) error {
+	if len(args) == 2 && args[0] == "." {
+		return nil
+	}
+	if len(args) == 3 && args[0] != "." {
+		return nil
+	}
+	return paraerr.Newf(paraerr.KindUsage, `%s takes "<noun> <chain> <text>" or ". <text>", not %d argument(s)`, cmd.Name(), len(args))
+}
+
+// newMeasureCmd implements `para measure <chain> <value>` (R13): the one
+// command whose address is a bare chain and takes no noun at all — only a
+// key-result can be measured, so a noun here would carry no information.
+// "." still works (R16): standing inside the key-result's own directory is
+// worth as much as typing its chain, and the resolved kind is checked
+// against key-result the same way set's and unset's dispatched noun is.
 func newMeasureCmd() *cobra.Command {
 	var at, note string
 	cmd := &cobra.Command{
-		Use:   "measure <kr-locator> <value>",
+		Use:   "measure <chain> <value>",
 		Short: "log a reading against a key-result",
 		Long: "Log a reading against a key-result.\n\n" +
 			"The value follows the key-result's own type, and two readings may not\n" +
@@ -264,7 +544,7 @@ func newMeasureCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, err := dispatchedChainToLocator(env.Root, cwd, address.KeyResult, args[0], false)
 			if err != nil {
 				return err
 			}
@@ -276,7 +556,7 @@ func newMeasureCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&at, "at", "", "when the reading was taken, in progressive precision; defaults to now")
+	cmd.Flags().StringVar(&at, "at", "", "when the reading was taken, in progressive precision starting at a full date; defaults to now")
 	cmd.Flags().StringVar(&note, "note", "", "a reason or a caveat, recorded with the reading")
 	return cmd
 }

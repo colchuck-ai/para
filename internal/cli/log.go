@@ -13,27 +13,29 @@ import (
 	"github.com/colchuck-ai/para/internal/view"
 )
 
-// newLogCmd implements `para log <locator>` (§16.3).
+// newLogCmd implements `para log <noun> [<chain>]` (R3, R17: a bare noun is
+// the bucket).
 func newLogCmd() *cobra.Command {
 	var read readFlags
+	var archived archivedFlag
 	var kind string
 	var limit int
 	var reverse bool
 
 	cmd := &cobra.Command{
-		Use:   "log <locator>",
+		Use:   "log <noun> [<chain>]",
 		Short: "print one entity's raw journal, newest first",
 		Long: "Print the raw journal for one entity — the JSONL, rendered as lines, newest\n" +
 			"first, matching ACTIVITY.md's direction so the two never read in opposite\n" +
 			"orders. It reads every rotated file for that entity, in order. It is the one\n" +
 			"command that does.",
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openRead(cmd)
 			if err != nil {
 				return err
 			}
-			loc, err := resolveLocatorArg(env.Root, cwd, args[0])
+			loc, _, err := parseAddressArgs(env.Root, cwd, args, bucketArity, archived.value)
 			if err != nil {
 				return err
 			}
@@ -75,6 +77,7 @@ func newLogCmd() *cobra.Command {
 		},
 	}
 	read.register(cmd)
+	archived.register(cmd)
 	cmd.Flags().StringVar(&kind, "kind", "", "only events of this kind: change, measurement, note, child")
 	cmd.Flags().IntVar(&limit, "limit", 0, "print at most this many")
 	cmd.Flags().BoolVar(&reverse, "reverse", false, "chronological rather than newest first")

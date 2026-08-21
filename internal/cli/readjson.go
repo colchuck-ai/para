@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"strings"
 	"time"
 
+	"github.com/colchuck-ai/para/internal/address"
+	"github.com/colchuck-ai/para/internal/kindmeta"
+	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/view"
 )
 
@@ -25,8 +29,19 @@ import (
 // counts beside them are the part that was ever about a wall clock, and they
 // are carried as numbers.
 type entityJSON struct {
-	Locator     string   `json:"locator"`
-	Kind        string   `json:"kind"`
+	Locator string `json:"locator"`
+	Kind    string `json:"kind"`
+	// Noun is R26's disagreement branch: present only when Kind and the
+	// locator's own noun would otherwise disagree, which happens at exactly
+	// one position — a bucket. A bucket is structurally a container (§1.1's
+	// furniture, not a thing in its own right) but its address is the bare
+	// noun with no chain (R3: "project", not "container"), so Kind alone
+	// would leave a reader unable to tell "the container acme.objectives"
+	// from "the projects bucket" apart from the Locator's own shape. Every
+	// other position — every ordinary entity, and a container nested under a
+	// project — has Kind agree with the locator's noun by construction, so
+	// the default stays no new key (R26).
+	Noun        string   `json:"noun,omitempty"`
 	ID          string   `json:"id"`
 	Name        string   `json:"name,omitempty"`
 	Description string   `json:"description,omitempty"`
@@ -48,8 +63,14 @@ type entityJSON struct {
 	DormantUnder    string `json:"dormant-under,omitempty"`
 	Attention       string `json:"attention,omitempty"`
 	AttentionDays   int    `json:"attention-days"`
-	Overdue         bool   `json:"overdue"`
-	DueDays         *int   `json:"due-days,omitempty"`
+	// AttentionKind and AttentionNote name what set Attention — "note" or
+	// "measurement", and a note's own text — without a caller re-deriving
+	// §3.6's clock over the journal itself to find out (§18.6, §20). Both are
+	// empty together when nothing has beaten `created` yet.
+	AttentionKind string `json:"attention-kind,omitempty"`
+	AttentionNote string `json:"attention-note,omitempty"`
+	Overdue       bool   `json:"overdue"`
+	DueDays       *int   `json:"due-days,omitempty"`
 
 	KeyResult *keyResultJSON `json:"key-result,omitempty"`
 }
@@ -68,8 +89,9 @@ type keyResultJSON struct {
 
 func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 	out := entityJSON{
-		Locator:         e.Locator.String(),
+		Locator:         entityLocatorString(e.Locator),
 		Kind:            e.Kind.String(),
+		Noun:            disagreeingNoun(e.Kind, e.Locator),
 		ID:              e.ID(),
 		Name:            e.State.Name,
 		Description:     e.State.Description,
@@ -88,10 +110,12 @@ func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 		Dormant:         e.Dormant(),
 		Attention:       utcOrEmpty(e.Attention),
 		AttentionDays:   env.DaysSince(e.Attention),
+		AttentionKind:   string(e.AttentionKind),
+		AttentionNote:   e.AttentionNote,
 		Overdue:         e.Overdue(),
 	}
 	if len(e.DormantUnder) > 0 {
-		out.DormantUnder = e.DormantUnder.String()
+		out.DormantUnder = entityLocatorString(e.DormantUnder)
 	}
 	if e.HasDeadline {
 		days := env.DaysUntil(e.Deadline)
@@ -108,6 +132,59 @@ func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 		}
 	}
 	return out
+}
+
+// entityLocatorString is loc's dotted address (R24, R26): the form changes,
+// the JSON key does not. `kind` already carries the noun for every position
+// except a bucket, where disagreeingNoun adds the separate `noun` key R26
+// asks for. Every view.Entity a read command builds one of these from is a
+// real entity or container the walk found, so address.String failing here is
+// not a case this package exercises; the raw Locator string is a defensive
+// fallback only.
+func entityLocatorString(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
+}
+
+// disagreeingNoun is R26's own check: a bucket is structurally a container
+// (§1.1's furniture, not a thing in its own right) but its address is the
+// bare noun with no chain (R3) — so a bucket's Kind (always KindContainer)
+// and its address's own Noun disagree, and R26 asks for a `noun` key
+// wherever that happens. Every other container — one nested under a
+// project, addressed as `container.<chain>` — already has Container as its
+// own noun, so this returns "" there too, which entityJSON's `omitempty`
+// then drops. Non-container kinds never reach the mismatch at all: their
+// own noun is always their kind by construction (R1).
+func disagreeingNoun(kind kindmeta.Kind, loc locator.Locator) string {
+	if kind != kindmeta.KindContainer {
+		return ""
+	}
+	addr, err := address.FromLocator(loc)
+	if err != nil || addr.Noun == address.Container {
+		return ""
+	}
+	return addr.Noun.String()
+}
+
+// entityChain is loc's id-chain alone — the address's own Chain, joined with
+// "." — without the noun word address.String prepends (R23): `list` and
+// `show` both print the noun as its own column rather than folded into the
+// address, and this is the other half of that column, shared so the two can
+// never disagree about how an address looks (R23's "list and show print the
+// noun as its own column" applies to both). Every view.Entity a read command
+// builds one of these from is a real entity or container the walk found, so
+// address.FromLocator failing here is not a case this package exercises;
+// the raw Locator string is a defensive fallback only, matching
+// entityLocatorString's own.
+func entityChain(loc locator.Locator) string {
+	addr, err := address.FromLocator(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return strings.Join(addr.Chain, ".")
 }
 
 func utcOrEmpty(t time.Time) string {
@@ -173,7 +250,7 @@ func showOutputOf(env *view.Env, s shown) showOutput {
 	}
 	for _, k := range s.skills {
 		out.Skills = append(out.Skills, skillJSON{
-			Locator:   k.Locator.String(),
+			Locator:   entityLocatorString(k.Locator),
 			Name:      k.Name,
 			Via:       k.Via,
 			WholeTree: k.WholeTree,

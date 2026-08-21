@@ -1,6 +1,6 @@
 ---
 kind: "project"
-locator: "projects.acme-migration"
+locator: "project.acme-migration"
 name: "Acme migration"
 description: "Rebuild the consumer so it stops falling over under replay load."
 status: "in-progress"

@@ -52,6 +52,12 @@ type Event struct {
 	Op    ChildOp   `json:"op,omitempty"`
 	Child string    `json:"child,omitempty"`
 	Note  string    `json:"note,omitempty"`
+	// NoAttention is meaningful only on a note event (§3.6, §18.6): it records
+	// that this note does not claim the entity was tended, so Attention skips
+	// it. omitempty keeps every event ever written before this field existed
+	// decoding as false — a note that predates the flag is a note that counted,
+	// which is the only backward-compatible reading.
+	NoAttention bool `json:"no_attention,omitempty"`
 }
 
 // Encode renders e as one JSONL line, including its trailing newline, so a

@@ -37,7 +37,7 @@ func TestNoteAppendsAndRewritesActivity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := e.Note(loc(t, "areas.health"), "swapped the tempo block for intervals", "")
+	res, err := e.Note(loc(t, "areas.health"), "swapped the tempo block for intervals", "", false)
 	if err != nil {
 		t.Fatalf("Note: %v", err)
 	}
@@ -52,6 +52,68 @@ func TestNoteAppendsAndRewritesActivity(t *testing.T) {
 	}
 }
 
+// TestNoteDryRunWritesNothingButReportsWhatNoteWould is para-ato: a rehearsal
+// must report the identical file list a real Note returns, and touch nothing
+// on disk while doing it.
+func TestNoteDryRunWritesNothingButReportsWhatNoteWould(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	if _, err := e.Add(loc(t, "areas.health"), fields("name", "Health", "description", "Staying in one piece.")); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshot(t, root)
+
+	dry, err := e.NoteDryRun(loc(t, "areas.health"), "swapped the tempo block for intervals", "", false)
+	if err != nil {
+		t.Fatalf("NoteDryRun: %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("NoteDryRun wrote %v, want nothing", changed)
+	}
+
+	real, err := e.Note(loc(t, "areas.health"), "swapped the tempo block for intervals", "", false)
+	if err != nil {
+		t.Fatalf("Note: %v", err)
+	}
+	assertEqual(t, "NoteDryRun's Wrote", dry.Wrote, real.Wrote)
+}
+
+// TestNoteNoAttentionRecordsWithTheFlagSet is para-c3u: --no-attention records
+// the note exactly as a normal one (§18.6) but flags the journal event so
+// Attention (§3.6) skips it — see view.TestAttentionKindAndNoteNameWhatSetTheClock
+// for the clock consequence end to end.
+func TestNoteNoAttentionRecordsWithTheFlagSet(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	if _, err := e.Add(loc(t, "areas.health"), fields("name", "Health", "description", "Staying in one piece.")); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := e.Note(loc(t, "areas.health"), "retired the old beads IDs from the ported entries", "", true)
+	if err != nil {
+		t.Fatalf("Note: %v", err)
+	}
+	if !res.NoteRecorded {
+		t.Error("NoteRecorded = false, want true even with --no-attention")
+	}
+	assertEqual(t, "wrote", res.Wrote, []string{
+		"areas/health/.para/logs/20260305T170000Z.jsonl",
+		"areas/health/ACTIVITY.md",
+	})
+
+	got := read(t, root, "areas/health/.para/logs/20260305T170000Z.jsonl")
+	if !strings.Contains(got, `"no_attention":true`) {
+		t.Errorf("journal line = %q, want no_attention:true", got)
+	}
+
+	// The note still appears in ACTIVITY.md exactly as an ordinary one would:
+	// --no-attention changes what the clock reads, not what happened.
+	want := "# Activity\n\n## 2026-03-05\n- Note: retired the old beads IDs from the ported entries.\n- Created.\n"
+	if got := read(t, root, "areas/health/ACTIVITY.md"); got != want {
+		t.Errorf("ACTIVITY.md =\n%q\nwant\n%q", got, want)
+	}
+}
+
 // TestNoteAtBackdatesInTheLocalOffset is §15.1: what you type is local, what is
 // stored is UTC. A bare date is midnight local, which in -08:00 is 08:00Z.
 func TestNoteAtBackdatesInTheLocalOffset(t *testing.T) {
@@ -61,7 +123,7 @@ func TestNoteAtBackdatesInTheLocalOffset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := e.Note(loc(t, "areas.health"), "backdated", "2026-03-01"); err != nil {
+	if _, err := e.Note(loc(t, "areas.health"), "backdated", "2026-03-01", false); err != nil {
 		t.Fatalf("Note: %v", err)
 	}
 	got := read(t, root, "areas/health/.para/logs/20260301T080000Z.jsonl")
@@ -76,7 +138,7 @@ func TestNoteInTheFutureIsRefused(t *testing.T) {
 	if _, err := e.Add(loc(t, "areas.health"), fields("name", "Health", "description", "Health.")); err != nil {
 		t.Fatal(err)
 	}
-	_, err := e.Note(loc(t, "areas.health"), "later", "2027-01-01")
+	_, err := e.Note(loc(t, "areas.health"), "later", "2027-01-01", false)
 	errorContains(t, err, "in the future")
 }
 

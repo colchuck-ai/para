@@ -29,7 +29,9 @@ type Node struct {
 // content. It never follows a symlink (§6.1, §21.2), so a mirrored skill
 // can never manufacture a phantom entity. Skills live under .agents/skills/
 // rather than under a bucket, so Walk scans that directory as a second,
-// parallel root (§1.4's skills.<id> exception).
+// parallel root (§1.4's skills.<id> exception) — and, since para-a3p, visits
+// the bucket directory itself first, the same way walkChildren visits every
+// other container before its own children.
 //
 // visit is called once per container, entity, or archive stub, in a
 // stable, lexical, depth-first order. Containers are visited too — the
@@ -39,7 +41,11 @@ func Walk(root string, visit func(Node) error) error {
 	if err := walkChildren(root, nil, visit); err != nil {
 		return err
 	}
-	return walkAgentsSkills(filepath.Join(root, filepath.FromSlash(skillsDir)), visit)
+	skillsPath := filepath.Join(root, filepath.FromSlash(skillsDir))
+	if err := visitSkillsBucket(skillsPath, visit); err != nil {
+		return err
+	}
+	return walkAgentsSkills(skillsPath, visit)
 }
 
 func walkChildren(dir string, loc locator.Locator, visit func(Node) error) error {
@@ -70,7 +76,7 @@ func walkChildren(dir string, loc locator.Locator, visit func(Node) error) error
 			if err := walkChildren(childPath, childLoc, visit); err != nil {
 				return err
 			}
-		case inArchive && (!locator.IsReserved(name) || kindmeta.IsContainer(childLoc)):
+		case inArchive && (!locator.IsReserved(name) || isContainerPosition(childLoc)):
 			// A stub chain runs through containers as well as entities:
 			// archiving one objective out of a live project leaves
 			// archive/projects/acme/objectives/ as a bare directory with the
@@ -149,6 +155,31 @@ func classify(loc locator.Locator, path string) (Node, bool, error) {
 		IsContainer: kind == kindmeta.KindContainer,
 		Archived:    loc.IsArchived(),
 	}, true, nil
+}
+
+// visitSkillsBucket visits the skill bucket itself (para-a3p), if it has a
+// state.toml — a tree `init` made after the skill bucket became a container
+// does; an older tree, hand-planted, or built before this task, does not,
+// and simply has one fewer node to visit, the same as any other absent
+// container.
+//
+// It is deliberately not folded into walkAgentsSkills: that function's other
+// two callers, Skills and skillSubtree, both promise exactly the skills and
+// nothing else — Skills feeds §5.4's scope-rewrite, which only ever touches
+// a skill's own state.toml, never the bucket's — so the bucket node is
+// visited here, in Walk alone, instead.
+func visitSkillsBucket(skillsPath string, visit func(Node) error) error {
+	if !fileExists(filepath.Join(skillsPath, ".para", "state.toml")) {
+		return nil
+	}
+	node, ok, err := classify(locator.Locator{"skills"}, skillsPath)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	return visit(node)
 }
 
 // walkAgentsSkills scans .agents/skills/para-* the way walkChildren scans a

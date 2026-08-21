@@ -117,7 +117,7 @@ func fixture(t *testing.T) string {
 		"tags", "fitness")
 	add(t, w, "resources.rust", "name", "Rust", "description", "Notes.", "tags", "rust,reference")
 	add(t, w, "skills.signups-report", "name", "Signups report",
-		"description", "when asked for the weekly signups number", "scope", "projects")
+		"description", "when asked for the weekly signups number", "scope", "project")
 
 	add(t, w, "projects.old", "name", "Old", "description", "Finished long ago.")
 	plan, err := w.PlanArchive(loc(t, "projects.old"))
@@ -344,7 +344,7 @@ func TestFilters(t *testing.T) {
 func TestMatchReadsJournalNoteBodies(t *testing.T) {
 	root := fixture(t)
 	w := writer(t, root)
-	if _, err := w.Note(loc(t, "areas.health"), "the physio said to stop running", ""); err != nil {
+	if _, err := w.Note(loc(t, "areas.health"), "the physio said to stop running", "", false); err != nil {
 		t.Fatal(err)
 	}
 	// A note attached to a change is as findable as a bare one: `note` is a
@@ -581,4 +581,65 @@ func TestASkillScopeNamingNothingIsAnError(t *testing.T) {
 	if _, err := query.List(reader(t, root), query.Options{Scope: loc(t, "skills.nope")}); err == nil {
 		t.Error("a skill scope naming nothing must be an error")
 	}
+}
+
+// TestKindFilterTreeWide is R21's new capability, one row per addressable
+// kind: `Options.Kind` narrows the walk to exactly that kind, everywhere in
+// the tree.
+func TestKindFilterTreeWide(t *testing.T) {
+	root := fixture(t)
+	cases := []struct {
+		kind kindmeta.Kind
+		want []string
+	}{
+		{kindmeta.KindProject, []string{"projects.acme-migration", "projects.website"}},
+		{kindmeta.KindArea, []string{"areas.health", "areas.health.training"}},
+		{kindmeta.KindResource, []string{"resources.rust"}},
+		{kindmeta.KindObjective, []string{"projects.acme-migration.objectives.q1-growth"}},
+		{kindmeta.KindKeyResult, []string{"projects.acme-migration.objectives.q1-growth.key-results.signups"}},
+		{kindmeta.KindSkill, []string{"skills.signups-report"}},
+	}
+	for _, c := range cases {
+		t.Run(c.kind.String(), func(t *testing.T) {
+			got := list(t, root, query.Options{Kind: c.kind})
+			assertLocators(t, locators(got), c.want...)
+		})
+	}
+}
+
+// TestKindFilterWithinScope is the other half of R19's `<noun> <noun>
+// <chain>` row: the filter and the scope compose, narrowing to one kind
+// beneath one place rather than everywhere. It is scoped to the `projects`
+// bucket, which holds three of the six kinds and none of the other three —
+// so the table doubles as the "a kind the scope holds none of is an empty
+// result, not an error" case, for the kinds it does not reach.
+func TestKindFilterWithinScope(t *testing.T) {
+	root := fixture(t)
+	cases := []struct {
+		kind kindmeta.Kind
+		want []string
+	}{
+		{kindmeta.KindProject, []string{"projects.acme-migration", "projects.website"}},
+		{kindmeta.KindObjective, []string{"projects.acme-migration.objectives.q1-growth"}},
+		{kindmeta.KindKeyResult, []string{"projects.acme-migration.objectives.q1-growth.key-results.signups"}},
+		{kindmeta.KindArea, nil},
+		{kindmeta.KindResource, nil},
+		{kindmeta.KindSkill, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.kind.String(), func(t *testing.T) {
+			got := list(t, root, query.Options{Kind: c.kind, Scope: loc(t, "projects")})
+			assertLocators(t, locators(got), c.want...)
+		})
+	}
+}
+
+// TestKindFilterLeavesContainerTransparencyAlone is R20/R21: the filter
+// narrows which entities are rows, but a container was never a row to begin
+// with, and asking for the kind that would (impossibly) select one finds
+// nothing rather than a container leaking through.
+func TestKindFilterLeavesContainerTransparencyAlone(t *testing.T) {
+	root := fixture(t)
+	got := list(t, root, query.Options{Kind: kindmeta.KindContainer})
+	assertLocators(t, locators(got))
 }

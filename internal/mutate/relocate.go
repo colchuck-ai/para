@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
@@ -23,6 +24,28 @@ import (
 // than a copy of current state: the entity's own history is the one place a move
 // has to remain visible after the fact.
 const fieldLocator = "locator"
+
+// movedAddresses is the dotted form (R1, R24) of a move's two ends, for the
+// journal: the `field = "locator"` change event on the moved entity itself
+// (R24's named site), and the `child` event's `from`/`to` on its parent
+// (§3.1's table gives that event "from/to locators for moves"). The second
+// site is not named in R24's table on its own, but Phase 18 task 4 requires
+// it anyway: `internal/render/activity.go`'s childLine and
+// `internal/cli/log.go` both print e.From/e.To verbatim, so the
+// `--recursive` digest and `log` cannot show the dotted form R24 asks for
+// unless the journal already stores it that way — R22 leaves no place for
+// the old form to survive in either event.
+func movedAddresses(m entityMove) (from, to string, err error) {
+	from, err = address.String(m.From)
+	if err != nil {
+		return "", "", err
+	}
+	to, err = address.String(m.To)
+	if err != nil {
+		return "", "", err
+	}
+	return from, to, nil
+}
 
 // Verb is the word a relocation's summary leads with (§26), and the operation its
 // parents' child events carry (§3.1).
@@ -147,11 +170,11 @@ func (r *Relocation) Apply() (Result, error) {
 		return res, err
 	}
 
-	wrote, err := apply(e, subjects, parents)
+	wrote, err := apply(e, subjects, parents, false)
 	res.Wrote = append(res.Wrote, wrote...)
 	// A skill's id is in its rule's filename and in its mirror's, so `move
 	// skills.a skills.b` changes both halves of the surface (§5.3, §6.1).
-	return e.syncSurface(res, err)
+	return e.syncSurface(res, err, false, nil, nil)
 }
 
 // subjectPlans is everything the relocation rewrites: each moved entity in full,
@@ -165,9 +188,13 @@ func (r *Relocation) subjectPlans() ([]*plan, error) {
 		if err != nil {
 			return nil, err
 		}
+		from, to, err := movedAddresses(m)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &plan{
 			subj:   subj,
-			events: []journal.Event{journal.NewChange(e.Now.UTC(), fieldLocator, m.From.String(), m.To.String(), "")},
+			events: []journal.Event{journal.NewChange(e.Now.UTC(), fieldLocator, from, to, "")},
 		})
 	}
 
@@ -235,7 +262,11 @@ func (r *Relocation) parentPlans() ([]*plan, error) {
 		// something the event otherwise could not.
 		var from, to string
 		if op == journal.ChildOpMoved {
-			from, to = m.From.String(), m.To.String()
+			var err error
+			from, to, err = movedAddresses(m)
+			if err != nil {
+				return nil, err
+			}
 		}
 		oldParent := r.relocated(m.From[:len(m.From)-1])
 		newParent := m.To[:len(m.To)-1]
@@ -342,19 +373,7 @@ func rewriteScope(scope []string, moves []entityMove) ([]string, int) {
 	changed := 0
 
 	for _, entry := range scope {
-		next := entry
-		for _, m := range moves {
-			from := m.From.String()
-			switch {
-			case entry == from:
-				next = m.To.String()
-			case m.Subtree && strings.HasPrefix(entry, from+"."):
-				next = m.To.String() + entry[len(from):]
-			default:
-				continue
-			}
-			break
-		}
+		next := rewriteScopeEntry(entry, moves)
 		if next != entry {
 			changed++
 		}
@@ -368,6 +387,53 @@ func rewriteScope(scope []string, moves []entityMove) ([]string, int) {
 		out = append(out, next)
 	}
 	return out, changed
+}
+
+// rewriteScopeEntry applies moves to one stored scope entry (R24's dotted
+// address form), returning entry unchanged when no move touches it.
+//
+// The matching itself happens in Locator space, not on the address string
+// directly: "beneath" is a path relationship (§5.2's "an entry covers its
+// locator and everything beneath it"), and the dotted form does not carry
+// it across a noun boundary — "project.acme" is not a string prefix of
+// "objective.acme.q1-growth" the way "projects.acme" is a prefix of
+// "projects.acme.objectives.q1-growth", yet a project rename still drags
+// its objectives and key-results with it. So entry is converted to a
+// Locator, matched exactly the way it always was, and converted back. An
+// entry that does not parse as an address — or whose rewritten Locator
+// derives no address — is left as written; repairing it is doctor's
+// `invalid`/`scope-unresolved` job, not this one's.
+func rewriteScopeEntry(entry string, moves []entityMove) string {
+	addr, err := address.ParseDotted(entry)
+	if err != nil {
+		return entry
+	}
+	loc, err := addr.ToLocator()
+	if err != nil {
+		return entry
+	}
+	from := loc.String()
+	var next locator.Locator
+	for _, m := range moves {
+		mFrom := m.From.String()
+		switch {
+		case from == mFrom:
+			next = m.To
+		case m.Subtree && strings.HasPrefix(from, mFrom+"."):
+			next = append(slices.Clone(m.To), loc[len(m.From):]...)
+		default:
+			continue
+		}
+		break
+	}
+	if next == nil {
+		return entry
+	}
+	newAddr, err := address.FromLocator(next)
+	if err != nil {
+		return entry
+	}
+	return newAddr.String()
 }
 
 // relocatable refuses the subjects none of the four verbs accept, so each verb
@@ -390,7 +456,7 @@ func (e *Env) relocatable(loc locator.Locator, base, past string) (kindmeta.Kind
 	}
 	if kind == kindmeta.KindContainer {
 		return kind, paraerr.Newf(paraerr.KindValidation,
-			"%s is a container — it is part of its parent's shape and cannot be %s on its own", loc, past)
+			"%s is a container — it is part of its parent's shape and cannot be %s on its own", relocateAddr(loc), past)
 	}
 	exists, err := tree.Exists(e.Root, loc)
 	if err != nil {
@@ -403,9 +469,26 @@ func (e *Env) relocatable(loc locator.Locator, base, past string) (kindmeta.Kind
 		}
 		if isStub {
 			return kind, paraerr.Newf(paraerr.KindNotFound,
-				"nothing to %s — %s is a stub, not an entity", base, loc)
+				"nothing to %s — %s is a stub, not an entity", base, relocateAddr(loc))
 		}
-		return kind, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", loc)
+		return kind, paraerr.Newf(paraerr.KindNotFound, "%s does not exist", relocateAddr(loc))
 	}
 	return kind, nil
+}
+
+// relocateAddr is loc's dotted address (R24), the same conversion
+// movedAddresses above already asks of address.String rather than a second
+// copy of it — deriving kind from a locator's shape is exactly what
+// tree.KindAt just did to reach every call site below, and address.FromLocator
+// asks the identical shape question independently (plan §0.2's round-trip
+// property), so a locator relocatable has already classified converts here
+// without error in practice. The raw Locator string is a defensive fallback
+// only, matching every other site R24 reaches (readjson.go's
+// entityLocatorString, doctor's findingLocatorString).
+func relocateAddr(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }

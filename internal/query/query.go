@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
@@ -56,6 +57,18 @@ type Options struct {
 	// the whole tree. Listing is of what is *beneath* the locator, never of the
 	// locator itself — `show` is how you see the thing you named (§16.1).
 	Scope locator.Locator
+
+	// Kind narrows the walk to one addressable kind (R19's filter position),
+	// or the zero value kindmeta.KindUnknown for no filter at all. It composes
+	// with Scope rather than replacing it — R19's `<noun> <noun> <chain>` row
+	// is both at once.
+	//
+	// It is asked in `visible`, alongside container transparency, rather than
+	// folded into Filter: those are all §17's *content* filters, evaluated
+	// against a derived entity; this is §16.2's structural question — is this
+	// node a candidate row at all — decided from the walk's own node, before
+	// an entity is even derived.
+	Kind kindmeta.Kind
 
 	Filter Filter
 
@@ -195,9 +208,26 @@ func checkScope(env *view.Env, scope locator.Locator) error {
 		return err
 	}
 	if !resolves {
-		return paraerr.Newf(paraerr.KindNotFound, "%s does not exist", scope)
+		return paraerr.Newf(paraerr.KindNotFound, "%s does not exist", queryAddr(scope))
 	}
 	return nil
+}
+
+// queryAddr is loc's dotted address (R24), the same conversion every other
+// package that names a Locator in an error message asks of address.String
+// (internal/mutate's relocateAddr; internal/cli's entityLocatorString and
+// findingLocatorString; internal/view's viewAddr; internal/doctor's
+// doctorAddr; internal/rebuild's rebuildAddr). The scope reaching this
+// refusal was already built by the CLI's own parseListArgs/parseAddressArgs,
+// which resolve it through address.Parse before list ever sees it — so the
+// raw Locator string is a defensive fallback only, for the one case a scope
+// built some other way (a test, a future caller) does not round-trip.
+func queryAddr(loc locator.Locator) string {
+	s, err := address.String(loc)
+	if err != nil {
+		return loc.String()
+	}
+	return s
 }
 
 // walk visits every node beneath scope, plus the skills, in the §8.5 walk's
@@ -244,6 +274,14 @@ func visible(node tree.Node, opts Options) bool {
 		// every node under it legitimate. §20's `--all` is the third way in.
 		return false
 	case opts.Filter.Direct && ReaderDepth(node.Locator, opts.Scope) != 1:
+		return false
+	case opts.Kind != kindmeta.KindUnknown && node.Kind != opts.Kind:
+		// R19/R21's kind filter, composing with Scope rather than replacing
+		// it. It runs after the container case above, never before: a
+		// container's own Kind is KindContainer, never the zero value, so
+		// without that ordering a filter could do nothing to exclude one —
+		// but containers were already excluded on structural grounds, not
+		// this one, and stay excluded regardless of what Kind is set to.
 		return false
 	}
 	return true

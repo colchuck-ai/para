@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"unicode/utf8"
+
+	"github.com/colchuck-ai/para/internal/view"
 )
 
 // TestTableSizesColumnsToTheContentPrinted is the layout rule the read commands
@@ -103,6 +106,31 @@ func TestExactAndNumber(t *testing.T) {
 	}
 }
 
+// TestStaleValueNamesTheUnit is the one place show's staleCell and review's
+// stale group share a rule (para-xbb): both print a stale-after/review.cadence
+// threshold, which is a day count, and "30" alone does not say what it counts.
+// One function so the two never drift apart.
+func TestStaleValueNamesTheUnit(t *testing.T) {
+	cases := []struct {
+		key   string
+		value float64
+		want  string
+	}{
+		{"area.stale-after", 30, "30 days"},
+		{"project.stale-after", 1, "1 day"},
+		{"review.cadence", 90, "90 days"},
+		// at-risk-pace is a dimensionless ratio, not a day count: it keeps
+		// exact's plain spelling, unchanged by para-xbb.
+		{"key-result.at-risk-pace", 0.8, "0.8"},
+	}
+	for _, tc := range cases {
+		th := view.Threshold{Key: tc.key, Value: tc.value, Found: true}
+		if got := staleValue(th); got != tc.want {
+			t.Errorf("staleValue(%+v) = %q, want %q", th, got, tc.want)
+		}
+	}
+}
+
 // TestTableHeadingTakesNoPartInSizing is why `head` exists: §20's group
 // headings break one table into sections while every row's columns stay aligned
 // down the whole output, which is how §26 prints a review. A heading that
@@ -151,5 +179,39 @@ func TestSpanIsTheRootOfAgoAndUntil(t *testing.T) {
 	}
 	if got := span(0); got != "0 days" {
 		t.Errorf("span(0) = %q, want %q", got, "0 days")
+	}
+}
+
+// TestTruncateRunesCutsByRuneNotByte is para-c3u: attentionSource shortens a
+// note's text to attentionSnippetLength runes, and a multi-byte character
+// sitting at the cut point must not be split into invalid UTF-8.
+func TestTruncateRunesCutsByRuneNotByte(t *testing.T) {
+	cases := []struct {
+		name string
+		s    string
+		n    int
+		want string
+	}{
+		{name: "empty string", s: "", n: 5, want: ""},
+		{name: "under the limit", s: "waiting", n: 50, want: "waiting"},
+		{name: "exactly at the limit", s: "12345", n: 5, want: "12345"},
+		{name: "one over the limit", s: "123456", n: 5, want: "12345…"},
+		{
+			name: "multi-byte rune sitting exactly at the cut",
+			// Each of these three is a multi-byte rune (é is two bytes in
+			// UTF-8); a byte-based cut at 2 would split the second one.
+			s: "éééé", n: 2, want: "éé…",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := truncateRunes(c.s, c.n)
+			if got != c.want {
+				t.Errorf("truncateRunes(%q, %d) = %q, want %q", c.s, c.n, got, c.want)
+			}
+			if !utf8.ValidString(got) {
+				t.Errorf("truncateRunes(%q, %d) = %q, not valid UTF-8", c.s, c.n, got)
+			}
+		})
 	}
 }

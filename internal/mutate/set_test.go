@@ -1,6 +1,7 @@
 package mutate_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -70,6 +71,62 @@ func TestSetToTheSameValueWritesNothing(t *testing.T) {
 	}
 	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
 		t.Errorf("a no-op set changed %v, want nothing", changed)
+	}
+}
+
+// TestSetDryRunWritesNothingButReportsWhatSetWould is para-ato, and doubles as
+// the acceptance criterion that writeset.Plan's journal-append batching names
+// the right file for every event in a multi-field change, not just the first:
+// two fields changed in one `set` is two events into the same journal.
+func TestSetDryRunWritesNothingButReportsWhatSetWould(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	addProject(t, e, "acme")
+	before := snapshot(t, root)
+
+	f := fields("status", "in-progress", "priority", "high")
+	dry, err := e.SetDryRun(loc(t, "projects.acme"), f, "")
+	if err != nil {
+		t.Fatalf("SetDryRun: %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("SetDryRun wrote %v, want nothing", changed)
+	}
+
+	real, err := e.Set(loc(t, "projects.acme"), f, "")
+	if err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if !slices.Equal(dry.Changes, real.Changes) {
+		t.Errorf("SetDryRun's Changes = %v, want %v", dry.Changes, real.Changes)
+	}
+	assertEqual(t, "SetDryRun's Wrote", dry.Wrote, real.Wrote)
+}
+
+// TestSetDryRunOfANoOpReportsTheNoteWithoutWriting is SetDryRun's twin of
+// TestSetRecordsANoteWhenNothingElseChanged: a rehearsal of a no-op set with a
+// note must report the same NoteRecorded a real one would, and write nothing.
+func TestSetDryRunOfANoOpReportsTheNoteWithoutWriting(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	addProject(t, e, "acme")
+	if _, err := e.Set(loc(t, "projects.acme"), fields("status", "blocked"), "waiting on the ingest team"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	before := snapshot(t, root)
+
+	dry, err := e.SetDryRun(loc(t, "projects.acme"), fields("status", "blocked"), "still waiting")
+	if err != nil {
+		t.Fatalf("SetDryRun: %v", err)
+	}
+	if len(dry.Changes) != 0 {
+		t.Errorf("changes = %v, want none", dry.Changes)
+	}
+	if !dry.NoteRecorded {
+		t.Error("SetDryRun did not report the note")
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("SetDryRun wrote %v, want nothing", changed)
 	}
 }
 
@@ -147,7 +204,7 @@ func TestSetRefusals(t *testing.T) {
 		{
 			name: "a locator that names nothing", loc: "projects.missing",
 			fields: fields("status", "done"),
-			want:   "projects.missing does not exist",
+			want:   "project.missing does not exist",
 		},
 		{
 			name: "an unknown priority", loc: "projects.acme",
@@ -197,6 +254,40 @@ func TestSetCreatedAfterDueIsRefused(t *testing.T) {
 	}
 }
 
+// TestSetDueAcceptsYearAndYearMonth is para-xbb, exercised through the real
+// write path rather than ptime.Deadline alone: normalise's own FieldDue case
+// used to gate the raw string on ptime.ParseAt — the narrower grammar §15.1
+// floors at a full date — before checkState ever got a chance to accept it
+// through ptime.Deadline, so a coarser due was refused before it was ever
+// written, regardless of what ptime.Deadline itself parsed.
+func TestSetDueAcceptsYearAndYearMonth(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	addProject(t, e, "acme")
+
+	res, err := e.Set(loc(t, "projects.acme"), fields("due", "2027"), "")
+	if err != nil {
+		t.Fatalf("Set due=2027: %v", err)
+	}
+	if len(res.Changes) != 1 || res.Changes[0].To != "2027" {
+		t.Errorf("changes = %+v, want due set to %q", res.Changes, "2027")
+	}
+	if !strings.Contains(read(t, root, "projects/acme/.para/state.toml"), `due = "2027"`) {
+		t.Error(`state.toml does not contain due = "2027"`)
+	}
+
+	res, err = e.Set(loc(t, "projects.acme"), fields("due", "2027-04"), "")
+	if err != nil {
+		t.Fatalf("Set due=2027-04: %v", err)
+	}
+	if len(res.Changes) != 1 || res.Changes[0].To != "2027-04" {
+		t.Errorf("changes = %+v, want due set to %q", res.Changes, "2027-04")
+	}
+	if !strings.Contains(read(t, root, "projects/acme/.para/state.toml"), `due = "2027-04"`) {
+		t.Error(`state.toml does not contain due = "2027-04"`)
+	}
+}
+
 // TestUnsetRefusals covers §15's three refusals: created, a fixed field, and a
 // required one.
 func TestUnsetRefusals(t *testing.T) {
@@ -242,7 +333,7 @@ func TestUnsetScopeWidensASkillToTheWholeTree(t *testing.T) {
 	var f mutate.Fields
 	f.Set(kindmeta.FieldName, "Signups report")
 	f.Set(kindmeta.FieldDescription, "when asked for the weekly signups number")
-	f.SetList(kindmeta.FieldScope, []string{"projects.acme"})
+	f.SetList(kindmeta.FieldScope, []string{"project.acme"})
 	if _, err := e.Add(loc(t, "skills.signups-report"), f); err != nil {
 		t.Fatalf("Add skill: %v", err)
 	}
@@ -263,6 +354,40 @@ func TestUnsetScopeWidensASkillToTheWholeTree(t *testing.T) {
 	if strings.Contains(rule, "When working under") {
 		t.Errorf("the rule still names a scope:\n%s", rule)
 	}
+}
+
+// TestUnsetDryRunWritesNothingButReportsWhatUnsetWould is para-ato, exercised
+// on the skill-scope case since that is the one whose reach goes beyond
+// state.toml into the derived rule (§5.3).
+func TestUnsetDryRunWritesNothingButReportsWhatUnsetWould(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+
+	var f mutate.Fields
+	f.Set(kindmeta.FieldName, "Signups report")
+	f.Set(kindmeta.FieldDescription, "when asked for the weekly signups number")
+	f.SetList(kindmeta.FieldScope, []string{"project.acme"})
+	if _, err := e.Add(loc(t, "skills.signups-report"), f); err != nil {
+		t.Fatalf("Add skill: %v", err)
+	}
+	before := snapshot(t, root)
+
+	dry, err := e.UnsetDryRun(loc(t, "skills.signups-report"), []kindmeta.Field{kindmeta.FieldScope})
+	if err != nil {
+		t.Fatalf("UnsetDryRun: %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("UnsetDryRun wrote %v, want nothing", changed)
+	}
+
+	real, err := e.Unset(loc(t, "skills.signups-report"), []kindmeta.Field{kindmeta.FieldScope})
+	if err != nil {
+		t.Fatalf("Unset: %v", err)
+	}
+	if !slices.Equal(dry.Changes, real.Changes) {
+		t.Errorf("UnsetDryRun's Changes = %v, want %v", dry.Changes, real.Changes)
+	}
+	assertEqual(t, "UnsetDryRun's Wrote", dry.Wrote, real.Wrote)
 }
 
 // TestUnsetAnAbsentFieldWritesNothing: unsetting what is already absent is the

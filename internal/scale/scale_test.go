@@ -118,7 +118,7 @@ func TestWriteCostIsConstantInTreeSize(t *testing.T) {
 		{
 			name: "note on a project",
 			run: func(e *mutate.Env) (mutate.Result, error) {
-				return e.Note(loc(t, "projects.p0001"), "something happened", "")
+				return e.Note(loc(t, "projects.p0001"), "something happened", "", false)
 			},
 		},
 		{

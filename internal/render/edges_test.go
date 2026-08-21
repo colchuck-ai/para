@@ -17,7 +17,7 @@ func TestRuleJoinsThreeOrMoreScopeEntries(t *testing.T) {
 		State: truth.State{
 			Name:        "Wide",
 			Description: "when doing anything at all",
-			Scope:       []string{"projects", "areas.health", "resources.notes"},
+			Scope:       []string{"project", "area.health", "resource.notes"},
 			Created:     "2026-01-01",
 		},
 	}
@@ -41,7 +41,7 @@ func TestRuleKeepsScopeEntryOrderAsStored(t *testing.T) {
 		Kind:    kindmeta.KindSkill,
 		State: truth.State{
 			Name:  "Wide",
-			Scope: []string{"resources.notes", "areas.health"},
+			Scope: []string{"resource.notes", "area.health"},
 		},
 	}
 	got, err := render.Rule.Render(in)

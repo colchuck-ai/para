@@ -1,6 +1,7 @@
 package mutate
 
 import (
+	"os"
 	"slices"
 	"strings"
 
@@ -22,6 +23,33 @@ import (
 // existence; the **parent** logs `child added`, because the parent is the thing
 // that genuinely changed (§3.3).
 func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
+	return e.add(loc, f, false)
+}
+
+// AddDryRun rehearses Add (§19): every refusal, every derived byte, and the
+// eager child container are computed exactly as Add would, and nothing is
+// written — not the entity, not the parent's journal, not the CLAUDE.md or
+// `.claude/skills/` surface a skill's write would otherwise reach (§6.1).
+//
+// It shares add's whole body with Add rather than re-deriving any part of it,
+// because a rehearsal that computed its own answer would be rehearsing a
+// different computation than the one it stands in for.
+//
+// This is a third shape for "rehearse a mutation" next to rebuild's
+// Options.DryRun field and move/archive's PlanMove-then-branch (mutate/
+// relocate.go), and that is a deliberate trade, not an oversight: Add already
+// has roughly forty call sites across internal/{mutate,doctor,rebuild,review,
+// view,query,scale}'s own tests, all of them calling the two-argument, always-
+// writing form. A dryRun bool on Add itself, or replacing it with a plan value
+// callers branch on, would touch every one of those call sites for a rehearsal
+// none of them want. Two public methods sharing one private body costs an
+// extra name; either alternative costs an unrelated diff across seven
+// packages.
+func (e *Env) AddDryRun(loc locator.Locator, f Fields) (Result, error) {
+	return e.add(loc, f, true)
+}
+
+func (e *Env) add(loc locator.Locator, f Fields, dryRun bool) (Result, error) {
 	info, err := kindmeta.KindOf(loc)
 	if err != nil {
 		return Result{}, err
@@ -32,7 +60,7 @@ func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
 		// whether a live counterpart exists and whether a stub is owed, which
 		// is machinery `archive` owns.
 		return Result{}, paraerr.Newf(paraerr.KindValidation,
-			"%s is in the archive — create it live and `para archive` it", loc)
+			"%s is in the archive — create it live and `para archive` it", relocateAddr(loc))
 	}
 
 	exists, err := tree.Exists(e.Root, loc)
@@ -40,7 +68,7 @@ func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
 		return Result{}, err
 	}
 	if exists {
-		return Result{}, paraerr.Newf(paraerr.KindConflict, "%s already exists", loc)
+		return Result{}, paraerr.Newf(paraerr.KindConflict, "%s already exists", relocateAddr(loc))
 	}
 	parentExists, err := tree.ParentExists(e.Root, loc)
 	if err != nil {
@@ -54,12 +82,27 @@ func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
 		return Result{}, paraerr.Newf(paraerr.KindNotFound, "%s does not exist — create it first", missing)
 	}
 
-	state, err := e.newState(info.Kind, f)
+	subj, err := e.subjectAt(loc, info.Kind)
 	if err != nil {
 		return Result{}, err
 	}
+	occupied, err := dirHasFiles(subj.dir)
+	if err != nil {
+		return Result{}, err
+	}
+	if occupied {
+		// tree.Exists only checks for .para/state.toml (§8.1), so a directory
+		// planted at this path by anything else — a stray cp, an add-then-copy
+		// sequence run out of order — passes that check and would otherwise be
+		// filled in silently: readmeBody (internal/render/readme.go) treats a
+		// pre-existing README.md's whole content as this entity's body once
+		// generated, with no warning that a foreign file was just absorbed.
+		return Result{}, paraerr.Newf(paraerr.KindConflict,
+			"%s already has files at %s — empty it first, or create the entity before copying files in",
+			relocateAddr(loc), e.rel(subj.dir))
+	}
 
-	subj, err := e.subjectAt(loc, info.Kind)
+	state, err := e.newState(info.Kind, f)
 	if err != nil {
 		return Result{}, err
 	}
@@ -81,8 +124,18 @@ func (e *Env) Add(loc locator.Locator, f Fields) (Result, error) {
 		return Result{}, err
 	}
 
-	wrote, err := apply(e, plans, parents(parent))
-	return e.syncSurface(Result{Locator: loc, Kind: info.Kind, Wrote: wrote}, err)
+	// A real run's syncSurface runs after apply has already written this entity,
+	// so tree.SkillIDs already sees it. A dry run writes nothing, so the new
+	// skill has to be named explicitly or the surface refresh would compute its
+	// answer as if this add had never happened (see rebuild.Env.SyncMirror's
+	// adding parameter).
+	var adding []string
+	if dryRun && info.Kind == kindmeta.KindSkill {
+		adding = []string{loc[len(loc)-1]}
+	}
+
+	wrote, err := apply(e, plans, parents(parent), dryRun)
+	return e.syncSurface(Result{Locator: loc, Kind: info.Kind, Wrote: wrote}, err, dryRun, adding, nil)
 }
 
 // newState builds the entity's state.toml from the fields given, refusing a
@@ -162,6 +215,21 @@ func (e *Env) containerPlan(parentLoc locator.Locator, kind kindmeta.Kind, paren
 	return &plan{subj: subj, writeState: true, config: []byte{}, creating: true}, nil
 }
 
+// dirHasFiles reports whether dir exists and already contains an entry.
+// A missing directory and an existing-but-empty one are both fine — `add`
+// creates the former and fills the latter exactly as it always has; only
+// pre-existing content is the sharp edge (para-n8x).
+func dirHasFiles(dir string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return len(entries) > 0, nil
+}
+
 // shallowestMissing names the highest ancestor of loc that is not there, which
 // is the one to create first.
 //
@@ -182,8 +250,8 @@ func (e *Env) shallowestMissing(loc locator.Locator) (string, error) {
 			return "", err
 		}
 		if !exists {
-			return loc[:i].String(), nil
+			return relocateAddr(loc[:i]), nil
 		}
 	}
-	return loc[:len(loc)-1].String(), nil
+	return relocateAddr(loc[:len(loc)-1]), nil
 }

@@ -1,6 +1,7 @@
 package mutate
 
 import (
+	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/rebuild"
 )
@@ -42,11 +43,21 @@ import (
 // `return e.syncSurface(...)` around whatever it already returned — one
 // expression per verb, which is harder to forget than a separate statement and
 // greppable when the set of verbs changes.
-func (e *Env) syncSurface(res Result, err error) (Result, error) {
+//
+// dryRun is a parameter rather than a second copy of this function for the
+// same reason apply's is: `add`'s rehearsal must ask the identical question a
+// real run does, or the two could name a different set of surface files for
+// no reason but having derived it twice.
+//
+// adding and removing are refreshSurface's parameters of the same names —
+// both empty for every verb but AddDryRun and remove's dry run on a skill,
+// the two cases where the subject syncSurface is refreshing the surface for
+// does not match what tree.SkillIDs sees on disk (para-ato).
+func (e *Env) syncSurface(res Result, err error, dryRun bool, adding, removing []string) (Result, error) {
 	if err != nil || res.Kind != kindmeta.KindSkill {
 		return res, err
 	}
-	return e.refreshSurface(res)
+	return e.refreshSurface(res, dryRun, adding, removing, nil)
 }
 
 // refreshSurface re-derives both halves of the surface and folds the writes,
@@ -59,10 +70,31 @@ func (e *Env) syncSurface(res Result, err error) (Result, error) {
 // against the old setting, which is the one bug this whole file exists to
 // prevent. Re-reading a handful of small files is the price, and the surface
 // refresh is a bounded piece of work anyway.
-func (e *Env) refreshSurface(res Result) (Result, error) {
+//
+// adding names the skill AddDryRun is rehearsing the creation of, so both
+// halves of the surface can answer as if it already existed without it
+// actually being written. removing names the skill a rehearsed `remove` is
+// about to delete, so both halves answer as if it were already gone even
+// though tree.SkillIDs still sees it on disk (para-ato). Every other caller
+// passes both nil, because every other caller's subject already matches disk
+// by the time the surface is refreshed.
+//
+// pendingConfig is ConfigChange's own gap in that "fresh resolver" fix: a
+// fresh resolver still reads disk, and under `config set --dry-run` nothing
+// has been written to disk at all, so the fresh read would answer with the
+// *old* value — the very bug this function exists to avoid, just moved from
+// a stale cache to a stale file. pendingConfig is the root config.toml bytes
+// the command was called to write; every caller but ConfigChange passes nil,
+// because every other caller's mutation is not itself a change to that file.
+func (e *Env) refreshSurface(res Result, dryRun bool, adding, removing []string, pendingConfig []byte) (Result, error) {
 	env := rebuild.NewEnv(e.Root)
+	if pendingConfig != nil {
+		if err := overrideRootConfig(env, pendingConfig); err != nil {
+			return res, err
+		}
+	}
 
-	wrote, removed, err := env.WriteClaudeSurface()
+	wrote, removed, err := env.WriteClaudeSurface(dryRun, adding, removing)
 	res.Wrote = append(res.Wrote, wrote...)
 	res.Removed = append(res.Removed, removed...)
 	if err != nil {
@@ -72,7 +104,7 @@ func (e *Env) refreshSurface(res Result) (Result, error) {
 	// The mirror after the pointer files, for the reason rebuild sequences them
 	// the same way: a copy-mode mirror reproduces files this mutation may have
 	// just rewritten.
-	changes, err := env.SyncMirror(false, nil)
+	changes, err := env.SyncMirror(dryRun, nil, adding, removing)
 	res.Mirror = append(res.Mirror, changes...)
 	return res, err
 }
@@ -80,11 +112,30 @@ func (e *Env) refreshSurface(res Result) (Result, error) {
 // refreshGitAttributes puts §9's block into the root's .gitattributes or takes
 // it out, after a `config set` of the key that decides which.
 //
-// It builds a fresh resolver for the reason refreshSurface does: the command
-// has just rewritten the config.toml its own resolver cached, so asking that
-// one would answer with the value the command was called to change.
-func (e *Env) refreshGitAttributes(res Result) (Result, error) {
-	wrote, err := rebuild.NewEnv(e.Root).WriteGitAttributes()
+// It builds a fresh resolver for the reason refreshSurface does, and takes the
+// same pendingConfig override for the same reason: under `config set
+// --dry-run` nothing has been written to disk for a fresh resolver to read.
+func (e *Env) refreshGitAttributes(res Result, dryRun bool, pendingConfig []byte) (Result, error) {
+	env := rebuild.NewEnv(e.Root)
+	if pendingConfig != nil {
+		if err := overrideRootConfig(env, pendingConfig); err != nil {
+			return res, err
+		}
+	}
+	wrote, removed, err := env.WriteGitAttributes(dryRun)
 	res.Wrote = append(res.Wrote, wrote...)
+	res.Removed = append(res.Removed, removed...)
 	return res, err
+}
+
+// overrideRootConfig seeds env's resolver with data as the tree root's own
+// config.toml — config.Chain(nil)'s one level, which is where every RootOnly
+// key resolves (config.RootOnly) and so the only level refreshSurface and
+// refreshGitAttributes ever need to override.
+func overrideRootConfig(env *rebuild.Env, data []byte) error {
+	levels, err := config.Chain(nil)
+	if err != nil {
+		return err
+	}
+	return env.Resolver.Override(levels[0].File, data)
 }

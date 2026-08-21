@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/kindmeta"
-	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mdfile"
 	"github.com/colchuck-ai/para/internal/paraerr"
 )
@@ -125,12 +125,22 @@ func scopeClause(scope []string) string {
 	}
 }
 
-// scopePath is the directory a scope entry names. An entry that does not parse
-// is rendered as written: a scope entry naming nothing is doctor's
+// scopePath is the directory a scope entry names. An entry that does not
+// parse is rendered as written: a scope entry naming nothing is doctor's
 // `scope-unresolved` finding to report (§5.4, §10), and swallowing it here
 // would hide it from the file where a reader could notice it.
+//
+// The routing sentence stays a directory path (§5.3's own worked example,
+// unchanged) even though scope is now stored as a dotted address (R24): a
+// rule is read by something looking at a path on disk, not at an address,
+// so the entry is converted to a Locator and back to a path exactly as it
+// always was — only the parsing step, entry's stored form, has moved.
 func scopePath(entry string) string {
-	loc, err := locator.Parse(entry)
+	addr, err := address.ParseDotted(entry)
+	if err != nil {
+		return entry
+	}
+	loc, err := addr.ToLocator()
 	if err != nil {
 		return entry
 	}

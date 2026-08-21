@@ -12,23 +12,25 @@ import (
 )
 
 // TestConfigSetEmitGitattributesOffRemovesTheBlock: a command that finishes
-// successfully must not leave doctor red. Turning the key off shortens the file
-// in the same command, exactly as turning `emit.claude` off removes the eight
-// CLAUDE.md files in the command that turns it off.
+// successfully must not leave doctor red. Turning the key off takes the block
+// out in the same command, exactly as turning `emit.claude` off removes para's
+// block from the eight CLAUDE.md files in the command that turns it off. This
+// file holds nothing but the block, so taking it out empties the file, and an
+// empty file is deleted (R6) rather than left behind.
 func TestConfigSetEmitGitattributesOffRemovesTheBlock(t *testing.T) {
 	root := treeWithSkill(t)
 	e := env(t, root)
 
 	res := setClaude(t, e, root, "emit.gitattributes", ptoml.Bool(false))
 
-	if !slices.Contains(res.Wrote, ".gitattributes") {
-		t.Errorf("wrote %v, want .gitattributes among them", res.Wrote)
+	if !slices.Contains(res.Removed, ".gitattributes") {
+		t.Errorf("removed %v, want .gitattributes among them", res.Removed)
 	}
-	if slices.Contains(res.Removed, ".gitattributes") {
-		t.Errorf("removed %v; para owns the block, not the file", res.Removed)
+	if slices.Contains(res.Wrote, ".gitattributes") {
+		t.Errorf("wrote %v; the block was its only content, so it should be gone", res.Wrote)
 	}
-	if got := read(t, root, ".gitattributes"); got != "" {
-		t.Errorf(".gitattributes = %q, want it emptied", got)
+	if exists(t, root, ".gitattributes") {
+		t.Error(".gitattributes survived a removal that emptied it")
 	}
 	assertClean(t, root)
 }
@@ -68,6 +70,48 @@ func TestConfigSetEmitGitattributesKeepsTheRepositorysLines(t *testing.T) {
 		t.Errorf(".gitattributes = %q, want %q", got, want)
 	}
 	assertClean(t, root)
+}
+
+// TestConfigSetEmitGitattributesDryRunReportsTheRemovalWithoutWriting is
+// para-ato: rebuild.Env.WriteGitAttributes had no dryRun parameter at all
+// before this, so `config set --dry-run` on this key could not mean anything.
+func TestConfigSetEmitGitattributesDryRunReportsTheRemovalWithoutWriting(t *testing.T) {
+	root := treeWithSkill(t)
+	e := env(t, root)
+	before := snapshot(t, root)
+
+	dry := setClaudeDryRun(t, e, root, "emit.gitattributes", ptoml.Bool(false))
+	if !slices.Contains(dry.Removed, ".gitattributes") {
+		t.Errorf("removed %v, want .gitattributes among them", dry.Removed)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("the dry run wrote %v, want nothing", changed)
+	}
+
+	real := setClaude(t, e, root, "emit.gitattributes", ptoml.Bool(false))
+	assertEqual(t, "dry run's Removed", dry.Removed, real.Removed)
+	assertEqual(t, "dry run's Wrote", dry.Wrote, real.Wrote)
+}
+
+// TestConfigSetEmitGitattributesDryRunReportsTheRestoreWithoutWriting is the
+// other direction: the file is empty when the key comes back on, so the dry
+// run has to report the write that would recreate it without doing so.
+func TestConfigSetEmitGitattributesDryRunReportsTheRestoreWithoutWriting(t *testing.T) {
+	root := treeWithSkill(t)
+	e := env(t, root)
+	setClaude(t, e, root, "emit.gitattributes", ptoml.Bool(false))
+	before := snapshot(t, root)
+
+	dry := setClaudeDryRun(t, e, root, "emit.gitattributes", ptoml.Bool(true))
+	if !slices.Contains(dry.Wrote, ".gitattributes") {
+		t.Errorf("wrote %v, want .gitattributes among them", dry.Wrote)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("the dry run wrote %v, want nothing", changed)
+	}
+	if exists(t, root, ".gitattributes") {
+		t.Error("the dry run created .gitattributes")
+	}
 }
 
 // TestConfigSetOfAnotherKeyLeavesGitAttributesAlone: the refresh is scoped to
@@ -113,7 +157,7 @@ func TestConfigSetEmitGitattributesOnASkillStillSyncsTheMirror(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
-	if _, err := e.ConfigChange(skill, config.KeyEmitGitattributes, "true", "false", data); err != nil {
+	if _, err := e.ConfigChange(skill, config.KeyEmitGitattributes, "true", "false", data, false); err != nil {
 		t.Fatalf("ConfigChange: %v", err)
 	}
 

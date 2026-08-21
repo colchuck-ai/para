@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/krvalue"
-	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/ptime"
 	"github.com/colchuck-ai/para/internal/ptoml"
@@ -151,8 +151,8 @@ func checkValue(kind kindmeta.Kind, field kindmeta.Field, s State) string {
 		}
 	case kindmeta.FieldScope:
 		for _, entry := range s.Scope {
-			if _, err := locator.Parse(entry); err != nil {
-				return fmt.Sprintf("scope entry %q is not a locator", entry)
+			if _, err := address.ParseDotted(entry); err != nil {
+				return fmt.Sprintf("scope entry %q: %s", entry, message(err))
 			}
 		}
 	}

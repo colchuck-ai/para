@@ -3,6 +3,7 @@ package config
 import (
 	"path/filepath"
 
+	"github.com/colchuck-ai/para/internal/address"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/ptoml"
@@ -29,13 +30,17 @@ type Level struct {
 	Set bool
 }
 
-// Label is how the level prints in §22's chain: its dotted locator, or
+// Label is how the level prints in §22's chain: its dotted address (R24), or
 // <root>.
 func (l Level) Label() string {
 	if len(l.Locator) == 0 {
 		return RootLabel
 	}
-	return l.Locator.String()
+	s, err := address.String(l.Locator)
+	if err != nil {
+		return l.Locator.String()
+	}
+	return s
 }
 
 // Resolution is a resolved key: the answer, and every level consulted to
@@ -111,13 +116,18 @@ func (r Resolution) Str() (string, bool) {
 // disk is a separate question, and a level with no config.toml simply sets
 // nothing.
 //
-// A skill's chain is its own config.toml and then the root, with nothing in
-// between, because .agents/ is not in the PARA tree (§7, §8.1) — there is no
-// `skills` level to consult even though the locator has a `skills` segment.
+// An individual skill's chain is its own config.toml and then the root, with
+// nothing in between, because .agents/ is not in the PARA tree (§7, §8.1) —
+// there is no intermediate `skills` level to consult even though the
+// locator has a `skills` segment. The skill bucket itself, named directly,
+// is a level in its own right now (para-a3p): `.agents/skills/` is a
+// container with its own state.toml, the same way projects/areas/resources
+// are, even though it carries no config.toml of its own — a level with no
+// file simply sets nothing, the same as any other unset level.
 func Chain(loc locator.Locator) ([]Level, error) {
 	var levels []Level
 
-	if loc.Bucket() == "skills" {
+	if loc.Bucket() == "skills" && len(loc) > 1 {
 		rel, err := loc.Path()
 		if err != nil {
 			return nil, err
@@ -274,4 +284,23 @@ func (r *Resolver) file(rel string) (File, error) {
 	}
 	r.cache[rel] = f
 	return f, nil
+}
+
+// Override seeds the cache for rel with data, so every subsequent Resolve or
+// RenderConfig against rel answers as if it already held data, without
+// reading disk.
+//
+// It exists for a mutation that has not written rel's new bytes yet and needs
+// an answer as if it had — `config set`'s own dry run, whose rehearsal must
+// ask the surface refresh the identical question a real run's post-write
+// resolver would (para-ato). A real run could call it too — the bytes are the
+// same ones about to land on disk — but it is written for the case where
+// nothing has landed at all.
+func (r *Resolver) Override(rel string, data []byte) error {
+	f, err := Decode(data)
+	if err != nil {
+		return err
+	}
+	r.cache[rel] = f
+	return nil
 }

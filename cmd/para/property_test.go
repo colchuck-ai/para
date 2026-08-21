@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
@@ -8,6 +9,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/colchuck-ai/para/internal/address"
+	"github.com/colchuck-ai/para/internal/locator"
+	"github.com/colchuck-ai/para/internal/render"
 )
 
 // This file is the plan's Phase 14 task 2, the four properties carried forward
@@ -161,14 +166,14 @@ func TestRemoveKeepFilesRestoresThePreParaDirectory(t *testing.T) {
 		t.Fatalf("init: exit %d:\n%s", code, out)
 	}
 	for _, args := range [][]string{
-		{"add", "projects.acme", "--name", "Acme", "--description", "Rebuild the consumer."},
-		{"add", "projects.acme.objectives.q1", "--name", "Q1", "--description", "Move the funnel."},
+		{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+		{"add", "objective", "acme.q1", "--name", "Q1", "--description", "Move the funnel."},
 		{
-			"add", "projects.acme.objectives.q1.key-results.signups",
+			"add", "key-result", "acme.q1.signups",
 			"--name", "Signups", "--type", "ratio", "--start", "480/9000", "--target", "2000/12000",
 		},
-		{"measure", "projects.acme.objectives.q1.key-results.signups", "880/11000"},
-		{"note", "projects.acme", "the ingest team is blocked"},
+		{"measure", "acme.q1.signups", "880/11000"},
+		{"note", "project", "acme", "the ingest team is blocked"},
 	} {
 		if out, code := runPara(t, root, nil, args...); code != 0 {
 			t.Fatalf("%v: exit %d:\n%s", args, code, out)
@@ -215,7 +220,7 @@ func TestRemoveKeepFilesRestoresThePreParaDirectory(t *testing.T) {
 		t.Fatalf("the fixture is too thin to prove anything: %v", want)
 	}
 
-	if out, code := runPara(t, root, nil, "remove", "projects.acme", "--keep-files", "--force"); code != 0 {
+	if out, code := runPara(t, root, nil, "remove", "project", "acme", "--keep-files", "--force"); code != 0 {
 		t.Fatalf("remove --keep-files: exit %d:\n%s", code, out)
 	}
 
@@ -254,6 +259,258 @@ func TestRemoveKeepFilesRestoresThePreParaDirectory(t *testing.T) {
 	}
 	if len(rep.Findings) != 1 {
 		t.Errorf("doctor reported %d findings, want exactly the kept directory", len(rep.Findings))
+	}
+}
+
+// foreignClaudeContent is what a third-party tool's own marker-delimited block
+// looks like in CLAUDE.md — the exact shape para-0o6 observed (beads' `bd
+// setup claude` writes one) — with rel folded in so a location's content is
+// never confusable with another's.
+func foreignClaudeContent(rel string) string {
+	return "<!-- BEGIN THIRD PARTY INTEGRATION -->\n" +
+		"Team rule for " + rel + ": run `make check` before every commit.\n" +
+		"<!-- END THIRD PARTY INTEGRATION -->\n"
+}
+
+// assertForeignClaudeSurvives checks that every location's CLAUDE.md still
+// starts with the exact bytes it was seeded with in foreign (keyed by path
+// relative to root). It is a prefix check rather than an equality check
+// because para's own block, once emit.claude is on, is appended after it.
+func assertForeignClaudeSurvives(t *testing.T, root string, foreign map[string]string, when string) {
+	t.Helper()
+	for rel, want := range foreign {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatalf("%s: reading %s: %v", when, rel, err)
+		}
+		if !strings.HasPrefix(string(data), want) {
+			t.Errorf("%s: %s does not still start with the foreign content it was seeded with:\ngot:\n%s\nwant prefix:\n%s",
+				when, rel, data, want)
+		}
+	}
+}
+
+// TestClaudeForeignContentSurvivesWipeAndRebuildAtAllEightLocations is R17: a
+// third party's content outside para's markers in CLAUDE.md is byte-identical
+// across wipe -> rebuild, at the root and all seven bucket locations, in both
+// emit.claude states. Eight locations and not just the root, because upToRoot
+// (internal/render/claude.go:62) makes the bucket files' block content differ
+// from the root's, and a block-splice bug that only shows up where the prefix
+// is non-empty is exactly what this property exists to catch.
+//
+// The two subtests are not symmetric in what they exercise. With the surface
+// on, CLAUDE.md is rewritten at every checkpoint, so the prefix check is
+// actually exercising AppendDelimited/ReplaceDelimited's splice. With the
+// surface off, HasClaude is false and CLAUDE.md is never touched at all — that
+// subtest instead proves doctor and wipeProjections+rebuild leave a
+// third-party-only file alone at all eight locations, which is the state
+// para-0o6's report first reproduced the bug in (§ R11).
+func TestClaudeForeignContentSurvivesWipeAndRebuildAtAllEightLocations(t *testing.T) {
+	if !testHooksEnabled {
+		t.Skip("needs -tags para_testhooks; run `make test`")
+	}
+
+	for _, emitClaude := range []bool{false, true} {
+		name := "emit.claude off"
+		if emitClaude {
+			name = "emit.claude on"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := filepath.Join(t.TempDir(), "brain")
+			if out, code := runParaIn(t, filepath.Dir(root), nil, "init", "brain"); code != 0 {
+				t.Fatalf("init: exit %d:\n%s", code, out)
+			}
+			for _, args := range [][]string{
+				{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+				{"add", "skill", "commit-style", "--name", "Commit style", "--description", "when writing a commit message"},
+			} {
+				if out, code := runPara(t, root, nil, args...); code != 0 {
+					t.Fatalf("%v: exit %d:\n%s", args, code, out)
+				}
+			}
+
+			// Seed every one of the eight locations' CLAUDE.md with a third
+			// party's own content, before emit.claude is ever turned on — the
+			// order para-0o6's report reproduced the bug in.
+			foreign := map[string]string{}
+			for _, loc := range render.AgentsLocations() {
+				segs := append(slices.Clone(loc), "CLAUDE.md")
+				rel := filepath.Join([]string(segs)...)
+				content := foreignClaudeContent(rel)
+				writeFileAt(t, filepath.Join(root, rel), content)
+				foreign[rel] = content
+			}
+			assertDoctorClean(t, root, "after seeding foreign CLAUDE.md content, emit.claude off")
+			assertForeignClaudeSurvives(t, root, foreign, "after seeding, before emit.claude is touched")
+
+			if emitClaude {
+				out, code := runPara(t, root, nil, "config", "set", "emit.claude", "true")
+				if code != 0 {
+					t.Fatalf("config set emit.claude true: exit %d:\n%s", code, out)
+				}
+				assertDoctorClean(t, root, "after turning emit.claude on over foreign content")
+				assertForeignClaudeSurvives(t, root, foreign, "right after turning emit.claude on")
+			}
+
+			// Force every CLAUDE.md's block to be rewritten: adding a skill
+			// changes the derived-rule set and therefore every import list
+			// (§6.1: "a skill mutation keeps every CLAUDE.md correct"). With
+			// emit.claude off this changes nothing about CLAUDE.md at all,
+			// which is exactly the other half of the property.
+			out, code := runPara(t, root, nil,
+				"add", "skill", "probe", "--name", "Probe", "--description", "forces every CLAUDE.md block to be rewritten")
+			if code != 0 {
+				t.Fatalf("add skill probe: exit %d:\n%s", code, out)
+			}
+			assertDoctorClean(t, root, "after a skill mutation")
+			assertForeignClaudeSurvives(t, root, foreign, "after a skill mutation rewrote every CLAUDE.md block")
+
+			// The wipe -> rebuild half of the property: wipeProjections no
+			// longer touches CLAUDE.md (R16), so this exercises every other
+			// renderer's write-from-nothing path while CLAUDE.md's own path is
+			// exercised by rebuild finding its content already correct.
+			wipeProjections(t, root)
+			out, code = runPara(t, root, nil, "rebuild")
+			if code != 0 {
+				t.Fatalf("rebuild: exit %d:\n%s", code, out)
+			}
+			assertDoctorClean(t, root, "after wiping projections and rebuilding")
+			assertForeignClaudeSurvives(t, root, foreign, "after wipe -> rebuild")
+		})
+	}
+}
+
+// addressRoundTrip is one noun+chain pair to check both directions of the
+// address round trip for (Phase 22 task 4).
+type addressRoundTrip struct {
+	noun  string
+	chain string // "" for the bucket
+	path  string // root-relative, "/"-joined, R3's own table
+}
+
+// addressRoundTrips is one entity or bucket per noun and every arity R4
+// fixes: project and skill (bucket, or exactly one segment), area and
+// resource (bucket, one segment, or nested), objective (fixed at two),
+// key-result (fixed at three), and container (two or three segments,
+// reached only through a project's or objective's own container — R15
+// refuses adding one directly).
+var addressRoundTrips = []addressRoundTrip{
+	{noun: "project", path: "projects"},
+	{noun: "project", chain: "acme", path: "projects/acme"},
+	{noun: "objective", chain: "acme.q1-growth", path: "projects/acme/objectives/q1-growth"},
+	{noun: "key-result", chain: "acme.q1-growth.signups", path: "projects/acme/objectives/q1-growth/key-results/signups"},
+	{noun: "area", path: "areas"},
+	{noun: "area", chain: "health", path: "areas/health"},
+	{noun: "area", chain: "health.training", path: "areas/health/training"},
+	{noun: "resource", path: "resources"},
+	{noun: "resource", chain: "papers", path: "resources/papers"},
+	{noun: "resource", chain: "papers.kafka", path: "resources/papers/kafka"},
+	{noun: "skill", path: ".agents/skills"},
+	{noun: "skill", chain: "signups-report", path: ".agents/skills/para-signups-report"},
+	{noun: "container", chain: "acme.objectives", path: "projects/acme/objectives"},
+	{noun: "container", chain: "acme.q1-growth.key-results", path: "projects/acme/objectives/q1-growth/key-results"},
+}
+
+// TestAddressRoundTripsAtTheBinaryLevel is the plan's Phase 22 task 4. Phase
+// 17 property-tested the Address <-> Locator conversion at the unit level
+// (internal/address/convert_test.go, over generated addresses); this joins
+// it at the binary level, over one built tree covering every noun and
+// arity R4 fixes, driven through the real CLI rather than the pure
+// conversion functions alone.
+//
+// Two directions, for every case in addressRoundTrips: `para path <noun>
+// [<chain>]` against the path R3's table derives (Address -> Locator ->
+// Path, the direction `add` and `path` take), and `para show <noun>
+// [<chain>] --json`'s `locator` key against the address that was typed
+// (Path -> Locator, via the real on-disk walk and tree.KindAt -> Locator ->
+// Address, via address.String — the direction `show`, `list`, and every
+// other read command take). Driving the built binary rather than calling
+// internal/address directly is what caught a real bug this task fixed:
+// Locator.Path() refused the one-segment "skills" locator outright, so
+// `para path skill` failed before this task's fix even though
+// address.Address{Noun: Skill}.ToLocator() itself was correct — the two
+// halves of the round trip agreed with each other and both disagreed with
+// R3.
+func TestAddressRoundTripsAtTheBinaryLevel(t *testing.T) {
+	if !testHooksEnabled {
+		t.Skip("needs -tags para_testhooks; run `make test`")
+	}
+
+	// EvalSymlinks first: on macOS, t.TempDir() returns a path under /var
+	// that is itself a symlink to /private/var, and the subprocess's own
+	// os.Getwd() resolves it — so an unresolved root would fail every case
+	// below on a path difference that has nothing to do with addressing.
+	tmp, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolving the temp dir: %v", err)
+	}
+	root := filepath.Join(tmp, "brain")
+	if out, code := runParaIn(t, filepath.Dir(root), nil, "init", "brain"); code != 0 {
+		t.Fatalf("init: exit %d:\n%s", code, out)
+	}
+	for _, args := range [][]string{
+		{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+		{"add", "objective", "acme.q1-growth", "--name", "Q1", "--description", "Move the funnel."},
+		{
+			"add", "key-result", "acme.q1-growth.signups",
+			"--name", "Signups", "--type", "ratio", "--start", "1/10", "--target", "9/10",
+		},
+		{"add", "area", "health", "--name", "Health", "--description", "Staying in one piece."},
+		{"add", "area", "health.training", "--name", "Training", "--description", "The weekly plan."},
+		{"add", "resource", "papers", "--name", "Papers", "--description", "Things to read."},
+		{"add", "resource", "papers.kafka", "--name", "Kafka", "--description", "The talks."},
+		{"add", "skill", "signups-report", "--name", "Signups report", "--description", "when asked"},
+	} {
+		if out, code := runPara(t, root, nil, args...); code != 0 {
+			t.Fatalf("%v: exit %d:\n%s", args, code, out)
+		}
+	}
+
+	for _, c := range addressRoundTrips {
+		name := c.noun + " (bucket)"
+		if c.chain != "" {
+			name = c.noun + " " + c.chain
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			pathArgs := []string{"path", c.noun}
+			if c.chain != "" {
+				pathArgs = append(pathArgs, c.chain)
+			}
+			out, code := runPara(t, root, nil, pathArgs...)
+			if code != 0 {
+				t.Fatalf("%v: exit %d:\n%s", pathArgs, code, out)
+			}
+			want := filepath.Join(root, filepath.FromSlash(c.path)) + "\n"
+			if out != want {
+				t.Fatalf("%v = %q, want %q", pathArgs, out, want)
+			}
+
+			showArgs := []string{"show", c.noun}
+			if c.chain != "" {
+				showArgs = append(showArgs, c.chain)
+			}
+			showArgs = append(showArgs, "--json")
+			out, code = runPara(t, root, nil, showArgs...)
+			if code != 0 {
+				t.Fatalf("%v: exit %d:\n%s", showArgs, code, out)
+			}
+			var got struct {
+				Locator string `json:"locator"`
+			}
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("%v: unreadable --json (%v):\n%s", showArgs, err, out)
+			}
+			wantAddr := c.noun
+			if c.chain != "" {
+				wantAddr += "." + c.chain
+			}
+			if got.Locator != wantAddr {
+				t.Fatalf("%v locator = %q, want %q", showArgs, got.Locator, wantAddr)
+			}
+		})
 	}
 }
 
@@ -313,8 +570,10 @@ func (w *world) next(step int) []string {
 	id := fmt.Sprintf("x%d", step)
 	switch w.rng.Intn(14) {
 	case 0:
-		w.projects = append(w.projects, "projects."+id)
-		return []string{"add", "projects." + id, "--name", "P" + id, "--description", "A project."}
+		loc := "projects." + id
+		w.projects = append(w.projects, loc)
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "P" + id, "--description", "A project."}
 	case 1:
 		parent, ok := pick(w.rng, w.projects)
 		if !ok {
@@ -322,7 +581,8 @@ func (w *world) next(step int) []string {
 		}
 		loc := parent + ".objectives." + id
 		w.objectives = append(w.objectives, loc)
-		return []string{"add", loc, "--name", "O" + id, "--description", "An objective."}
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "O" + id, "--description", "An objective."}
 	case 2:
 		parent, ok := pick(w.rng, w.objectives)
 		if !ok {
@@ -330,7 +590,8 @@ func (w *world) next(step int) []string {
 		}
 		loc := parent + ".key-results." + id
 		w.keyResults = append(w.keyResults, loc)
-		return []string{"add", loc, "--name", "K" + id, "--type", "ratio", "--start", "100/1000", "--target", "900/1000"}
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "K" + id, "--type", "ratio", "--start", "100/1000", "--target", "900/1000"}
 	case 3:
 		// An area, sometimes nested inside another — §1.5's "areas and
 		// resources nest freely".
@@ -339,7 +600,8 @@ func (w *world) next(step int) []string {
 			loc = parent + "." + id
 		}
 		w.areas = append(w.areas, loc)
-		return []string{"add", loc, "--name", "A" + id, "--description", "An area."}
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "A" + id, "--description", "An area."}
 	case 4:
 		// §1.5's "areas and resources nest freely" is about both, so this nests
 		// too. Without it the generator claimed a shape it could never emit.
@@ -348,37 +610,42 @@ func (w *world) next(step int) []string {
 			loc = parent + "." + id
 		}
 		w.resources = append(w.resources, loc)
-		return []string{"add", loc, "--name", "R" + id, "--description", "A resource."}
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "R" + id, "--description", "A resource."}
 	case 5:
 		loc := "skills." + id
 		w.skills = append(w.skills, loc)
-		return []string{"add", loc, "--name", "S" + id, "--description", "when " + id}
+		noun, chain := cmdAddr(loc)
+		return []string{"add", noun, chain, "--name", "S" + id, "--description", "when " + id}
 	case 6:
 		// A status, on a kind that has one (§15): project and objective.
 		loc, ok := pick(w.rng, append(slices.Clone(w.projects), w.objectives...))
 		if !ok {
 			return nil
 		}
+		noun, chain := cmdAddr(loc)
 		switch w.rng.Intn(3) {
 		case 0:
-			return []string{"set", loc, "--status", "in-progress"}
+			return []string{"set", noun, chain, "--status", "in-progress"}
 		case 1:
-			return []string{"set", loc, "--status", "blocked", "--note", "waiting on " + id}
+			return []string{"set", noun, chain, "--status", "blocked", "--note", "waiting on " + id}
 		default:
-			return []string{"set", loc, "--status", "done"}
+			return []string{"set", noun, chain, "--status", "done"}
 		}
 	case 7:
 		loc, ok := pick(w.rng, w.everything())
 		if !ok {
 			return nil
 		}
-		return []string{"set", loc, "--tags", "alpha,beta"}
+		noun, chain := cmdAddr(loc)
+		return []string{"set", noun, chain, "--tags", "alpha,beta"}
 	case 8:
 		loc, ok := pick(w.rng, w.everything())
 		if !ok {
 			return nil
 		}
-		return []string{"note", loc, "something happened at step " + id}
+		noun, chain := cmdAddr(loc)
+		return []string{"note", noun, chain, "something happened at step " + id}
 	case 9:
 		loc, ok := pick(w.rng, w.keyResults)
 		if !ok {
@@ -394,7 +661,10 @@ func (w *world) next(step int) []string {
 		hour := (w.measured / 27) % 24
 		w.measured++
 		at := fmt.Sprintf("2026-02-%02dT%02d:00", day, hour)
-		return []string{"measure", loc, "500/1000", "--at", at}
+		// R13: measure takes no noun — only a key-result can be measured, so
+		// the noun would carry no information.
+		_, chain := cmdAddr(loc)
+		return []string{"measure", chain, "500/1000", "--at", at}
 	case 10:
 		// A rename inside the same parent, which is the only move that cannot
 		// change a kind (§18.3).
@@ -404,7 +674,10 @@ func (w *world) next(step int) []string {
 		}
 		to := loc[:strings.LastIndex(loc, ".")+1] + "r" + id
 		w.rename(loc, to)
-		return []string{"move", loc, to}
+		// R14: move speaks its noun once, since a rename never changes kind.
+		noun, fromChain := cmdAddr(loc)
+		_, toChain := cmdAddr(to)
+		return []string{"move", noun, fromChain, toChain}
 	case 11:
 		// Archive a leaf. Leaves only, so the model does not have to reproduce
 		// §1.6's cascade to know what is where afterwards.
@@ -414,7 +687,8 @@ func (w *world) next(step int) []string {
 		}
 		w.forget(loc)
 		w.archived = append(w.archived, "archive."+loc)
-		return []string{"archive", loc}
+		noun, chain := cmdAddr(loc)
+		return []string{"archive", noun, chain}
 	case 12:
 		// §1.6: "unarchiving cascades upward … and brings its own subtree with
 		// it, in one operation". So the model has to bring the subtree back too —
@@ -432,7 +706,11 @@ func (w *world) next(step int) []string {
 			w.archived = slices.DeleteFunc(w.archived, func(s string) bool { return s == archived })
 			w.remember(strings.TrimPrefix(archived, "archive."))
 		}
-		return []string{"unarchive", loc}
+		// R8: the archived side is implied, so the chain is the live address
+		// it will have once restored — cmdAddr drops the "archive." prefix
+		// the same way it drops every qualifier this generator does not need.
+		noun, chain := cmdAddr(loc)
+		return []string{"unarchive", noun, chain}
 	default:
 		// A config key at the root, including the two that decide whether a file
 		// exists at all — which is what makes the surface axis a moving target
@@ -578,6 +856,29 @@ func (w *world) lists() []*[]string {
 	return []*[]string{&w.projects, &w.objectives, &w.keyResults, &w.areas, &w.resources, &w.skills}
 }
 
+// cmdAddr converts one of the generator's own tree-shaped locator strings
+// (e.g. "projects.x0.objectives.x1", "archive.areas.health") into the noun
+// and chain the CLI now takes, through the real address package rather than
+// a second, hand-rolled copy of the same derivation. The model's bookkeeping
+// keeps the old dotted-plural form because that is what makes a child a
+// string-prefix of its parent — the property every method below depends
+// on — so the grammar's noun+chain split happens only here, at the one
+// place a command line is finally assembled. The archive qualifier is
+// dropped along with everything else `address.FromLocator` derives beyond
+// noun and chain: every caller here either implies which side it is on
+// (`archive`/`unarchive`) or never touches an archived entity at all.
+func cmdAddr(loc string) (noun, chain string) {
+	l, err := locator.Parse(loc)
+	if err != nil {
+		panic(fmt.Sprintf("cmdAddr(%q): %v", loc, err))
+	}
+	a, err := address.FromLocator(l)
+	if err != nil {
+		panic(fmt.Sprintf("cmdAddr(%q): %v", loc, err))
+	}
+	return a.Noun.String(), strings.Join(a.Chain, ".")
+}
+
 func pick(rng *rand.Rand, from []string) (string, bool) {
 	if len(from) == 0 {
 		return "", false
@@ -600,6 +901,11 @@ func assertDoctorClean(t *testing.T, root, when string) {
 
 // wipeProjections deletes every wholly generated file in the tree, which is the
 // state §2.4 calls "a merge resolved truth and left the projections wrong".
+//
+// CLAUDE.md is not one of these: it is marker-scoped rather than wholly
+// generated (§6.1), so wiping it the way a wholly generated file is wiped
+// would delete third-party content it has no business touching. Its own
+// block-preservation property is asserted separately, at all eight locations.
 func wipeProjections(t *testing.T, root string) {
 	t.Helper()
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -607,7 +913,7 @@ func wipeProjections(t *testing.T, root string) {
 			return err
 		}
 		switch filepath.Base(path) {
-		case "ACTIVITY.md", "MEASUREMENTS.csv", "CLAUDE.md":
+		case "ACTIVITY.md", "MEASUREMENTS.csv":
 			return os.Remove(path)
 		}
 		return nil

@@ -118,6 +118,78 @@ func TestAddRendersActivityWithTheCreatedLine(t *testing.T) {
 	}
 }
 
+// TestAddDryRunWritesNothingButReportsWhatAddWould is para-uk5: a rehearsal of
+// `add` on a project must report the identical file list a real Add returns
+// (§18.1's whole set, parent included), and touch nothing on disk while doing
+// it.
+func TestAddDryRunWritesNothingButReportsWhatAddWould(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	before := snapshot(t, root)
+
+	f := fields("name", "Acme migration", "description", "Rebuild the consumer.")
+	dry, err := e.AddDryRun(loc(t, "projects.acme-migration"), f)
+	if err != nil {
+		t.Fatalf("AddDryRun: %v", err)
+	}
+
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("AddDryRun wrote %v, want nothing", changed)
+	}
+	if _, err := os.Stat(filepath.Join(root, "projects", "acme-migration")); !os.IsNotExist(err) {
+		t.Errorf("AddDryRun created projects/acme-migration")
+	}
+
+	real, err := e.Add(loc(t, "projects.acme-migration"), f)
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	assertEqual(t, "AddDryRun's Wrote", dry.Wrote, real.Wrote)
+	assertEqual(t, "AddDryRun's Removed", dry.Removed, real.Removed)
+	if dry.Locator.String() != real.Locator.String() || dry.Kind != real.Kind {
+		t.Errorf("AddDryRun = (%v, %v), want (%v, %v)", dry.Locator, dry.Kind, real.Locator, real.Kind)
+	}
+}
+
+// TestAddDryRunOnASkillTouchesNeitherTheRuleNorTheMirror is the case
+// para-uk5's issue was filed over: a skill's write reaches beyond its own
+// directory into .agents/rules/ (§6.1).
+//
+// plantTree leaves emit.claude at its default (false), so this only proves the
+// surface-sync path is correctly a no-op when the surface is off — it does not
+// exercise refreshSurface/WriteClaudeSurface/SyncMirror at all, since
+// syncSurface's own early return short-circuits before them. That gap is
+// exactly what let AddDryRun under-report a skill add's reach with the surface
+// on; TestAddDryRunOnASkillWithClaudeSurfaceOnPreviewsTheWholeReach (claude_test.go)
+// covers that case.
+func TestAddDryRunOnASkillTouchesNeitherTheRuleNorTheMirror(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	before := snapshot(t, root)
+
+	var f mutate.Fields
+	f.Set(kindmeta.FieldName, "Signups report")
+	f.Set(kindmeta.FieldDescription, "when asked for the weekly signups number")
+
+	dry, err := e.AddDryRun(loc(t, "skills.signups-report"), f)
+	if err != nil {
+		t.Fatalf("AddDryRun: %v", err)
+	}
+	assertEqual(t, "AddDryRun's Wrote", dry.Wrote, []string{
+		".agents/skills/para-signups-report/.para/state.toml",
+		".agents/skills/para-signups-report/.para/config.toml",
+		".agents/skills/para-signups-report/SKILL.md",
+		".agents/skills/para-signups-report/ACTIVITY.md",
+		".agents/rules/para-signups-report.md",
+	})
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("AddDryRun wrote %v, want nothing", changed)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agents", "rules", "para-signups-report.md")); !os.IsNotExist(err) {
+		t.Errorf("AddDryRun created the rule file")
+	}
+}
+
 func TestAddRefusals(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -129,7 +201,7 @@ func TestAddRefusals(t *testing.T) {
 			// §26: `para add projects.acme-migration` again.
 			name: "an existing locator", loc: "projects.acme-migration",
 			fields: fields("name", "Again", "description", "Again."),
-			want:   "projects.acme-migration already exists",
+			want:   "project.acme-migration already exists",
 		},
 		{
 			// §26: `para add projects.a.b` — a project cannot nest.
@@ -146,7 +218,7 @@ func TestAddRefusals(t *testing.T) {
 		{
 			name: "a missing parent", loc: "projects.missing.objectives.q1",
 			fields: fields("name", "Q1", "description", "Q1."),
-			want:   "projects.missing does not exist",
+			want:   "project.missing does not exist",
 		},
 		{
 			name: "a missing required field", loc: "projects.other",
@@ -180,6 +252,55 @@ func TestAddRefusals(t *testing.T) {
 			errorContains(t, err, tt.want)
 		})
 	}
+}
+
+// TestAddRefusesAPrePopulatedTargetDirectory is para-n8x: tree.Exists only
+// checks for .para/state.toml, so a directory planted at the target path by
+// anything else used to pass silently, and readmeBody would then adopt a
+// pre-existing README.md's whole content as this entity's body with no
+// warning. add must refuse instead — an empty or absent directory is still
+// fine, since that is the sanctioned add-then-copy order.
+func TestAddRefusesAPrePopulatedTargetDirectory(t *testing.T) {
+	f := fields("name", "Acme migration", "description", "Rebuild the consumer.")
+
+	t.Run("a foreign README.md", func(t *testing.T) {
+		root := plantTree(t)
+		e := env(t, root)
+		writeFiles(t, root, map[string]string{
+			"projects/acme-migration/README.md": "# My old notes\n\nSomething unrelated.\n",
+		})
+		before := snapshot(t, root)
+
+		_, err := e.Add(loc(t, "projects.acme-migration"), f)
+		errorContains(t, err, "project.acme-migration already has files at projects/acme-migration")
+
+		if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+			t.Errorf("Add wrote %v on refusal, want nothing touched", changed)
+		}
+	})
+
+	t.Run("an unrelated file", func(t *testing.T) {
+		root := plantTree(t)
+		e := env(t, root)
+		writeFiles(t, root, map[string]string{
+			"projects/acme-migration/notes.txt": "leftover content\n",
+		})
+
+		_, err := e.Add(loc(t, "projects.acme-migration"), f)
+		errorContains(t, err, "project.acme-migration already has files at projects/acme-migration")
+	})
+
+	t.Run("an existing but empty directory still succeeds", func(t *testing.T) {
+		root := plantTree(t)
+		e := env(t, root)
+		if err := os.MkdirAll(filepath.Join(root, "projects", "acme-migration"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := e.Add(loc(t, "projects.acme-migration"), f); err != nil {
+			t.Fatalf("Add: %v", err)
+		}
+	})
 }
 
 // TestAddKeyResultRequiresTypeAndTarget is §15's "req, fixed" row, and §26's
@@ -251,7 +372,7 @@ func TestAddSkillWritesItsRuleAndNoParentEvent(t *testing.T) {
 	var f mutate.Fields
 	f.Set(kindmeta.FieldName, "Signups report")
 	f.Set(kindmeta.FieldDescription, "when asked for the weekly signups number")
-	f.SetList(kindmeta.FieldScope, []string{"projects.acme-migration", "areas.growth"})
+	f.SetList(kindmeta.FieldScope, []string{"project.acme-migration", "area.growth"})
 
 	res, err := e.Add(loc(t, "skills.signups-report"), f)
 	if err != nil {
@@ -267,7 +388,39 @@ func TestAddSkillWritesItsRuleAndNoParentEvent(t *testing.T) {
 
 	// A scope entry that names nothing is legal: doctor reports it
 	// (`scope-unresolved`), add does not refuse it (§5.4).
-	if got := read(t, root, ".agents/skills/para-signups-report/.para/state.toml"); !strings.Contains(got, "areas.growth") {
+	if got := read(t, root, ".agents/skills/para-signups-report/.para/state.toml"); !strings.Contains(got, "area.growth") {
 		t.Errorf("state.toml lost the scope entry:\n%s", got)
 	}
+}
+
+// TestAddRefusesAScopeEntryInTheOldPluralLocatorForm is R24's write-side
+// counterpart to truth.Check's read-side refusal (internal/truth/check.go):
+// the two must agree about which scope entries are legal, or `add`/`set`
+// would accept what `doctor` immediately reports as broken.
+func TestAddRefusesAScopeEntryInTheOldPluralLocatorForm(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+
+	var f mutate.Fields
+	f.Set(kindmeta.FieldName, "Signups report")
+	f.Set(kindmeta.FieldDescription, "when asked for the weekly signups number")
+	f.SetList(kindmeta.FieldScope, []string{"projects.acme-migration"})
+
+	_, err := e.Add(loc(t, "skills.signups-report"), f)
+	errorContains(t, err, "is not a noun")
+}
+
+// TestAddDryRunRefusesAPrePopulatedTargetDirectoryToo confirms para-n8x's
+// refusal composes with para-uk5's dry-run for free: it lives before apply's
+// dryRun branch, in the shared body both Add and AddDryRun call.
+func TestAddDryRunRefusesAPrePopulatedTargetDirectoryToo(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	writeFiles(t, root, map[string]string{
+		"projects/acme-migration/README.md": "# My old notes\n\nSomething unrelated.\n",
+	})
+
+	f := fields("name", "Acme migration", "description", "Rebuild the consumer.")
+	_, err := e.AddDryRun(loc(t, "projects.acme-migration"), f)
+	errorContains(t, err, "project.acme-migration already has files at projects/acme-migration")
 }

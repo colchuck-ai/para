@@ -168,18 +168,32 @@ func (r *Removal) planEmptyStub(loc locator.Locator) error {
 	return nil
 }
 
-// Apply deletes what the plan named and records the removal at the parent.
+// Apply deletes what the plan named and records the removal at the parent, or
+// — under dryRun — reports what that would do and deletes nothing (§19).
 //
 // Deleting comes first, for the reason writeset.Relocation gives: the bytes are
 // the truth, and the parent's `child removed` line is the record of what happened
 // to them. A crash between the two loses the record of a deletion that happened,
 // which is a stale projection; the other order would leave a record of a deletion
 // that did not.
-func (r *Removal) Apply() (Result, error) {
+//
+// dryRun is a parameter rather than a second copy of this method for the same
+// reason apply's is: a rehearsal must ask writeset, apply, and syncSurface the
+// identical question a real run does, or the two could report a different set
+// of effects for no reason but having derived it twice (para-ato). It replaces
+// the CLI's former bespoke rehearsal, which stopped before ever calling
+// Relocate or Apply and so never named the parent's journal write or a skill's
+// surface change — a second, hand-maintained account of what remove does,
+// alongside this one.
+func (r *Removal) Apply(dryRun bool) (Result, error) {
 	e := r.env
 	res := Result{Locator: r.Locator, Kind: r.Kind}
 
-	ops, err := writeset.Relocate(r.reloc)
+	relocate := writeset.Relocate
+	if dryRun {
+		relocate = writeset.PlanRelocate
+	}
+	ops, err := relocate(r.reloc)
 	res.Wrote = e.wrote(ops)
 	if err != nil {
 		return res, err
@@ -190,13 +204,23 @@ func (r *Removal) Apply() (Result, error) {
 		// gone and these are the remains of its README. They ride in as a
 		// Subject's projections because that is what they are — the generated half
 		// of a partly-generated file, being rewritten to its human-owned half.
+		//
+		// tree.ResolvePath still succeeds under dryRun: r.files is only non-empty
+		// with --keep-files, whose relocation prunes para's footprint but never
+		// this directory itself, and a dry run has not even done that much.
 		dir, err := tree.ResolvePath(e.Root, r.Locator)
 		if err != nil {
 			return res, err
 		}
-		wrote, err := writeset.Apply(writeset.Mutation{
+		mutation := writeset.Mutation{
 			Subjects: []writeset.Subject{{Dir: dir, Projections: r.files}},
-		})
+		}
+		var wrote writeset.Ops
+		if dryRun {
+			wrote, err = writeset.Plan(mutation)
+		} else {
+			wrote, err = writeset.Apply(mutation)
+		}
 		res.Wrote = append(res.Wrote, e.wrote(wrote)...)
 		if err != nil {
 			return res, err
@@ -210,13 +234,25 @@ func (r *Removal) Apply() (Result, error) {
 		return res, err
 	}
 	if parent != nil {
-		wrote, err := apply(e, nil, []*plan{parent})
+		wrote, err := apply(e, nil, []*plan{parent}, dryRun)
 		res.Wrote = append(res.Wrote, wrote...)
 		if err != nil {
 			return res, err
 		}
 	}
+
 	// A skill has no parent to log at (§1.4), so this is the only place its
 	// removal reaches the surface: the mirror goes with the rule (§6.1, §18.2).
-	return e.syncSurface(res, nil)
+	//
+	// removing names this removal's own id, but only under dryRun and only for
+	// a skill: a real run has already deleted it by the time relocate ran
+	// above, so tree.SkillIDs already agrees; a dry run has deleted nothing, so
+	// without naming it the surface refresh would compute its answer as if this
+	// remove had never happened (see rebuild.Env.SyncMirror's removing
+	// parameter, para-ato's mirror image of add.go's own adding).
+	var removing []string
+	if dryRun && r.Kind == kindmeta.KindSkill {
+		removing = []string{r.Locator[len(r.Locator)-1]}
+	}
+	return e.syncSurface(res, nil, dryRun, nil, removing)
 }

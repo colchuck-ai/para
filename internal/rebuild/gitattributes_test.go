@@ -43,18 +43,22 @@ func TestRebuildRemovesTheBlockWhenTheKeyGoesOff(t *testing.T) {
 	}
 }
 
-// TestRebuildWithTheKeyOffLeavesAnEmptyFile is the case where para wrote the
-// whole file: what is left is what was there before para, which is nothing.
-// Deleting it would be para taking a file it cannot prove it created.
-func TestRebuildWithTheKeyOffLeavesAnEmptyFile(t *testing.T) {
+// TestRebuildWithTheKeyOffDeletesAnEmptiedFile is R6: para wrote the whole
+// file, so taking the block out leaves nothing, and a zero-byte file carries
+// no information — deleting it destroys nothing, and not deleting it would
+// leave an empty .gitattributes behind every time someone turns the key off.
+func TestRebuildWithTheKeyOffDeletesAnEmptiedFile(t *testing.T) {
 	root := plantTree(t)
 	run(t, root, rebuild.Options{})
 
 	gitattributesOff(t, root)
-	run(t, root, rebuild.Options{})
+	res := run(t, root, rebuild.Options{})
 
-	if got := read(t, root, ".gitattributes"); got != "" {
-		t.Errorf(".gitattributes = %q, want it emptied", got)
+	if !slices.Contains(res.Removed, ".gitattributes") {
+		t.Errorf("rebuild.Removed = %v, want it to include .gitattributes", res.Removed)
+	}
+	if exists(t, root, ".gitattributes") {
+		t.Error(".gitattributes survived a removal that emptied it")
 	}
 }
 
@@ -107,11 +111,13 @@ func TestRebuildLeavesAForeignGitAttributesAlone(t *testing.T) {
 	}
 }
 
-// TestRebuildDryRunReportsTheShortening: §21.1's dry run lists what a run would
-// do, and this is a rewrite rather than a removal in both.
+// TestRebuildDryRunReportsTheShortening: §21.1's dry run lists what a run
+// would do, and for a .gitattributes holding more than para's block that is a
+// rewrite rather than a removal (R5).
 func TestRebuildDryRunReportsTheShortening(t *testing.T) {
 	root := plantTree(t)
 	run(t, root, rebuild.Options{})
+	write(t, root, ".gitattributes", "*.png binary\n"+read(t, root, ".gitattributes"))
 	gitattributesOff(t, root)
 
 	res := run(t, root, rebuild.Options{DryRun: true})
@@ -121,5 +127,23 @@ func TestRebuildDryRunReportsTheShortening(t *testing.T) {
 	}
 	if !strings.Contains(read(t, root, ".gitattributes"), mdfile.HashMarkers.Begin) {
 		t.Error("a dry run removed the block")
+	}
+}
+
+// TestRebuildDryRunReportsTheRemoval is the emptied-file half of the same
+// question: when the block is the whole file, a dry run reports it as a
+// removal, not a rewrite (R6), and leaves it in place either way.
+func TestRebuildDryRunReportsTheRemoval(t *testing.T) {
+	root := plantTree(t)
+	run(t, root, rebuild.Options{})
+	gitattributesOff(t, root)
+
+	res := run(t, root, rebuild.Options{DryRun: true})
+
+	if !slices.Contains(res.Removed, ".gitattributes") {
+		t.Errorf("dry run did not report .gitattributes as removed; removed %v", res.Removed)
+	}
+	if !exists(t, root, ".gitattributes") {
+		t.Error("a dry run deleted .gitattributes")
 	}
 }

@@ -29,11 +29,12 @@ import (
 
 // The sweep is over §26's *fenced* blocks, which is what the plan asked for and
 // is also a real limit worth naming. §26 states four refusals in prose rather
-// than in a fence — `para add projects.acme-migration` again (exists), `para add
-// projects.a.b` (a project cannot nest), `para add projects.objectives` (reserved
-// word), and a key-result with no `--target` — and this test never sees them.
-// All four are transcribed in write.txtar; none of them is held there by
-// anything but the fact that somebody wrote them.
+// than in a fence — `para add project acme-migration` again (exists), `para add
+// project acme.b` (wrong arity — a project is one segment, it cannot nest),
+// `para add project objectives` (reserved word), and a key-result with no
+// `--target` — and this test never sees them. All four are transcribed in
+// write.txtar; none of them is held there by anything but the fact that
+// somebody wrote them.
 //
 // The other limit: the table pins the command lines, not §26's expected
 // *output*. `showing 3 of 3`, `moved …`, and the dated `stale-projection` line
@@ -64,12 +65,13 @@ const scriptDir = "../../testdata/script"
 // The lines are the script's spelling rather than §26's, and the two differ on
 // purpose in a few places, each a decision recorded in the script's own header:
 //
-//   - §26 elides locators with `…` (`para measure …key-results.signups`). That
-//     is the document eliding, not para: a locator is always printed and typed
-//     whole (§14), so the scripts spell it out.
 //   - §26 quotes with `"` and testscript quotes with `'`.
 //   - §26's `para show .` carries a trailing comment saying where it is run
 //     from, which is a note to the reader rather than part of the command.
+//   - §26's `--archived` boundary refusal renames `project.acme-migration` to
+//     `acme-renamed`; the script asks for the same name on both ends (a
+//     no-op rename) since only the archive-boundary mismatch is under test,
+//     not the destination name.
 type covered struct {
 	script string
 	proof  string
@@ -78,81 +80,92 @@ type covered struct {
 var spec26Coverage = map[string]covered{
 	`para init brain`: {"init.txtar", "exec para init brain"},
 
-	`para add projects.acme-migration --name "Acme migration" --description "Rebuild the consumer so it stops falling over under replay load."`: {
-		"write.txtar", "exec para add projects.acme-migration --name 'Acme migration' --description 'Rebuild the consumer so it stops falling over under replay load.'",
+	`para add project acme-migration --name "Acme migration" --description "Rebuild the consumer so it stops falling over under replay load."`: {
+		"write.txtar", "exec para add project acme-migration --name 'Acme migration' --description 'Rebuild the consumer so it stops falling over under replay load.'",
 	},
-	`para add projects.acme-migration.objectives.q1-growth --name "Grow signups" --description "Move the top of the funnel."`: {
-		"write.txtar", "exec para add projects.acme-migration.objectives.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.'",
+	`para add objective acme-migration.q1-growth --name "Grow signups" --description "Move the top of the funnel."`: {
+		"write.txtar", "exec para add objective acme-migration.q1-growth --name 'Grow signups' --description 'Move the top of the funnel.'",
 	},
-	`para add projects.acme-migration.objectives.q1-growth.key-results.signups --name "Weekly signups" --type ratio --start 480/9000 --target 2000/12000 --due 2026-09-30`: {
-		"write.txtar", "exec para add projects.acme-migration.objectives.q1-growth.key-results.signups --name 'Weekly signups' --type ratio --start 480/9000 --target 2000/12000 --due 2026-09-30",
+	`para add key-result acme-migration.q1-growth.signups --name "Weekly signups" --type ratio --start 480/9000 --target 2000/12000 --due 2026-09-30`: {
+		"write.txtar", "exec para add key-result acme-migration.q1-growth.signups --name 'Weekly signups' --type ratio --start 480/9000 --target 2000/12000 --due 2026-09-30",
 	},
-	`para add areas.health --name "Health" --description "Staying in one piece."`: {
-		"write.txtar", "exec para add areas.health --name Health --description 'Staying in one piece.'",
+	`para add area health --name "Health" --description "Staying in one piece."`: {
+		"write.txtar", "exec para add area health --name Health --description 'Staying in one piece.'",
 	},
-	`para add areas.health.training --name "Training" --description "The weekly plan."`: {
-		"write.txtar", "exec para add areas.health.training --name Training --description 'The weekly plan.'",
+	`para add area health.training --name "Training" --description "The weekly plan."`: {
+		"write.txtar", "exec para add area health.training --name Training --description 'The weekly plan.'",
 	},
-	`para add skills.signups-report --name "Signups report" --description "when asked for the weekly signups number" --scope projects.acme-migration,areas.growth`: {
-		"write.txtar", "exec para add skills.signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope projects.acme-migration,areas.growth",
+	`para add skill signups-report --name "Signups report" --description "when asked for the weekly signups number" --scope project.acme-migration,area.growth`: {
+		"write.txtar", "exec para add skill signups-report --name 'Signups report' --description 'when asked for the weekly signups number' --scope project.acme-migration,area.growth",
 	},
-	`para add skills.commit-style --name "Commit style" --description "when writing a commit message"`: {
-		"write.txtar", "exec para add skills.commit-style --name 'Commit style' --description 'when writing a commit message'",
+	`para add skill commit-style --name "Commit style" --description "when writing a commit message"`: {
+		"write.txtar", "exec para add skill commit-style --name 'Commit style' --description 'when writing a commit message'",
 	},
 
-	`para list projects --tags kafka --sort attention`: {
-		"read.txtar", "exec para list projects --tags kafka --sort attention\ncmp stdout $WORK/want-list-kafka.txt",
+	`para list project --tags kafka --sort attention`: {
+		"read.txtar", "exec para list project --tags kafka --sort attention\ncmp stdout $WORK/want-list-kafka.txt",
 	},
 	`para list --status blocked --all`: {"read.txtar", "exec para list --status blocked --all\nstdout '^showing '"},
-	`para list archive.projects`:       {"read.txtar", "exec para list archive.projects"},
-	`para path areas.health.training`: {
-		"tree.txtar", "exec para path areas.health.training\nstdout '^\\S*brain[/\\\\]areas[/\\\\]health[/\\\\]training\\n$'",
+	`para list project --archived`:     {"read.txtar", "exec para list project --archived\nstdout 'website'"},
+	`para path area health.training`: {
+		"tree.txtar", "exec para path area health.training\nstdout '^\\S*brain[/\\\\]areas[/\\\\]health[/\\\\]training\\n$'",
 	},
-	`para show . # from inside areas/health/training`: {"read.txtar", "exec para show ."},
+	`para show . # from inside areas/health/training`: {"read.txtar", "exec para show .\nstdout '^area  health\\.training$'"},
 
-	`para set projects.acme-migration --status blocked`: {
-		"write.txtar", "! exec para set projects.acme-migration --status blocked\nstderr '^error: --note is required when setting status to blocked$'",
+	`para set project acme-migration --status blocked`: {
+		"write.txtar", "! exec para set project acme-migration --status blocked\nstderr '^error: --note is required when setting status to blocked$'",
 	},
-	`para set projects.acme-migration --status blocked --note "waiting on the ingest team"`: {
-		"write.txtar", "exec para set projects.acme-migration --status blocked --note 'waiting on the ingest team'\ncmp stdout $WORK/want-set-blocked.txt",
+	`para set project acme-migration --status blocked --note "waiting on the ingest team"`: {
+		"write.txtar", "exec para set project acme-migration --status blocked --note 'waiting on the ingest team'\ncmp stdout $WORK/want-set-blocked.txt",
 	},
-	`para set projects.acme-migration --status blocked --note "still waiting"`: {
-		"write.txtar", "exec para set projects.acme-migration --status blocked --note 'still waiting'\nstdout '^no change \\(status already blocked\\); note recorded\\n'",
+	`para set project acme-migration --status blocked --note "still waiting"`: {
+		"write.txtar", "exec para set project acme-migration --status blocked --note 'still waiting'\nstdout '^no change \\(status already blocked\\); note recorded\\n'",
 	},
-	`para move areas.health.training areas.fitness.training`: {
-		"relocate.txtar", "exec para move areas.health.training areas.fitness.training",
+	`para move area health.training fitness.training`: {
+		"relocate.txtar", "exec para move area health.training fitness.training\ncmp stdout $WORK/want-move.txt",
 	},
-	`para move projects.acme-migration areas.acme-migration`: {
-		"relocate.txtar", "! exec para move projects.acme-migration areas.acme-migration",
-	},
-
-	`para measure …key-results.signups 880/11000 --at 2026-01-03`: {
-		"write.txtar", "exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 880/11000 --at 2026-01-03",
-	},
-	`para measure …key-results.signups 0.08`: {
-		"write.txtar", "! exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 0.08",
-	},
-	`para measure …key-results.signups 900/11000 --at 2026-01-03`: {
-		"write.txtar", "! exec para measure projects.acme-migration.objectives.q1-growth.key-results.signups 900/11000 --at 2026-01-03",
-	},
-	`para log projects.acme-migration --kind change --limit 3`: {
-		"write.txtar", "exec para log projects.acme-migration --kind change --limit 3",
-	},
-	`para activity projects.acme-migration --recursive --since 2026-01-01`: {
-		"read.txtar", "exec para activity projects.acme-migration --recursive --since 2026-01-01",
+	// The rename target differs from §26's `acme-renamed` — see the header note
+	// on covered above — but the proof line is the script's actual spelling,
+	// which is what has to appear verbatim.
+	`para move project acme-migration acme-renamed --archived`: {
+		"relocate.txtar", "! exec para move project acme-migration acme-migration --archived\nstderr '^error: --archived means both ends are archived; project\\.acme-migration is live$'",
 	},
 
-	`para archive areas.health.training`: {"relocate.txtar", "exec para archive areas.health.training"},
-	`para unarchive archive.areas.health`: {
-		"relocate.txtar", "! exec para unarchive archive.areas.health\nstderr '^error: nothing to unarchive — archive.areas.health is a stub, not an entity$'",
+	`para measure acme-migration.q1-growth.signups 880/11000 --at 2026-01-03`: {
+		"write.txtar", "exec para measure acme-migration.q1-growth.signups 880/11000 --at 2026-01-03\ncmp stdout $WORK/want-measured.txt",
 	},
-	`para archive areas.health`:                    {"relocate.txtar", "exec para archive areas.health"},
-	`para unarchive archive.areas.health.training`: {"relocate.txtar", "exec para unarchive archive.areas.health.training"},
-	`para unarchive archive.projects.old-migration`: {
-		"relocate.txtar", "! exec para unarchive archive.projects.old-migration",
+	`para measure acme-migration.q1-growth.signups 0.08`: {
+		"write.txtar", "! exec para measure acme-migration.q1-growth.signups 0.08\nstderr 'value 0.08 is not a ratio \\(type ratio expects <numerator>/<denominator>\\)'",
+	},
+	`para measure acme-migration.q1-growth.signups 900/11000 --at 2026-01-03`: {
+		"write.txtar", "! exec para measure acme-migration.q1-growth.signups 900/11000 --at 2026-01-03\nstderr 'a measurement already exists at 2026-01-03T08:00:00Z \\(2026-01-03T00:00:00-08:00 local\\)'",
+	},
+	`para log project acme-migration --kind change --limit 3`: {
+		"write.txtar", "exec para log project acme-migration --kind change --limit 3",
+	},
+	`para activity project acme-migration --recursive --since 2026-01-01`: {
+		"read.txtar", "exec para activity project acme-migration --recursive --since 2026-01-01\ncmp stdout $WORK/want-activity-recursive.txt",
 	},
 
-	`para review --stale --behind`: {"review.txtar", "exec para review --stale --behind"},
+	`para archive area health.training`: {
+		"relocate.txtar", "exec para archive area health.training\ncmp stdout $WORK/want-archive-training.txt",
+	},
+	`para unarchive area health`: {
+		"relocate.txtar", "! exec para unarchive area health\nstderr '^error: nothing to unarchive — archive\\.area\\.health is a stub, not an entity$'",
+	},
+	`para archive area health`: {
+		"relocate.txtar", "exec para archive area health\ncmp stdout $WORK/want-archive-health.txt",
+	},
+	`para unarchive area health.training`: {
+		"relocate.txtar", "exec para unarchive area health.training\ncmp stdout $WORK/want-unarchive.txt",
+	},
+	`para unarchive project old-migration`: {
+		"relocate.txtar", "! exec para unarchive project old-migration\nstderr '^error: project\\.old-migration exists; rename it or leave this archived$'",
+	},
+
+	`para review --stale --behind`: {
+		"review.txtar", "exec para review --stale --behind\ncmp stdout $WORK/want-review-stale-behind.txt",
+	},
 
 	// §26 runs `para doctor` twice with two different outcomes — the failing scan
 	// that opens the block and the clean one that closes it — so the two are
@@ -162,18 +175,18 @@ var spec26Coverage = map[string]covered{
 	`para doctor#1`: {"repair.txtar", "! exec para doctor\ncmp stdout $WORK/want-doctor-stale.txt"},
 	`para doctor#2`: {"repair.txtar", "exec para doctor\nstdout '^clean$'"},
 
-	`para rebuild projects.acme-migration --dry-run`: {
-		"repair.txtar", "exec para rebuild projects.acme-migration --dry-run\nstdout '^would rewrite  projects/acme-migration/ACTIVITY\\.md$'",
+	`para rebuild project acme-migration --dry-run`: {
+		"repair.txtar", "exec para rebuild project acme-migration --dry-run\nstdout '^would rewrite  projects/acme-migration/ACTIVITY\\.md$'",
 	},
-	`para rebuild projects.acme-migration`: {
-		"repair.txtar", "exec para rebuild projects.acme-migration\nstdout '^rewrote  projects/acme-migration/ACTIVITY\\.md$'",
+	`para rebuild project acme-migration`: {
+		"repair.txtar", "exec para rebuild project acme-migration\nstdout '^rewrote  projects/acme-migration/ACTIVITY\\.md$'",
 	},
 
-	`para config set --at projects project.stale-after 30`: {
-		"config.txtar", "exec para config set --at projects project.stale-after 30\ncmp stdout $WORK/want-set-projects.txt",
+	`para config set --at project project.stale-after 30`: {
+		"config.txtar", "exec para config set --at project project.stale-after 30\ncmp stdout $WORK/want-set-projects.txt",
 	},
-	`para config show project.stale-after projects.acme-migration`: {
-		"config.txtar", "exec para config show project.stale-after projects.acme-migration\ncmp stdout $WORK/want-chain.txt",
+	`para config show project.stale-after project.acme-migration`: {
+		"config.txtar", "exec para config show project.stale-after project.acme-migration\ncmp stdout $WORK/want-chain.txt",
 	},
 	`para config set emit.claude true`: {"claude.txtar", "exec para config set emit.claude true"},
 }

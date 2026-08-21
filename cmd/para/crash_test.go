@@ -48,72 +48,72 @@ type crashCommand struct {
 var crashCommands = []crashCommand{
 	{
 		name: "add a project",
-		args: []string{"add", "projects.acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+		args: []string{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
 	},
 	{
 		name: "add a key-result, whose parent chain is three deep",
 		setup: [][]string{
-			{"add", "projects.acme", "--name", "Acme", "--description", "Rebuild the consumer."},
-			{"add", "projects.acme.objectives.q1", "--name", "Q1", "--description", "Move the funnel."},
+			{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+			{"add", "objective", "acme.q1", "--name", "Q1", "--description", "Move the funnel."},
 		},
 		args: []string{
-			"add", "projects.acme.objectives.q1.key-results.signups",
+			"add", "key-result", "acme.q1.signups",
 			"--name", "Signups", "--type", "ratio", "--start", "480/9000", "--target", "2000/12000",
 		},
 	},
 	{
 		name: "set a field",
 		setup: [][]string{
-			{"add", "projects.acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+			{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
 		},
-		args: []string{"set", "projects.acme", "--status", "blocked", "--note", "waiting on ingest"},
+		args: []string{"set", "project", "acme", "--status", "blocked", "--note", "waiting on ingest"},
 	},
 	{
 		name: "note",
 		setup: [][]string{
-			{"add", "projects.acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+			{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
 		},
-		args: []string{"note", "projects.acme", "the ingest team is blocked"},
+		args: []string{"note", "project", "acme", "the ingest team is blocked"},
 	},
 	{
 		name: "measure",
 		setup: [][]string{
-			{"add", "projects.acme", "--name", "Acme", "--description", "Rebuild the consumer."},
-			{"add", "projects.acme.objectives.q1", "--name", "Q1", "--description", "Move the funnel."},
+			{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+			{"add", "objective", "acme.q1", "--name", "Q1", "--description", "Move the funnel."},
 			{
-				"add", "projects.acme.objectives.q1.key-results.signups",
+				"add", "key-result", "acme.q1.signups",
 				"--name", "Signups", "--type", "ratio", "--start", "480/9000", "--target", "2000/12000",
 			},
 		},
-		args: []string{"measure", "projects.acme.objectives.q1.key-results.signups", "880/11000"},
+		args: []string{"measure", "acme.q1.signups", "880/11000"},
 	},
 	{
 		name: "move, which renames before it writes",
 		setup: [][]string{
-			{"add", "areas.health", "--name", "Health", "--description", "Staying in one piece."},
-			{"add", "areas.health.training", "--name", "Training", "--description", "The weekly plan."},
-			{"add", "areas.fitness", "--name", "Fitness", "--description", "The other one."},
+			{"add", "area", "health", "--name", "Health", "--description", "Staying in one piece."},
+			{"add", "area", "health.training", "--name", "Training", "--description", "The weekly plan."},
+			{"add", "area", "fitness", "--name", "Fitness", "--description", "The other one."},
 		},
-		args: []string{"move", "areas.health.training", "areas.fitness.training"},
+		args: []string{"move", "area", "health.training", "fitness.training"},
 	},
 	{
 		name: "archive, which leaves a stub behind",
 		setup: [][]string{
-			{"add", "areas.health", "--name", "Health", "--description", "Staying in one piece."},
-			{"add", "areas.health.training", "--name", "Training", "--description", "The weekly plan."},
+			{"add", "area", "health", "--name", "Health", "--description", "Staying in one piece."},
+			{"add", "area", "health.training", "--name", "Training", "--description", "The weekly plan."},
 		},
-		args: []string{"archive", "areas.health.training"},
+		args: []string{"archive", "area", "health.training"},
 	},
 	{
 		name: "remove, which deletes before it writes",
 		setup: [][]string{
-			{"add", "projects.acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+			{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
 		},
-		args: []string{"remove", "projects.acme", "--force"},
+		args: []string{"remove", "project", "acme", "--force"},
 	},
 	{
 		name: "add a skill, which also writes a rule outside the subject",
-		args: []string{"add", "skills.report", "--name", "Report", "--description", "when asked for the number"},
+		args: []string{"add", "skill", "report", "--name", "Report", "--description", "when asked for the number"},
 	},
 	{
 		name: "config set, which writes truth and one projection",
@@ -122,7 +122,7 @@ var crashCommands = []crashCommand{
 	{
 		name: "config set emit.claude, which refreshes eight files and a mirror",
 		setup: [][]string{
-			{"add", "skills.report", "--name", "Report", "--description", "when asked for the number"},
+			{"add", "skill", "report", "--name", "Report", "--description", "when asked for the number"},
 		},
 		args: []string{"config", "set", "emit.claude", "true"},
 	},
@@ -135,15 +135,17 @@ var crashCommands = []crashCommand{
 	{
 		// §1.6's cascade: reinstates the ancestors it needs and leaves a stub
 		// where an archived sibling stays put, so its relocation phase has more
-		// moves in it than any other verb's.
+		// moves in it than any other verb's. `unarchive`'s chain names the live
+		// address it will have once restored — no `archive.` prefix, no
+		// `--archived` flag — since the archived side is already implied (R8).
 		name: "unarchive, which reinstates a chain",
 		setup: [][]string{
-			{"add", "areas.health", "--name", "Health", "--description", "Staying in one piece."},
-			{"add", "areas.health.training", "--name", "Training", "--description", "The weekly plan."},
-			{"archive", "areas.health.training"},
-			{"archive", "areas.health"},
+			{"add", "area", "health", "--name", "Health", "--description", "Staying in one piece."},
+			{"add", "area", "health.training", "--name", "Training", "--description", "The weekly plan."},
+			{"archive", "area", "health.training"},
+			{"archive", "area", "health"},
 		},
-		args: []string{"unarchive", "archive.areas.health.training"},
+		args: []string{"unarchive", "area", "health.training"},
 	},
 	{
 		// §18.4's other half: deletes para's footprint throughout a subtree and
@@ -151,10 +153,10 @@ var crashCommands = []crashCommand{
 		// only the parent's.
 		name: "remove --keep-files, which prunes throughout a subtree",
 		setup: [][]string{
-			{"add", "projects.acme", "--name", "Acme", "--description", "Rebuild the consumer."},
-			{"add", "projects.acme.objectives.q1", "--name", "Q1", "--description", "Move the funnel."},
+			{"add", "project", "acme", "--name", "Acme", "--description", "Rebuild the consumer."},
+			{"add", "objective", "acme.q1", "--name", "Q1", "--description", "Move the funnel."},
 		},
-		args: []string{"remove", "projects.acme", "--keep-files", "--force"},
+		args: []string{"remove", "project", "acme", "--keep-files", "--force"},
 	},
 }
 

@@ -240,8 +240,14 @@ type plan struct {
 	onlyProjections []render.Renderer
 }
 
-// apply renders and writes one mutation: subjects first, the parents last.
-func apply(env *Env, subjects []*plan, parents []*plan) ([]string, error) {
+// apply renders one mutation and either writes it or, under dryRun, only
+// reports what writing it would do (§19).
+//
+// Every verb funnels through here, so dryRun is a parameter rather than a
+// second copy of this function: a rehearsal and a real run must derive the
+// same writeset.Mutation from the same plans, or the two could disagree about
+// what a mutation touches for no reason but having been computed twice.
+func apply(env *Env, subjects []*plan, parents []*plan, dryRun bool) ([]string, error) {
 	subjects, parents = foldSameDirectory(subjects, parents)
 
 	var m writeset.Mutation
@@ -266,7 +272,13 @@ func apply(env *Env, subjects []*plan, parents []*plan) ([]string, error) {
 		return nil, nil
 	}
 
-	ops, err := writeset.Apply(m)
+	var ops writeset.Ops
+	var err error
+	if dryRun {
+		ops, err = writeset.Plan(m)
+	} else {
+		ops, err = writeset.Apply(m)
+	}
 	return env.wrote(ops), err
 }
 

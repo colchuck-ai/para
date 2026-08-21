@@ -16,10 +16,15 @@ import (
 // component, in order. It is a pure value — no filesystem, no clock.
 type Locator []string
 
-// ReservedWords cannot appear as an id anywhere in a locator (§1.4).
+// ReservedWords cannot appear as an id anywhere in a locator (§1.4). The
+// list grows from ten words to seventeen with R6: the seven singular nouns
+// join the ten structural words, because without them an entity legitimately
+// named e.g. "project" would make a grammar whose first token is a noun
+// unable to tell the noun from an id sharing its spelling.
 var ReservedWords = []string{
 	"projects", "areas", "resources", "archive", "objectives",
 	"key-results", "skills", "logs", ".para", ".agents",
+	"project", "area", "resource", "objective", "key-result", "skill", "container",
 }
 
 // IsReserved reports whether s is one of the words §1.4 reserves and so can
@@ -87,18 +92,26 @@ func (l Locator) IsArchived() bool {
 // Path converts the locator to its relative filesystem path, applying the
 // one exception §1.4 defines: a two-segment "skills.<id>" locator maps to
 // ".agents/skills/para-<id>", the "para-" prefix belonging to the directory
-// and never to the locator. Every other locator maps segment-for-segment to
-// path components. The result uses "/" as the separator regardless of GOOS;
+// and never to the locator. The bare one-segment "skills" locator — R3's
+// skill bucket, R17's "a noun with no chain is the bucket" — maps to
+// ".agents/skills" itself, the same way the bare "projects"/"areas"/
+// "resources" bucket locators map segment-for-segment to their own
+// directories below. Every other locator maps segment-for-segment to path
+// components. The result uses "/" as the separator regardless of GOOS;
 // callers join it onto an OS path with filepath.FromSlash.
 func (l Locator) Path() (string, error) {
 	if len(l) == 0 {
 		return "", paraerr.New(paraerr.KindValidation, "empty locator has no path")
 	}
 	if l[0] == "skills" {
-		if len(l) != 2 {
+		switch len(l) {
+		case 1:
+			return ".agents/skills", nil
+		case 2:
+			return ".agents/skills/para-" + l[1], nil
+		default:
 			return "", paraerr.Newf(paraerr.KindValidation, "locator %q: skills is one level only", l.String())
 		}
-		return ".agents/skills/para-" + l[1], nil
 	}
 	return strings.Join(l, "/"), nil
 }

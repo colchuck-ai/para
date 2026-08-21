@@ -31,13 +31,24 @@ type Identity struct {
 }
 
 // buckets is every container `init` creates, in the order they are written:
-// the four §1.2 names, then the archive's mirror of the three live ones (§1.6).
+// the four §1.2 names, then the archive's mirror of the three live ones
+// (§1.6), then the skill bucket (para-a3p).
 //
-// The locators come from render.AgentsLocations, which is the same eight places
-// AGENTS.md and CLAUDE.md are emitted (§6) — the root plus exactly these seven.
-// Deriving the list from that one rather than writing it out again is what stops
-// a tree from being created with a bucket no AGENTS.md describes, or an
-// AGENTS.md location no bucket exists at.
+// The first seven locators come from render.AgentsLocations, which is the same
+// eight places AGENTS.md and CLAUDE.md are emitted (§6) — the root plus
+// exactly these seven. Deriving the list from that one rather than writing it
+// out again is what stops a tree from being created with a bucket no AGENTS.md
+// describes, or an AGENTS.md location no bucket exists at.
+//
+// The skill bucket is the one exception to that invariant, and deliberately
+// so: `.agents/skills/` never joins the fixed, spec-committed eight
+// AGENTS.md/CLAUDE.md places (§6, §26's "(8 files)" count) — the root's own
+// AGENTS.md prose already documents it — but it still needs a container
+// entity of its own, the same way projects/areas/resources do, so that
+// `show`, `log`, `activity`, `review`, `rebuild`, and `doctor` can resolve
+// the bare `skill` noun instead of refusing it. bucketPlans appends it
+// separately, after the AgentsLocations loop, and skips its config.toml
+// (§7 already gives it none — "there is no `skills` level to consult").
 //
 // The prose is per bucket and lives here because it is the container's own
 // identity (§8.2), not the orientation block AGENTS.md carries. §27 defers this
@@ -50,7 +61,12 @@ var bucketIdentity = map[string]Identity{
 	"archive.projects":  {Name: "Archived projects", Description: "Projects that are finished or dropped."},
 	"archive.areas":     {Name: "Archived areas", Description: "Areas you no longer hold."},
 	"archive.resources": {Name: "Archived resources", Description: "Resources you no longer consult."},
+	"skills":            {Name: "Skills", Description: "What an agent should do, and when to do it."},
 }
+
+// skillsBucket is the skill bucket's own locator (para-a3p) — the container
+// bucketPlans creates outside its AgentsLocations loop.
+var skillsBucket = locator.Locator{"skills"}
 
 // Init creates a tree at e.Root: the root marker and its two siblings, the
 // root's own generated files, the seven bucket containers, and .agents/ (§8.1,
@@ -102,7 +118,7 @@ func (e *Env) Init(id Identity) (Result, error) {
 		return Result{}, err
 	}
 
-	wrote, err := apply(e, append(plans, rootPlan), nil)
+	wrote, err := apply(e, append(plans, rootPlan), nil, false)
 	return Result{Wrote: wrote}, err
 }
 
@@ -151,32 +167,52 @@ func (e *Env) rootPlan(id Identity) (*plan, error) {
 	}, nil
 }
 
-// bucketPlans is the seven containers, in write order, with the archive's own
-// three child events on the archive.
+// bucketPlans is the eight containers, in write order: the seven from
+// render.AgentsLocations (with the archive's own three child events on the
+// archive), then the skill bucket, which sits outside that list on purpose
+// (see bucketIdentity's own comment) and gets no config.toml.
 func (e *Env) bucketPlans() ([]*plan, error) {
 	var out []*plan
 	for _, loc := range render.AgentsLocations() {
 		if len(loc) == 0 {
 			continue // the root, which rootPlan owns
 		}
-		id, ok := bucketIdentity[loc.String()]
-		if !ok {
-			return nil, paraerr.Newf(paraerr.KindInternal, "init: no identity for the bucket %s", loc)
-		}
-		subj, err := e.subjectAt(loc, kindmeta.KindContainer)
+		p, err := e.bucketPlan(loc, []byte{})
 		if err != nil {
 			return nil, err
 		}
-		subj.state = truth.State{Name: id.Name, Description: id.Description, Created: stamp(e.Now)}
-		out = append(out, &plan{
-			subj:       subj,
-			events:     archiveChildEvents(e, loc),
-			writeState: true,
-			config:     []byte{},
-			creating:   true,
-		})
+		out = append(out, p)
 	}
-	return out, nil
+	skillPlan, err := e.bucketPlan(skillsBucket, nil)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, skillPlan), nil
+}
+
+// bucketPlan is one container's own plan: its identity, and — for config,
+// the one thing that varies across bucketPlans' callers — either the empty
+// config.toml every AgentsLocations bucket gets or nil, the skill bucket's
+// own answer to "there is no `skills` level to consult" (§7): a bucket with
+// no config.toml is not a level a chain can land on, the same way loc.Path()
+// still refuses one two segments deep.
+func (e *Env) bucketPlan(loc locator.Locator, config []byte) (*plan, error) {
+	id, ok := bucketIdentity[loc.String()]
+	if !ok {
+		return nil, paraerr.Newf(paraerr.KindInternal, "init: no identity for the bucket %s", relocateAddr(loc))
+	}
+	subj, err := e.subjectAt(loc, kindmeta.KindContainer)
+	if err != nil {
+		return nil, err
+	}
+	subj.state = truth.State{Name: id.Name, Description: id.Description, Created: stamp(e.Now)}
+	return &plan{
+		subj:       subj,
+		events:     archiveChildEvents(e, loc),
+		writeState: true,
+		config:     config,
+		creating:   true,
+	}, nil
 }
 
 // archiveChildEvents is the archive's record that it gained three containers.

@@ -312,8 +312,8 @@ func everyShape(t *testing.T) []render.In {
 				Tags:        []string{"growth", "reporting"},
 				Created:     "2026-01-01T08:15:00-08:00",
 				Scope: []string{
-					"projects.acme-migration.objectives.q1-growth",
-					"areas.growth",
+					"objective.acme-migration.q1-growth",
+					"area.growth",
 				},
 			},
 		},

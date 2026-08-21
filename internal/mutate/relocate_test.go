@@ -4,13 +4,17 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/colchuck-ai/para/internal/clock"
+	"github.com/colchuck-ai/para/internal/config"
 	"github.com/colchuck-ai/para/internal/doctor"
+	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/mutate"
 	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/ptoml"
 	"github.com/colchuck-ai/para/internal/view"
 )
 
@@ -113,17 +117,17 @@ func TestMoveRelocatesTheSubtreeAndRewritesEveryLocator(t *testing.T) {
 
 	// The moved entity's README, and its descendant's, both carry the new
 	// locator: README frontmatter is the only projection that names one (§18.3).
-	if got := read(t, root, "areas/fitness/training/README.md"); !strings.Contains(got, `locator: "areas.fitness.training"`) {
+	if got := read(t, root, "areas/fitness/training/README.md"); !strings.Contains(got, `locator: "area.fitness.training"`) {
 		t.Errorf("moved README frontmatter not rewritten:\n%s", got)
 	}
-	if got := read(t, root, "areas/fitness/training/tempo/README.md"); !strings.Contains(got, `locator: "areas.fitness.training.tempo"`) {
+	if got := read(t, root, "areas/fitness/training/tempo/README.md"); !strings.Contains(got, `locator: "area.fitness.training.tempo"`) {
 		t.Errorf("descendant README frontmatter not rewritten:\n%s", got)
 	}
 
 	// The entity's own history keeps the move visible — the one place a derived
 	// value enters a journal (§18.3).
 	if got := journalOf(t, root, "areas/fitness/training"); !strings.Contains(got,
-		`"kind":"change","field":"locator","from":"areas.health.training","to":"areas.fitness.training"`) {
+		`"kind":"change","field":"locator","from":"area.health.training","to":"area.fitness.training"`) {
 		t.Errorf("no locator change event on the moved entity:\n%s", got)
 	}
 
@@ -156,8 +160,21 @@ func TestMoveRewritesAContainersLocatorToo(t *testing.T) {
 	// A container's README carries a locator like everything else's (§2.2), and
 	// the eager objectives/ container came along with the project (§18.1).
 	got := read(t, root, "projects/acme-migration/objectives/README.md")
-	if !strings.Contains(got, `locator: "projects.acme-migration.objectives"`) {
+	if !strings.Contains(got, `locator: "container.acme-migration.objectives"`) {
 		t.Errorf("the container's README still names the old locator:\n%s", got)
+	}
+
+	// The journal's locator change event is dotted too (R24), for a noun other
+	// than area — every other assertion of this shape in this file happens to
+	// be an area.
+	if got := journalOf(t, root, "projects/acme-migration"); !strings.Contains(got,
+		`"kind":"change","field":"locator","from":"project.acme","to":"project.acme-migration"`) {
+		t.Errorf("no dotted locator change event on the moved project:\n%s", got)
+	}
+	// And the parent's child event, for the same reason (§3.1).
+	if got := journalOf(t, root, "projects"); !strings.Contains(got,
+		`"from":"project.acme","to":"project.acme-migration","op":"moved"`) {
+		t.Errorf("the parent's child event does not carry the dotted addresses:\n%s", got)
 	}
 }
 
@@ -180,7 +197,7 @@ func TestMoveWithinOneParentLogsOneEventNamingWhatLeft(t *testing.T) {
 	if n := strings.Count(got, `"op":"moved"`); n != 1 {
 		t.Errorf("a rename inside one parent logged %d move events, want 1:\n%s", n, got)
 	}
-	if !strings.Contains(got, `"from":"areas.health.training","to":"areas.health.plan","op":"moved","child":"training"`) {
+	if !strings.Contains(got, `"from":"area.health.training","to":"area.health.plan","op":"moved","child":"training"`) {
 		t.Errorf("the event does not name what left and where it went:\n%s", got)
 	}
 }
@@ -191,8 +208,8 @@ func TestMoveRewritesEveryScopeEntryBeneathTheMovedLocator(t *testing.T) {
 	addArea(t, e, "areas.health")
 	addArea(t, e, "areas.health.training")
 	addArea(t, e, "areas.fitness")
-	addSkill(t, e, "training-plan", "areas.health.training", "projects")
-	addSkill(t, e, "elsewhere", "projects")
+	addSkill(t, e, "training-plan", "area.health.training", "project")
+	addSkill(t, e, "elsewhere", "project")
 
 	e = env(t, root)
 	plan, err := e.PlanMove(loc(t, "areas.health"), loc(t, "areas.wellbeing"))
@@ -215,7 +232,7 @@ func TestMoveRewritesEveryScopeEntryBeneathTheMovedLocator(t *testing.T) {
 	// An entry covers its locator and everything beneath it (§5.2), so an entry
 	// naming a descendant of the moved locator is rewritten too.
 	state := read(t, root, ".agents/skills/para-training-plan/.para/state.toml")
-	if !strings.Contains(state, `"areas.wellbeing.training"`) {
+	if !strings.Contains(state, `"area.wellbeing.training"`) {
 		t.Errorf("scope entry not rewritten:\n%s", state)
 	}
 	if got := read(t, root, ".agents/rules/para-training-plan.md"); !strings.Contains(got, "`areas/wellbeing/training/`") {
@@ -292,7 +309,7 @@ func TestMoveRefusals(t *testing.T) {
 		},
 		{
 			name: "destination parent missing", src: "areas.health.training", dst: "areas.missing.training",
-			kind: paraerr.KindNotFound, message: "areas.missing does not exist",
+			kind: paraerr.KindNotFound, message: "area.missing does not exist",
 		},
 		{
 			name: "a container is not a subject", src: "projects.acme.objectives", dst: "areas.objectives-of-acme",
@@ -304,7 +321,7 @@ func TestMoveRefusals(t *testing.T) {
 		},
 		{
 			name: "the source does not exist", src: "areas.nothing", dst: "areas.something",
-			kind: paraerr.KindNotFound, message: "areas.nothing does not exist",
+			kind: paraerr.KindNotFound, message: "area.nothing does not exist",
 		},
 	}
 	for _, tc := range cases {
@@ -371,7 +388,7 @@ func TestArchiveCreatesAStubForALiveAncestor(t *testing.T) {
 	if got := journalOf(t, root, "areas/health"); !strings.Contains(got, `"op":"archived","child":"training"`) {
 		t.Errorf("the live parent did not log the archival:\n%s", got)
 	}
-	if got := read(t, root, "archive/areas/health/training/README.md"); !strings.Contains(got, `locator: "archive.areas.health.training"`) {
+	if got := read(t, root, "archive/areas/health/training/README.md"); !strings.Contains(got, `locator: "archive.area.health.training"`) {
 		t.Errorf("the archived README still names the old locator:\n%s", got)
 	}
 }
@@ -467,7 +484,7 @@ func TestArchiveRefusesWhenTheArchivedCounterpartExists(t *testing.T) {
 
 	_, err := env(t, root).PlanArchive(loc(t, "projects.acme"))
 	wantKind(t, err, paraerr.KindConflict)
-	wantMessage(t, err, "archive.projects.acme already exists")
+	wantMessage(t, err, "archive.project.acme already exists")
 }
 
 // --- unarchive --------------------------------------------------------------
@@ -516,8 +533,8 @@ func TestUnarchiveCascadesUpwardAndDemotesTheAncestorToAStub(t *testing.T) {
 
 	// Both entities that moved say so in their own journals (§18.3, §18.5).
 	for dir, want := range map[string]string{
-		"areas/health":          `"field":"locator","from":"archive.areas.health","to":"areas.health"`,
-		"areas/health/training": `"field":"locator","from":"archive.areas.health.training","to":"areas.health.training"`,
+		"areas/health":          `"field":"locator","from":"archive.area.health","to":"area.health"`,
+		"areas/health/training": `"field":"locator","from":"archive.area.health.training","to":"area.health.training"`,
 	} {
 		if got := journalOf(t, root, dir); !strings.Contains(got, want) {
 			t.Errorf("%s: no locator change event:\n%s", dir, got)
@@ -612,7 +629,7 @@ func TestUnarchiveLeavesAStillArchivedDescendantsScopeAlone(t *testing.T) {
 	addArea(t, e, "areas.health")
 	addArea(t, e, "areas.health.training")
 	addArea(t, e, "areas.health.nutrition")
-	addSkill(t, e, "plan", "areas.health.training", "areas.health.nutrition")
+	addSkill(t, e, "plan", "area.health.training", "area.health.nutrition")
 	if _, err := mustPlanArchive(t, env(t, root), "areas.health").Apply(); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
@@ -626,12 +643,12 @@ func TestUnarchiveLeavesAStillArchivedDescendantsScopeAlone(t *testing.T) {
 	}
 
 	state := read(t, root, ".agents/skills/para-plan/.para/state.toml")
-	if !strings.Contains(state, `"areas.health.training"`) {
+	if !strings.Contains(state, `"area.health.training"`) {
 		t.Errorf("the unarchived entity's entry was not rewritten:\n%s", state)
 	}
 	// nutrition stayed archived, so its entry must not have moved with the
 	// ancestor: the ancestor carried no subtree (§1.6).
-	if !strings.Contains(state, `"archive.areas.health.nutrition"`) {
+	if !strings.Contains(state, `"archive.area.health.nutrition"`) {
 		t.Errorf("a still-archived entry was rewritten:\n%s", state)
 	}
 }
@@ -658,11 +675,11 @@ func TestUnarchiveRefusals(t *testing.T) {
 	}{
 		{
 			name: "the id is taken", loc: "archive.projects.old-migration",
-			kind: paraerr.KindConflict, message: "projects.old-migration exists; rename it or leave this archived",
+			kind: paraerr.KindConflict, message: "project.old-migration exists; rename it or leave this archived",
 		},
 		{
 			name: "a stub is not an entity", loc: "archive.areas.health",
-			kind: paraerr.KindNotFound, message: "nothing to unarchive — archive.areas.health is a stub, not an entity",
+			kind: paraerr.KindNotFound, message: "nothing to unarchive — archive.area.health is a stub, not an entity",
 		},
 		{
 			name: "not archived", loc: "areas.health",
@@ -695,13 +712,13 @@ func TestUnarchiveRefusesWhenTheLiveParentIsGone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanRemove: %v", err)
 	}
-	if _, err := removal.Apply(); err != nil {
+	if _, err := removal.Apply(false); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 
 	_, err = env(t, root).PlanUnarchive(loc(t, "archive.areas.health.training"))
 	wantKind(t, err, paraerr.KindNotFound)
-	wantMessage(t, err, "areas.health does not exist — create it first")
+	wantMessage(t, err, "area.health does not exist — create it first")
 }
 
 // --- remove -----------------------------------------------------------------
@@ -718,7 +735,7 @@ func TestRemoveDeletesTheSubtreeAndLogsAtTheParent(t *testing.T) {
 	if len(plan.Descendants) != 1 {
 		t.Errorf("descendants: got %v, want the objectives/ container", plan.Descendants)
 	}
-	if _, err := plan.Apply(); err != nil {
+	if _, err := plan.Apply(false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -728,6 +745,79 @@ func TestRemoveDeletesTheSubtreeAndLogsAtTheParent(t *testing.T) {
 	if got := journalOf(t, root, "projects"); !strings.Contains(got, `"op":"removed","child":"acme"`) {
 		t.Errorf("the parent did not log the removal:\n%s", got)
 	}
+}
+
+// TestRemoveDryRunWritesNothingButReportsWhatRemoveWould is para-ato: a
+// rehearsal must report the identical Wrote a real remove returns — including
+// the parent's journal/ACTIVITY.md write, which the CLI's own hand-rolled
+// rehearsal never named before this — and delete nothing.
+func TestRemoveDryRunWritesNothingButReportsWhatRemoveWould(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	addProject(t, e, "acme")
+	before := snapshot(t, root)
+
+	dry, err := env(t, root).PlanRemove(loc(t, "projects.acme"), false)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	dryRes, err := dry.Apply(true)
+	if err != nil {
+		t.Fatalf("Apply(true): %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("Apply(true) wrote %v, want nothing", changed)
+	}
+	if !exists(t, root, "projects/acme/.para/state.toml") {
+		t.Error("Apply(true) deleted the subtree")
+	}
+
+	real, err := env(t, root).PlanRemove(loc(t, "projects.acme"), false)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	realRes, err := real.Apply(false)
+	if err != nil {
+		t.Fatalf("Apply(false): %v", err)
+	}
+	assertEqual(t, "Apply(true)'s Wrote", dryRes.Wrote, realRes.Wrote)
+}
+
+// TestRemoveKeepFilesDryRunReportsTheStripsWithoutWriting is
+// TestRemoveKeepFilesKeepsBodiesAndDeletesParasFootprint's rehearsal twin:
+// --keep-files rides its README rewrite in as a Subject's projections
+// (Removal.Apply's own comment), which is the one path through
+// writeset.Plan rather than writeset.PlanRelocate.
+func TestRemoveKeepFilesDryRunReportsTheStripsWithoutWriting(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	addProject(t, e, "acme")
+	before := snapshot(t, root)
+
+	plan, err := env(t, root).PlanRemove(loc(t, "projects.acme"), true)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	dry, err := plan.Apply(true)
+	if err != nil {
+		t.Fatalf("Apply(true): %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, root)); len(changed) != 0 {
+		t.Errorf("Apply(true) wrote %v, want nothing", changed)
+	}
+	if !exists(t, root, "projects/acme/.para") {
+		t.Error("Apply(true) deleted para's footprint")
+	}
+
+	plan2, err := env(t, root).PlanRemove(loc(t, "projects.acme"), true)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	real, err := plan2.Apply(false)
+	if err != nil {
+		t.Fatalf("Apply(false): %v", err)
+	}
+	assertEqual(t, "Apply(true)'s Wrote", dry.Wrote, real.Wrote)
 }
 
 func TestRemoveKeepFilesKeepsBodiesAndDeletesParasFootprint(t *testing.T) {
@@ -750,7 +840,7 @@ func TestRemoveKeepFilesKeepsBodiesAndDeletesParasFootprint(t *testing.T) {
 	if len(plan.Strips) != 2 {
 		t.Errorf("strips: got %v, want the project's README and its container's", plan.Strips)
 	}
-	if _, err := plan.Apply(); err != nil {
+	if _, err := plan.Apply(false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -774,7 +864,7 @@ func TestRemoveKeepFilesKeepsBodiesAndDeletesParasFootprint(t *testing.T) {
 
 func TestRemoveTakesASkillsDerivedRuleWithIt(t *testing.T) {
 	root := plantTree(t)
-	addSkill(t, env(t, root), "signups-report", "projects")
+	addSkill(t, env(t, root), "signups-report", "project")
 	if !exists(t, root, ".agents/rules/para-signups-report.md") {
 		t.Fatal("the rule was never written")
 	}
@@ -783,7 +873,7 @@ func TestRemoveTakesASkillsDerivedRuleWithIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanRemove: %v", err)
 	}
-	if _, err := plan.Apply(); err != nil {
+	if _, err := plan.Apply(false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -793,6 +883,59 @@ func TestRemoveTakesASkillsDerivedRuleWithIt(t *testing.T) {
 	if exists(t, root, ".agents/rules/para-signups-report.md") {
 		t.Error("the derived rule outlived its skill")
 	}
+}
+
+// TestRemoveDryRunOnASkillWithClaudeSurfaceOnPreviewsItsOwnRemoval is
+// TestAddDryRunOnASkillWithClaudeSurfaceOnPreviewsTheWholeReach's mirror
+// image (claude_test.go, para-ato): tree.SkillIDs still sees the skill on
+// disk under a dry run, since nothing was deleted, so without naming it via
+// removing the rehearsal would report no surface change at all — the same
+// gap AddDryRun had before adding existed.
+func TestRemoveDryRunOnASkillWithClaudeSurfaceOnPreviewsItsOwnRemoval(t *testing.T) {
+	setup := func(t *testing.T) string {
+		root := treeWithSkill(t)
+		e := env(t, root)
+		setClaude(t, e, root, config.KeyEmitClaude, ptoml.Bool(true))
+		setClaude(t, e, root, config.KeyEmitClaudeSkills, ptoml.String("copy"))
+		return root
+	}
+
+	dryRoot := setup(t)
+	before := snapshot(t, dryRoot)
+	dryPlan, err := env(t, dryRoot).PlanRemove(loc(t, "skills.report"), false)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	dry, err := dryPlan.Apply(true)
+	if err != nil {
+		t.Fatalf("Apply(true): %v", err)
+	}
+	if changed := changedPaths(t, before, snapshot(t, dryRoot)); len(changed) != 0 {
+		t.Errorf("Apply(true) wrote %v, want nothing", changed)
+	}
+	if want := (mirror.Change{Verb: mirror.VerbRemoved, Path: ".claude/skills/para-report"}); !slices.Contains(dry.Mirror, want) {
+		t.Errorf("dry run's Mirror = %v, want it to carry %v", dry.Mirror, want)
+	}
+	for _, rel := range claudeLocations {
+		if !slices.Contains(dry.Wrote, rel) {
+			t.Errorf("dry run's Wrote = %v, want it to carry %s (the rule dropped from its import list)", dry.Wrote, rel)
+		}
+	}
+
+	realRoot := setup(t)
+	realPlan, err := env(t, realRoot).PlanRemove(loc(t, "skills.report"), false)
+	if err != nil {
+		t.Fatalf("PlanRemove: %v", err)
+	}
+	real, err := realPlan.Apply(false)
+	if err != nil {
+		t.Fatalf("Apply(false): %v", err)
+	}
+	assertEqual(t, "Apply(true)'s Wrote", dry.Wrote, real.Wrote)
+	if !slices.Equal(dry.Mirror, real.Mirror) {
+		t.Errorf("Apply(true)'s Mirror = %v, want %v", dry.Mirror, real.Mirror)
+	}
+	assertClean(t, realRoot)
 }
 
 func TestRemoveDropsAStubLeftRecordingNothing(t *testing.T) {
@@ -808,7 +951,7 @@ func TestRemoveDropsAStubLeftRecordingNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanRemove: %v", err)
 	}
-	if _, err := plan.Apply(); err != nil {
+	if _, err := plan.Apply(false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
@@ -821,19 +964,19 @@ func TestRemoveLeavesAnUnresolvableScopeEntryForDoctor(t *testing.T) {
 	root := plantTree(t)
 	e := env(t, root)
 	addArea(t, e, "areas.health")
-	addSkill(t, e, "plan", "areas.health")
+	addSkill(t, e, "plan", "area.health")
 
 	plan, err := env(t, root).PlanRemove(loc(t, "areas.health"), false)
 	if err != nil {
 		t.Fatalf("PlanRemove: %v", err)
 	}
-	if _, err := plan.Apply(); err != nil {
+	if _, err := plan.Apply(false); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
 	// §5.4 makes para own the rename, not the deletion: there is no locator to
 	// rewrite to, and an entry naming nothing is doctor's scope-unresolved.
-	if got := read(t, root, ".agents/skills/para-plan/.para/state.toml"); !strings.Contains(got, `"areas.health"`) {
+	if got := read(t, root, ".agents/skills/para-plan/.para/state.toml"); !strings.Contains(got, `"area.health"`) {
 		t.Errorf("the scope entry was silently changed:\n%s", got)
 	}
 }
@@ -921,7 +1064,7 @@ func TestUnarchiveReinstatingAnAncestorLeavesACleanTree(t *testing.T) {
 	// that happened to it: its locator changed, and it gained a child back.
 	got := read(t, root, "areas/health/ACTIVITY.md")
 	for _, want := range []string{
-		"Changed **locator** from archive.areas.health to areas.health.",
+		"Changed **locator** from archive.area.health to area.health.",
 		"Unarchived area **training**.",
 	} {
 		if !strings.Contains(got, want) {

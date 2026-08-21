@@ -71,7 +71,7 @@ created = "2026-01-01T08:15:00-08:00"
 func TestEncodeStateIsByteStableAcrossCalls(t *testing.T) {
 	s := truth.State{
 		Name:  "Signups report",
-		Scope: []string{"projects.acme-migration", "areas.growth"},
+		Scope: []string{"project.acme-migration", "area.growth"},
 		Tags:  []string{"growth", "reporting"},
 	}
 
@@ -108,7 +108,7 @@ target = "2000/12000"
 description = "when asked for the weekly signups number"
 tags = ["growth"]
 created = "2026-01-01T08:15:00-08:00"
-scope = ["projects.acme-migration", "areas.growth"]
+scope = ["project.acme-migration", "area.growth"]
 `,
 		"container": `name = "Objectives"
 description = "What acme-migration is trying to move."

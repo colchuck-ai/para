@@ -1,0 +1,262 @@
+package cli_test
+
+import (
+	"encoding/json"
+	"maps"
+	"slices"
+	"strings"
+	"testing"
+)
+
+// TestShowJSONLocatorIsTheDottedAddress is R24/R26's rule for `show --json`:
+// the `locator` key carries the dotted address form, the key itself does
+// not change, and the `kind` key already agrees with it by construction —
+// so no new `noun` key is added.
+func TestShowJSONLocatorIsTheDottedAddress(t *testing.T) {
+	root := plantTree(t, map[string]string{
+		".para/state.toml":                                    "",
+		"projects/.para/state.toml":                           "name = \"Projects\"\n",
+		"projects/acme-migration/.para/state.toml":            "name = \"Acme migration\"\n",
+		".agents/skills/para-signups-report/.para/state.toml": "name = \"Signups report\"\nscope = [\"project.acme-migration\"]\n",
+	})
+
+	code, stdout, stderr := run(t, root, "show", "project", "acme-migration", "--json")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+
+	var got struct {
+		Locator string `json:"locator"`
+		Kind    string `json:"kind"`
+		Skills  []struct {
+			Locator string `json:"locator"`
+			Via     string `json:"via"`
+		} `json:"skills"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshalling %q: %v", stdout, err)
+	}
+	if got.Locator != "project.acme-migration" {
+		t.Errorf("locator = %q, want %q", got.Locator, "project.acme-migration")
+	}
+	if got.Kind != "project" {
+		t.Errorf("kind = %q, want %q, and it should agree with locator's first segment", got.Kind, "project")
+	}
+	if len(got.Skills) != 1 || got.Skills[0].Locator != "skill.signups-report" {
+		t.Errorf("skills = %+v, want one naming skill.signups-report", got.Skills)
+	}
+	if got.Skills[0].Via != "project.acme-migration" {
+		t.Errorf("skills[0].via = %q, want the dotted scope entry that reached it", got.Skills[0].Via)
+	}
+}
+
+// TestShowBucketJSONGetsANounKey is R26's disagreement branch: a bucket is
+// structurally a container (§1.1's furniture, not a thing in its own right),
+// but its address is the bare noun with no chain (R3) — "project", not
+// "container" — so `kind` and `locator`'s own noun disagree, and R26 says
+// that is exactly when a `noun` key is added beside them. Nested containers
+// (`container.acme.objectives`) don't hit this: their own noun already is
+// `container`, which is why the "no new key" default holds everywhere else.
+func TestShowBucketJSONGetsANounKey(t *testing.T) {
+	root := plantTree(t, map[string]string{
+		".para/state.toml":          "",
+		"projects/.para/state.toml": "name = \"Projects\"\n",
+	})
+
+	code, stdout, stderr := run(t, root, "show", "project", "--json")
+	if code != 0 {
+		t.Fatalf("show project --json: exit %d, stderr = %q", code, stderr)
+	}
+
+	var got struct {
+		Locator string `json:"locator"`
+		Kind    string `json:"kind"`
+		Noun    string `json:"noun"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshalling %q: %v", stdout, err)
+	}
+	if got.Kind != "container" {
+		t.Errorf("kind = %q, want %q — a bucket is structurally a container", got.Kind, "container")
+	}
+	if got.Locator != "project" {
+		t.Errorf("locator = %q, want %q — a noun with no chain is the bucket (R3)", got.Locator, "project")
+	}
+	if got.Noun != "project" {
+		t.Errorf("noun = %q, want %q, since kind and locator's own noun disagree here", got.Noun, "project")
+	}
+}
+
+// TestListJSONNeverEmitsAContainerRow documents why `list --json`'s own
+// entityJSON.Noun is never actually populated in practice, unlike
+// `show --json`'s: containers — buckets included — are never rows in
+// `list`'s output (§16.2), so the one entity kind disagreeingNoun ever
+// returns something for never reaches `list`'s JSON at all.
+func TestListJSONNeverEmitsAContainerRow(t *testing.T) {
+	root := plantTree(t, map[string]string{
+		".para/state.toml":          "",
+		"projects/.para/state.toml": "name = \"Projects\"\n",
+	})
+	mustRun(t, root, "add", "project", "acme", "--name", "Acme", "--description", "x")
+
+	code, stdout, stderr := run(t, root, "list", "--json")
+	if code != 0 {
+		t.Fatalf("list --json: exit %d, stderr = %q", code, stderr)
+	}
+	if strings.Contains(stdout, `"container"`) || strings.Contains(stdout, `"noun"`) {
+		t.Errorf("list --json = %s, want no container row and no noun key", stdout)
+	}
+}
+
+// TestShowNestedContainerJSONHasNoNounKey is the other half of R26's
+// disagreement rule: a container nested under a project already has
+// `container` as its own noun, so `kind` and `locator` agree by
+// construction and no `noun` key is added — the case
+// TestShowBucketJSONGetsANounKey's own doc comment names as the reason the
+// "no new key" default holds everywhere except a bucket.
+func TestShowNestedContainerJSONHasNoNounKey(t *testing.T) {
+	root := plantTree(t, map[string]string{
+		".para/state.toml":          "",
+		"projects/.para/state.toml": "name = \"Projects\"\n",
+	})
+	mustRun(t, root, "add", "project", "acme", "--name", "Acme", "--description", "x")
+	mustRun(t, root, "add", "objective", "acme.q1", "--name", "Q1", "--description", "x")
+
+	code, stdout, stderr := run(t, root, "show", "container", "acme.objectives", "--json")
+	if code != 0 {
+		t.Fatalf("show container acme.objectives --json: exit %d, stderr = %q", code, stderr)
+	}
+	if strings.Contains(stdout, `"noun"`) {
+		t.Errorf("output = %s, want no noun key — kind and locator already agree", stdout)
+	}
+	var got struct {
+		Locator string `json:"locator"`
+		Kind    string `json:"kind"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshalling %q: %v", stdout, err)
+	}
+	if got.Locator != "container.acme.objectives" || got.Kind != "container" {
+		t.Errorf("locator/kind = %q/%q, want container.acme.objectives/container", got.Locator, got.Kind)
+	}
+}
+
+// TestListJSONLocatorIsTheDottedAddress is the same rule for `list --json`,
+// whose entities share entityJSON with `show`.
+func TestListJSONLocatorIsTheDottedAddress(t *testing.T) {
+	root := plantTree(t, map[string]string{
+		".para/state.toml":                       "",
+		"areas/.para/state.toml":                 "name = \"Areas\"\n",
+		"areas/health/.para/state.toml":          "name = \"Health\"\n",
+		"areas/health/training/.para/state.toml": "name = \"Training\"\n",
+	})
+
+	code, stdout, stderr := run(t, root, "list", "--json")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+
+	var got struct {
+		Entities []struct {
+			Locator string `json:"locator"`
+			Kind    string `json:"kind"`
+		} `json:"entities"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshalling %q: %v", stdout, err)
+	}
+	want := map[string]string{
+		"area.health":          "area",
+		"area.health.training": "area",
+	}
+	if len(got.Entities) != len(want) {
+		t.Fatalf("entities = %+v, want %d rows", got.Entities, len(want))
+	}
+	for _, e := range got.Entities {
+		if wantKind, ok := want[e.Locator]; !ok || e.Kind != wantKind {
+			t.Errorf("entity %+v not among the expected dotted addresses %v", e, want)
+		}
+	}
+}
+
+// TestListAndShowJSONHaveNoNounKey is P20.5's own check, made positive
+// rather than assumed: R26 says no `noun` key is added because `kind`
+// already carries it, and this asserts that directly against the raw JSON
+// text rather than only against a Go struct that would simply ignore an
+// extra field if one were accidentally added.
+func TestListAndShowJSONHaveNoNounKey(t *testing.T) {
+	root := plantTree(t, map[string]string{
+		".para/state.toml":               "",
+		"projects/.para/state.toml":      "name = \"Projects\"\n",
+		"projects/acme/.para/state.toml": "name = \"Acme\"\n",
+	})
+
+	for _, args := range [][]string{
+		{"show", "project", "acme", "--json"},
+		{"list", "--json"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			code, stdout, stderr := run(t, root, args...)
+			if code != 0 {
+				t.Fatalf("%v: exit %d, stderr = %q", args, code, stderr)
+			}
+			if strings.Contains(stdout, `"noun"`) {
+				t.Errorf("%v output = %s, want no \"noun\" key — kind already carries it (R26)", args, stdout)
+			}
+		})
+	}
+}
+
+// TestListJSONShapeUnaffectedByKindFilter is P20.5's other half: R19's new
+// kind filter narrows which entities `list --json` reports, but must not
+// change the shape of the response around them — the same five top-level
+// keys (§23), with `total`/`shown` reflecting what the filter matched. The
+// key set is checked exactly, against the raw object rather than a Go
+// struct, since a struct would silently ignore an unrelated new key the way
+// `TestListAndShowJSONHaveNoNounKey` deliberately avoids for `noun`.
+func TestListJSONShapeUnaffectedByKindFilter(t *testing.T) {
+	root := plantTree(t, map[string]string{
+		".para/state.toml":               "",
+		"projects/.para/state.toml":      "name = \"Projects\"\n",
+		"projects/acme/.para/state.toml": "name = \"Acme\"\n",
+		"areas/.para/state.toml":         "name = \"Areas\"\n",
+		"areas/health/.para/state.toml":  "name = \"Health\"\n",
+	})
+
+	code, stdout, stderr := run(t, root, "list", "project", "--json")
+	if code != 0 {
+		t.Fatalf("list project --json: exit %d, stderr = %q", code, stderr)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
+		t.Fatalf("unmarshalling %q: %v", stdout, err)
+	}
+	wantKeys := []string{"total", "shown", "hidden", "hidden-statuses", "entities"}
+	if len(raw) != len(wantKeys) {
+		t.Errorf("keys = %v, want exactly %v", slices.Collect(maps.Keys(raw)), wantKeys)
+	}
+	for _, k := range wantKeys {
+		if _, ok := raw[k]; !ok {
+			t.Errorf("keys = %v, missing %q", slices.Collect(maps.Keys(raw)), k)
+		}
+	}
+
+	var got struct {
+		Total    int `json:"total"`
+		Shown    int `json:"shown"`
+		Entities []struct {
+			Locator string `json:"locator"`
+			Kind    string `json:"kind"`
+		} `json:"entities"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("unmarshalling %q: %v", stdout, err)
+	}
+	if got.Total != 1 || got.Shown != 1 {
+		t.Errorf("total/shown = %d/%d, want 1/1 — the area must not appear", got.Total, got.Shown)
+	}
+	if len(got.Entities) != 1 || got.Entities[0].Locator != "project.acme" {
+		t.Errorf("entities = %+v, want exactly project.acme", got.Entities)
+	}
+}

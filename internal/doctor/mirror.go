@@ -74,7 +74,7 @@ func (s *scan) checkRules(skills map[string]bool) error {
 		if !skills[id] {
 			s.add(Finding{
 				Kind: KindOrphanRule, Path: rel,
-				Detail: fmt.Sprintf("is generated from skills.%s, which is gone", id),
+				Detail: fmt.Sprintf("is generated from skill.%s, which is gone", id),
 			})
 		}
 	}
