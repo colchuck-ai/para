@@ -56,6 +56,7 @@ func TestAddStoresTruthInFieldOrder(t *testing.T) {
 description = "Rebuild the consumer."
 status = "planned"
 created = "2026-03-05T17:00:00Z"
+attention = "2026-03-05T17:00:00Z"
 `
 	if got := read(t, root, "projects/acme-migration/.para/state.toml"); got != want {
 		t.Errorf("state.toml =\n%s\nwant\n%s", got, want)
@@ -335,6 +336,7 @@ created = "2026-03-05T17:00:00Z"
 type = "ratio"
 start = "480/9000"
 target = "2000/12000"
+attention = "2026-03-05T17:00:00Z"
 `
 	if got := read(t, root, "projects/acme/objectives/q1/key-results/signups/.para/state.toml"); got != want {
 		t.Errorf("state.toml =\n%s\nwant\n%s", got, want)

@@ -28,8 +28,9 @@ func addSignups(t *testing.T, e *mutate.Env) string {
 	return kr
 }
 
-// TestNoteAppendsAndRewritesActivity: a note writes one line in one journal and
-// re-derives one file (§3.3's exact boundary).
+// TestNoteAppendsAndRewritesActivity: a note writes one line in one journal,
+// re-derives ACTIVITY.md, and — as of §28.4's write-through — caches the
+// attention it just moved into state.toml.
 func TestNoteAppendsAndRewritesActivity(t *testing.T) {
 	root := plantTree(t)
 	e := env(t, root)
@@ -49,6 +50,9 @@ func TestNoteAppendsAndRewritesActivity(t *testing.T) {
 	want := "# Activity\n\n## 2026-03-05\n- Note: swapped the tempo block for intervals.\n- Created.\n"
 	if got := read(t, root, "areas/health/ACTIVITY.md"); got != want {
 		t.Errorf("ACTIVITY.md =\n%q\nwant\n%q", got, want)
+	}
+	if got := read(t, root, "areas/health/.para/state.toml"); !strings.Contains(got, `attention = "2026-03-05T17:00:00Z"`) {
+		t.Errorf("state.toml = %q, want the note's instant cached as attention (§28.4)", got)
 	}
 }
 
@@ -96,10 +100,15 @@ func TestNoteNoAttentionRecordsWithTheFlagSet(t *testing.T) {
 	if !res.NoteRecorded {
 		t.Error("NoteRecorded = false, want true even with --no-attention")
 	}
+	// state.toml was already cached by Add with attention=created; this note
+	// lands at the same instant, so write-through has nothing to rewrite.
 	assertEqual(t, "wrote", res.Wrote, []string{
 		"areas/health/.para/logs/20260305T170000Z.jsonl",
 		"areas/health/ACTIVITY.md",
 	})
+	if got := read(t, root, "areas/health/.para/state.toml"); !strings.Contains(got, `attention = "2026-03-05T17:00:00Z"`) {
+		t.Errorf("state.toml = %q, want attention backfilled to created, not the no-attention note's instant", got)
+	}
 
 	got := read(t, root, "areas/health/.para/logs/20260305T170000Z.jsonl")
 	if !strings.Contains(got, `"no_attention":true`) {
@@ -111,6 +120,42 @@ func TestNoteNoAttentionRecordsWithTheFlagSet(t *testing.T) {
 	want := "# Activity\n\n## 2026-03-05\n- Note: retired the old beads IDs from the ported entries.\n- Created.\n"
 	if got := read(t, root, "areas/health/ACTIVITY.md"); got != want {
 		t.Errorf("ACTIVITY.md =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// TestNoteNoAttentionLeavesAnAlreadyCachedAttentionAlone proves §28.4's
+// write-through does not fold a --no-attention note into the cache just
+// because it is the newest event: a later no-attention note must not move
+// state.toml's attention past the ordinary note that last set it.
+func TestNoteNoAttentionLeavesAnAlreadyCachedAttentionAlone(t *testing.T) {
+	root := plantTree(t)
+	e := env(t, root)
+	if _, err := e.Add(loc(t, "areas.health"), fields("name", "Health", "description", "Staying in one piece.")); err != nil {
+		t.Fatal(err)
+	}
+	// Backdated so both notes below can land after created (this test's fixed
+	// now, 2026-03-05) without being refused as being in the future.
+	if _, err := e.Set(loc(t, "areas.health"), fields("created", "2026-01-01"), ""); err != nil {
+		t.Fatalf("Set created: %v", err)
+	}
+	if _, err := e.Note(loc(t, "areas.health"), "an ordinary note", "2026-03-01", false); err != nil {
+		t.Fatalf("Note: %v", err)
+	}
+
+	// Later than the ordinary note above by `at` — if write-through folded a
+	// --no-attention event into the cache just for being newest, this would
+	// wrongly move attention to 2026-03-04.
+	res, err := e.Note(loc(t, "areas.health"), "retired the old beads IDs", "2026-03-04", true)
+	if err != nil {
+		t.Fatalf("Note: %v", err)
+	}
+	for _, path := range res.Wrote {
+		if strings.HasSuffix(path, "state.toml") {
+			t.Errorf("wrote %v, want state.toml untouched since attention did not move", res.Wrote)
+		}
+	}
+	if got := read(t, root, "areas/health/.para/state.toml"); !strings.Contains(got, `attention = "2026-03-01T08:00:00Z"`) {
+		t.Errorf("state.toml = %q, want attention still at the ordinary note's instant", got)
 	}
 }
 
@@ -180,22 +225,45 @@ func TestMeasureDerivesProgressFromTheBaseline(t *testing.T) {
 	}
 }
 
-// TestMeasureLeavesTruthAlone: §2.3's prose names state.toml and README.md, but
-// a key-result stores no `current` (§2.5), so neither file can have changed and
-// neither is rewritten. What a mutation prints must be what it wrote (§23).
-func TestMeasureLeavesTruthAlone(t *testing.T) {
+// TestMeasureLeavesReadmeAloneButCachesAttention: a key-result stores no
+// `current` in its README frontmatter (§2.5), so that file cannot have
+// changed and is not rewritten. state.toml is the one truth file that does
+// change, as of §28.4's write-through reversal: a measurement is one of the
+// two events that move attention (§3.6), so the reading's own instant is
+// exactly what gets cached.
+func TestMeasureLeavesReadmeAloneButCachesAttention(t *testing.T) {
 	root := plantTree(t)
 	e := env(t, root)
 	kr := addSignups(t, e)
+	// Backdated so the reading (2026-03-03) lands after created and can
+	// actually move attention forward from it — Add's created otherwise
+	// defaults to this test's fixed now (2026-03-05), which the reading may
+	// not follow without being refused as being in the future.
+	if _, err := e.Set(loc(t, kr), fields("created", "2026-01-01"), ""); err != nil {
+		t.Fatalf("Set created: %v", err)
+	}
 	before := snapshot(t, root)
 
-	if _, err := e.Measure(loc(t, kr), "880/11000", "", ""); err != nil {
+	res, err := e.Measure(loc(t, kr), "880/11000", "2026-03-03", "")
+	if err != nil {
 		t.Fatalf("Measure: %v", err)
 	}
 	for _, path := range changedPaths(t, before, snapshot(t, root)) {
-		if strings.HasSuffix(path, "state.toml") || strings.HasSuffix(path, "README.md") {
+		if strings.HasSuffix(path, "README.md") {
 			t.Errorf("a measurement rewrote %s, which carries no derived value", path)
 		}
+	}
+	dir := "projects/acme/objectives/q1-growth/key-results/signups"
+	statePath := dir + "/.para/state.toml"
+	found := false
+	for _, path := range res.Wrote {
+		found = found || path == statePath
+	}
+	if !found {
+		t.Errorf("wrote %v, want %s (§28.4 caches the reading's attention)", res.Wrote, statePath)
+	}
+	if got := read(t, root, statePath); !strings.Contains(got, `attention = "2026-03-03T08:00:00Z"`) {
+		t.Errorf("state.toml = %q, want the reading's own instant cached as attention", got)
 	}
 }
 

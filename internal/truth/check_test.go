@@ -229,6 +229,39 @@ func TestCheckOrderIsTheFieldMatrixOrder(t *testing.T) {
 	}
 }
 
+// TestUnknownStateKeys_AttentionAndSuppressionAreKnown pins §28.4: attention
+// and [suppression] are a legitimate part of state.toml's schema, generated
+// rather than typed, so doctor's `invalid` finding must not flag a
+// suppressed or attention-cached entity's state.toml as carrying stray keys.
+func TestUnknownStateKeys_AttentionAndSuppressionAreKnown(t *testing.T) {
+	data := []byte(`name = "Acme migration"
+attention = "2026-08-20T10:00:00Z"
+
+[suppression]
+until = "2027-03-01"
+note = "paused, resumes with Q1 relaunch"
+`)
+	got, err := truth.UnknownStateKeys(data)
+	if err != nil {
+		t.Fatalf("UnknownStateKeys: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("UnknownStateKeys = %v, want none", got)
+	}
+}
+
+// TestUnknownStateKeys_StillCatchesATypo proves the widened known-key set
+// does not swallow a genuine stray key.
+func TestUnknownStateKeys_StillCatchesATypo(t *testing.T) {
+	got, err := truth.UnknownStateKeys([]byte("name = \"X\"\ndescripton = \"typo\"\n"))
+	if err != nil {
+		t.Fatalf("UnknownStateKeys: %v", err)
+	}
+	if len(got) != 1 || got[0] != "descripton" {
+		t.Errorf("UnknownStateKeys = %v, want [descripton]", got)
+	}
+}
+
 // TestCheckTree covers the root, whose identity lives in tree.toml rather than
 // state.toml (§8.1) and whose required fields are therefore its own.
 func TestCheckTree(t *testing.T) {

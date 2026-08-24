@@ -506,6 +506,8 @@ func eventLine(in In, e journal.Event, rs []reading, style lineStyle) (string, e
 		return style.finish("Note: " + flatten(e.Note)), nil
 	case journal.KindChild:
 		core = childLine(in, e, style)
+	case journal.KindSuppress:
+		core = suppressLine(e)
 	default:
 		return "", paraerr.Newf(paraerr.KindValidation, "unknown journal event kind %q", e.Kind)
 	}
@@ -543,6 +545,18 @@ func measurementLine(e journal.Event, rs []reading) string {
 		core += " (" + percent(r.Decimal, 1) + ")"
 	}
 	return core + " — " + percent(r.Progress, 0) + " of target"
+}
+
+// suppressLine renders §28.2's one event kind for both verbs: `until`
+// non-empty is a suppress, and empty is the unsuppress that clears it — the
+// same fold journal.ActiveSuppression reads, restated as a line rather than
+// a cache. The required reason is not repeated here: it is e.Note, which
+// eventLine's shared " — <note>" suffix already appends after this returns.
+func suppressLine(e journal.Event) string {
+	if e.Value == "" {
+		return "Unsuppressed"
+	}
+	return "Suppressed until " + flatten(e.Value)
 }
 
 // childLine renders a containment event, which is the parent's own event

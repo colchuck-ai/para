@@ -15,7 +15,8 @@ type archivedFlag struct {
 
 // register attaches --archived, unqualified, to a command that accepts it
 // (R7's thirteen: show, list, log, activity, path, doctor, rebuild, review,
-// set, unset, note, move, remove).
+// set, unset, note, move, remove — plus suppress and unsuppress, §28.2,
+// added on the same footing as note once R7 was otherwise settled).
 func (f *archivedFlag) register(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&f.value, "archived", false, "the archived place, not the live one")
 }

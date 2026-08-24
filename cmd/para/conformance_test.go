@@ -143,6 +143,13 @@ var spec26Coverage = map[string]covered{
 	`para log project acme-migration --kind change --limit 3`: {
 		"write.txtar", "exec para log project acme-migration --kind change --limit 3",
 	},
+
+	`para suppress project acme-migration --until 2027-03-01 --note "paused, resumes with Q1 relaunch"`: {
+		"write.txtar", "exec para suppress project acme-migration --until 2027-03-01 --note 'paused, resumes with Q1 relaunch'\ncmp stdout $WORK/want-suppressed.txt",
+	},
+	`para unsuppress project acme-migration --note "relaunch moved up"`: {
+		"write.txtar", "exec para unsuppress project acme-migration --note 'relaunch moved up'\ncmp stdout $WORK/want-unsuppressed.txt",
+	},
 	`para activity project acme-migration --recursive --since 2026-01-01`: {
 		"read.txtar", "exec para activity project acme-migration --recursive --since 2026-01-01\ncmp stdout $WORK/want-activity-recursive.txt",
 	},
@@ -165,6 +172,15 @@ var spec26Coverage = map[string]covered{
 
 	`para review --stale --behind`: {
 		"review.txtar", "exec para review --stale --behind\ncmp stdout $WORK/want-review-stale-behind.txt",
+	},
+	`para review --stale`: {
+		"review.txtar", "exec para review --stale\ncmp stdout $WORK/want-review-stale-suppressed.txt",
+	},
+	`para review --suppressed`: {
+		"review.txtar", "exec para review --suppressed\ncmp stdout $WORK/want-review-suppressed.txt",
+	},
+	`para review --overdue`: {
+		"review.txtar", "exec para review --overdue\nstdout 'key-result\\.acme-migration\\.q1-growth\\.launch\\s+32 days over\\s+due 2026-02-01$'",
 	},
 
 	// §26 runs `para doctor` twice with two different outcomes — the failing scan

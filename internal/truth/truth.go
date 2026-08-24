@@ -35,8 +35,21 @@ import (
 //
 // Absent by construction, and deliberately not fields here: kind, id, parent,
 // and locator, all of which come from the path; and updated, current,
-// progress, pace, derived status, and attention, all of which are computed
-// (§2.5, §8.3).
+// progress, pace, and derived status, all of which are computed (§2.5, §8.3)
+// and never written anywhere.
+//
+// Attention and Suppression are also computed rather than typed, but as of
+// §28.4 they are the exception: present in the file once written, so that
+// review and show can read a cached answer instead of re-scanning the
+// journal. Neither is a kindmeta.Field, which is what keeps them unreachable
+// from set/unset: State.Field/SetField's kindmeta.Field switch has no case
+// for either, so they are addressable only as ordinary Go struct fields, and
+// the only writer that is meant to touch them is the shared
+// attention/suppression derivation a later phase adds (§28.4's "one
+// function") — nothing in this package writes either field itself. An empty
+// Attention or a zero Suppression means "not yet cached," never "false" or
+// "zero" (§28.4) — every read path must fall back to a live journal
+// derivation when it finds either absent.
 type State struct {
 	Name        string
 	Description string
@@ -49,6 +62,22 @@ type State struct {
 	Start       string
 	Target      string
 	Scope       []string
+	Attention   string
+	Suppression Suppression
+}
+
+// Suppression is state.toml's `[suppression]` table (§28.4): the newest
+// suppress event's fields, cached. Until takes due's progressive precision
+// (§15.1) rather than a resolved UTC instant — the same reason `due` itself
+// is stored exactly as typed. The table's presence in the file is the signal
+// (§28.4): the derivation this is meant for never writes one field without
+// the other, so in ordinary use "no active suppression" is exactly "both
+// empty," and the whole table is omitted rather than written with an empty
+// until. EncodeState still preserves either field alone rather than
+// discarding it, for the state a hand-edited file can be decoded into.
+type Suppression struct {
+	Until string
+	Note  string
 }
 
 // Field returns the scalar field named f, or "" if f is a list field or is
@@ -117,8 +146,26 @@ func (s State) List(f kindmeta.Field) []string {
 	}
 }
 
-// EncodeState renders s in §15's field order, omitting every absent field.
-// Two calls over the same State always produce identical bytes (§0.2).
+// stateKeyAttention is state.toml's cached-clock key (§28.4), written after
+// every §15 field and before the [suppression] table — the same position
+// §28.4's worked example shows it in, since it is generated into the same
+// file the typed fields live in rather than a projection of its own.
+const stateKeyAttention = "attention"
+
+// suppressionTableKey and its two members are §28.4's `[suppression]` table.
+// ptoml.Encode's Field.Key writes a literal dotted path rather than a TOML
+// table header, so EncodeState composes the header by hand around a second
+// ptoml.Encode call for the table's own two keys — the header itself carries
+// no value ptoml's Field/Value grammar can express.
+const (
+	suppressionTableKey = "suppression"
+	suppressionKeyUntil = "until"
+	suppressionKeyNote  = "note"
+)
+
+// EncodeState renders s in §15's field order, omitting every absent field,
+// followed by attention and [suppression] (§28.4) when either is cached. Two
+// calls over the same State always produce identical bytes (§0.2).
 func EncodeState(s State) ([]byte, error) {
 	var fields []ptoml.Field
 	for _, f := range kindmeta.AllFields() {
@@ -133,12 +180,48 @@ func EncodeState(s State) ([]byte, error) {
 			}
 		}
 	}
-	return ptoml.Encode(fields)
+	if s.Attention != "" {
+		fields = append(fields, ptoml.Field{Key: stateKeyAttention, Value: ptoml.String(s.Attention)})
+	}
+	data, err := ptoml.Encode(fields)
+	if err != nil {
+		return nil, err
+	}
+
+	// Presence of the table is the signal (§28.4): the derivation step never
+	// writes one field without the other, so in the state every caller of
+	// this function actually produces, "no active suppression" and "neither
+	// field set" are the same thing. But EncodeState's own contract is to
+	// lose nothing it is handed (§19's "nothing is corrupted and nothing is
+	// lost" holds for every truth file, including one read back after a hand
+	// edit): a State carrying a Note with no Until — reachable only by
+	// decoding a hand-edited state.toml — still round-trips its Note rather
+	// than silently discarding it the next time anything rewrites the file.
+	if s.Suppression.Until == "" && s.Suppression.Note == "" {
+		return data, nil
+	}
+	var tableFields []ptoml.Field
+	if s.Suppression.Until != "" {
+		tableFields = append(tableFields, ptoml.Field{Key: suppressionKeyUntil, Value: ptoml.String(s.Suppression.Until)})
+	}
+	if s.Suppression.Note != "" {
+		tableFields = append(tableFields, ptoml.Field{Key: suppressionKeyNote, Value: ptoml.String(s.Suppression.Note)})
+	}
+	table, err := ptoml.Encode(tableFields)
+	if err != nil {
+		return nil, err
+	}
+	data = append(data, []byte("\n["+suppressionTableKey+"]\n")...)
+	data = append(data, table...)
+	return data, nil
 }
 
 // DecodeState parses one .para/state.toml. Keys para does not recognise are
 // ignored rather than rejected: an unknown key is doctor's `invalid` finding
-// to report (§10), not a reason for every read of the file to fail.
+// to report (§10), not a reason for every read of the file to fail. A
+// state.toml written before §28 has neither `attention` nor `[suppression]`
+// at all, and that decodes to State's zero value for both — "not yet
+// cached," which every caller must read as, never as false or zero (§28.4).
 func DecodeState(data []byte) (State, error) {
 	doc, err := ptoml.Decode(data)
 	if err != nil {
@@ -156,6 +239,15 @@ func DecodeState(data []byte) (State, error) {
 				s.SetField(f, v)
 			}
 		}
+	}
+	if v, ok := doc.String(stateKeyAttention); ok {
+		s.Attention = v
+	}
+	if v, ok := doc.String(suppressionTableKey + "." + suppressionKeyUntil); ok {
+		s.Suppression.Until = v
+	}
+	if v, ok := doc.String(suppressionTableKey + "." + suppressionKeyNote); ok {
+		s.Suppression.Note = v
 	}
 	return s, nil
 }

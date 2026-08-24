@@ -437,9 +437,11 @@ anything, `doctor` would have reported `stale-projection` first.
 
 ### 2.5 What is never stored
 
-Derived at read time, always, because a stored copy rots with no event having occurred:
+Derived at read time, always, because a stored copy rots with no event having occurred — with the one
+exception §28 makes, and makes safe:
 
-- `updated`, `attention` (§3.6), and anything else clock-dependent;
+- `updated`, and anything else clock-dependent — `attention` was here through v4's settling and moved
+  out under §28, which is the only entry this list has ever lost;
 - a key-result's `current`, `progress`, `pace`, and derived status (§4);
 - effective status and archival dormancy, which are ancestor-dependent (§1.6, §1.7);
 - roll-ups of any kind: descendant counts, subtree activity, aggregate progress;
@@ -447,7 +449,10 @@ Derived at read time, always, because a stored copy rots with no event having oc
 
 Note the asymmetry with §2.2 and be clear about it: `MEASUREMENTS.csv` *does* contain derived columns,
 and `ACTIVITY.md` *does* contain a rendered summary. Those are projections — files whose only job is
-to be read by something that will not compute. Truth files contain none of it.
+to be read by something that will not compute. Truth files contain none of it, with the same one
+exception: `attention` and `[suppression]` (§28) are computed, cached in `state.toml`, and held to the
+same "one function computes it, `doctor` checks it" discipline a projection gets — the file just holds
+both a truth part and a generated part now, the way `README.md` always has (§2.1).
 
 ---
 
@@ -615,6 +620,13 @@ Two threshold knobs, still:
 
 Gone and staying gone: `blocked-after`, `at-risk-after`, `log-sla`, `sla-reset-at`,
 `status-changed-at`, and all three of v1's stored clocks.
+
+As of §28, the *rule* above is still the whole rule — nothing about how `attention` is computed
+changes. What changes is that the answer is now written into `state.toml` on every mutation able to
+move it, with `doctor` checking the cached value against a fresh derivation rather than trusting it
+unconditionally. That is not one of the stored clocks this paragraph just buried: those were
+maintained by logic separate from the fold above and could drift from it silently. This one has no
+second implementation to drift from — see §28.4.
 
 ---
 
@@ -1067,8 +1079,13 @@ takes the dotted stored form §1.4 defines, the same as every other place an add
 token.
 
 **Absent by construction**: `kind`, `id`, `parent`, `locator` — all in the path; `updated`,
-`current`, `progress`, `pace`, derived status, `attention` — all read from the journal or computed.
-An area's or resource's `archived` — that is the path too (§1.6).
+`current`, `progress`, derived status — all read from the journal or computed, and none of them
+cached here. An area's or resource's `archived` — that is the path too (§1.6).
+
+**Present despite being computed**: `attention` and an entity's `[suppression]` table, if it has one
+(§28). Both are written here by the same derivation that answers `review`'s and `show`'s questions,
+never by `set`, and both are exactly as hand-editable as anything else in this file — which is to say,
+legal, and pointless the moment the next mutation or a `rebuild` overwrites them (§19).
 
 ### 8.4 Uniform filenames, and the kind in exactly one place
 
@@ -1179,6 +1196,11 @@ fidelity**: every generated file is re-derived in memory from truth and compared
 `ACTIVITY.md` re-derived from *every* journal file backing it rather than only the newest. Write-through
 guarantees today; this check is what guarantees every day before it (§3.5). Its report names the file
 and, for `ACTIVITY.md`, the earliest day that differs — so drift is dated rather than merely detected.
+
+As of §28, the same finding also covers `state.toml`'s computed fields — `attention` and
+`[suppression]` — compared against the same derivation the entity's own `state.toml` write and
+`review`/`show` all call. This is the same partial-file comparison `README.md`'s frontmatter already
+gets, not a new mechanism: a file can be truth in one part and checked like a projection in another.
 
 **Advisory** — your filing is loose.
 
@@ -1325,9 +1347,10 @@ output declares itself in-band rather than via a manifest.
 
 ## 13. The verb set
 
-Nineteen commands, twenty-two shapes counting `config`'s four. Every one of them is derived from the
+Twenty-one commands, twenty-four shapes counting `config`'s four. Every one of them is derived from the
 model above rather than inherited: where a v2 verb survives, it survives because §1–§10 still needs
-it, and where it does not, §13.1 says what deleted it.
+it, and where it does not, §13.1 says what deleted it. `suppress`/`unsuppress` (§28) are the two added
+after v4 was otherwise settled.
 
 `<noun>` is one of §1.4's seven; `<chain>` is an id-chain, and it is *short* — the noun carries the
 container segments, so the chain is not the whole path (§1.4).
@@ -1346,9 +1369,11 @@ container segments, so the chain is not the whole path (§1.4).
 | `unarchive` | `para unarchive <noun> <chain>` |
 | `note` | `para note <noun> <chain> "text" [--at …]` |
 | `measure` | `para measure <chain> <value> [--at …] [--note …]` |
+| `suppress` | `para suppress <noun> <chain> --until <date> --note "…"` |
+| `unsuppress` | `para unsuppress <noun> <chain> --note "…"` |
 | `log` | `para log <noun> [<chain>] [--kind …] [--limit n] [--reverse]` |
 | `activity` | `para activity [<noun> [<chain>]] [--recursive] [--since …]` |
-| `review` | `para review [<noun> [<chain>]] [--stale｜--blocked｜--overdue｜--behind｜--skills]` |
+| `review` | `para review [<noun> [<chain>]] [--stale｜--blocked｜--overdue｜--behind｜--skills｜--suppressed]` |
 | `rebuild` | `para rebuild [<noun> [<chain>]] [--dry-run]` |
 | `path` | `para path <noun> [<chain>]` |
 | `doctor` | `para doctor [<noun> [<chain>]]` |
@@ -1882,6 +1907,27 @@ neither of which ever moved the clock, so `--no-attention` is `note`'s alone to 
 Correcting a past event is appending a corrected one, or editing that one line of the journal by hand
 and running `rebuild`. There are no log-entry verbs, no entry ids to pass, and no re-timing flag.
 
+### 18.7 `suppress` and `unsuppress`
+
+```bash
+para suppress project acme-migration --until 2027-03-01 --note "paused, resumes with Q1 relaunch"
+para unsuppress project acme-migration --note "relaunch moved up"
+```
+
+Added after v4 was otherwise settled; full rationale in §28. Mechanically:
+
+- **`--note` required on both, `--until` required on `suppress`.** Same rule as `blocked` (§18.2):
+  a suppression with no recorded reason is worthless in six months.
+- **`--until` takes `due`'s precision** (§15.1) — a bare year or year-month is a legal answer.
+- One journal event kind, `suppress`. `unsuppress` appends the same kind with `until` empty; state
+  folds to the newest event, so there is nothing to delete and no second kind to define.
+- **Neither moves `attention`.** A suppression is a fact about whether a signal fires, not an
+  attending event — folding the two together would reopen the hole `change` events were excluded
+  from `attention` to close (§3.6).
+- **No `--dry-run`.** Like `note`, `set`, and `measure`, this writes inside one entity's `.para/` and
+  needs no rehearsal (§19).
+- Legal on every addressable kind (§1.4), ungated by §15's field matrix — the same as `note`.
+
 ---
 
 ## 19. Safety
@@ -1891,11 +1937,15 @@ and running `rebuild`. There are no log-entry verbs, no entry ids to pass, and n
   `.para/` and needs no rehearsal.
 - **`remove` confirms interactively**, naming what will be deleted; `--force` skips it. It is the only
   interactive prompt in the surface.
-- **`--note` required for `blocked`** (§18.2).
+- **`--note` required for `blocked`** (§18.2), **and for `suppress`/`unsuppress`, which also requires
+  `--until`** (§18.7, §28).
 - **Hand-editing truth is legal.** `state.toml` and the journals are yours to edit; they are truth, not
   projections. What you get is stale projections, which `doctor` reports as `stale-projection` and
   `rebuild` repairs. Nothing is corrupted and nothing is lost — which is the property that makes the
-  whole write-through design safe to live in.
+  whole write-through design safe to live in. As of §28, `state.toml`'s `attention` and `[suppression]`
+  fields are the one part of it that is computed rather than typed: hand-editing them is still not an
+  error, but it is pointless in the same way hand-editing `ACTIVITY.md` is — the next mutation or
+  `rebuild` overwrites it, and `doctor` reports the mismatch as `stale-projection` in the meantime.
 - **Hand-editing a projection is not an error either**, just pointless: the next mutation or `rebuild`
   overwrites it. `doctor` tells you before that happens.
 
@@ -1904,19 +1954,22 @@ and running `rebuild`. There are no log-entry verbs, no entry ids to pass, and n
 ## 20. `review`
 
 ```
-para review [<noun> [<chain>]] [--stale | --blocked | --overdue | --behind | --skills]
+para review [<noun> [<chain>]] [--stale | --blocked | --overdue | --behind | --skills | --suppressed]
 ```
 
 | Group | Fires when |
 | --- | --- |
-| `--stale` | no `note` or `measurement` within `stale-after` (§3.6) |
-| `--blocked` | `status` is `blocked`. **No timer** — blocked is always listed |
-| `--overdue` | open and past `due` |
+| `--stale` | no `note` or `measurement` within `stale-after` (§3.6), **and no unexpired suppression** (§28) |
+| `--blocked` | `status` is `blocked`. **No timer** — blocked is always listed, suppression or not |
+| `--overdue` | open and past `due`, suppression or not |
 | `--behind` | a key-result whose pace is below `at-risk-pace` |
-| `--skills` | a skill untouched for longer than its `review.cadence` |
+| `--skills` | a skill untouched for longer than its `review.cadence`, **and no unexpired suppression** (§28) |
+| `--suppressed` | an unexpired suppression, sorted by `until`, soonest first (§28) |
 
-Grouped by reason, ordered within a group by distance past the threshold. Takes `--limit`, not
-`--sort` — the ordering is the point. Terminal items and archived things are excluded unless `--all`.
+Grouped by reason, ordered within a group by distance past the threshold — **`--suppressed` is the one
+exception, ordered by distance *to* `until` instead, soonest first, because "what's coming off the
+shelf" is the question that group exists to answer** (§28). Takes `--limit`, not `--sort` — the
+ordering is the point. Terminal items and archived things are excluded unless `--all`.
 
 **Every row names what set `attention`** — `note` or `measurement`, and a note's own text truncated to a
 recognisable length — so a reader can tell a threshold's clock apart from the elapsed count without
@@ -1930,9 +1983,12 @@ full next to its own `days ago`.
 - **Skills are reached by `--skills` and nothing else.** A skill has an `attention` (§3.6) but no
   `status` and no `due`, so it can only ever be stale — and its threshold is `review.cadence`, not
   `stale-after`. Putting it in `--stale` would mean one group reading two different knobs.
+- **`--suppressed` covers anything `suppress` can reach**, entities and skills alike (§28) — it is not
+  restricted to what `--stale` covers, because a suppression is legal on anything with an `attention`,
+  which is every kind except a container.
 - **Containers never appear in any group.** They carry no status, no due date, and an `attention` that
-  is always `created` (§3.6). A row you can neither act on nor set is the same noise §16.2 keeps out of
-  `list`.
+  is always `created` (§3.6), so a suppression on one would have nothing to suppress. A row you can
+  neither act on nor set is the same noise §16.2 keeps out of `list`.
 
 **Always exits 0.** Having work is not a failure, and a command that fails whenever you have work is a
 command you stop running. `doctor` is where the gate belongs.
@@ -1951,9 +2007,11 @@ has touched in a year is either load-bearing and worth re-reading, or dead and w
 para rebuild [<noun> [<chain>]] [--dry-run]
 ```
 
-Regenerates every projection under the address — the whole tree by default — from `state.toml`,
-`tree.toml`, and the journals. Idempotent, and it never reads a projection to produce one (§2.4).
-`--dry-run` lists what would change without writing.
+Regenerates every projection under the address — the whole tree by default — from `state.toml`'s input
+fields, `tree.toml`, and the journals. Idempotent, and it never reads a projection to produce one
+(§2.4). As of §28, that includes rewriting `state.toml`'s own `attention` and `[suppression]` fields
+from the same derivation — the one part of `rebuild`'s output that lands back in a truth file rather
+than a projection. `--dry-run` lists what would change without writing.
 
 `ACTIVITY.md` is re-derived **in full**, from every rotated journal file, which is the one thing
 write-through never does (§3.5).
@@ -2287,6 +2345,43 @@ clean
 exit 0
 ```
 
+### `para suppress` / `unsuppress` (§28)
+
+```
+$ para suppress project acme-migration --until 2027-03-01 --note "paused, resumes with Q1 relaunch"
+suppressed  project.acme-migration  until 2027-03-01
+
+$ para review --stale
+stale (2)
+  area.fitness.training                          61 days   stale-after 30 days
+  …
+  (project.acme-migration excluded — suppressed until 2027-03-01)
+
+$ para review --suppressed
+suppressed (1)
+  project.acme-migration    until 2027-03-01   paused, resumes with Q1 relaunch
+
+$ para review --overdue
+overdue (1)
+  project.acme-migration    14 days past due   (suppression does not apply here)
+
+$ cat projects/acme-migration/.para/state.toml
+name       = "Acme migration"
+status     = "in-progress"
+priority   = "high"
+due        = "2026-09-30"
+tags       = ["kafka", "consumer"]
+created    = "2026-01-01T16:15:00Z"
+attention  = "2026-08-20T10:00:00Z"
+
+[suppression]
+until = "2027-03-01"
+note  = "paused, resumes with Q1 relaunch"
+
+$ para unsuppress project acme-migration --note "relaunch moved up"
+unsuppressed  project.acme-migration
+```
+
 ### `para config`
 
 ```
@@ -2323,3 +2418,136 @@ Nothing structural. What remains is implementation-shaped:
 - ADR 0001 is superseded by ADR 0003 (§9's no-git-invocation posture keeps its conclusion — no merge
   driver, resolve truth then `rebuild` — and discards its premise). ADR 0002 carries an amendment noting
   it now governs `list`.
+
+---
+
+## 28. Suppression
+
+Added after v4 was declared structurally settled (§11, §27). Recorded as its own section, touching
+§2.5, §3.6, §8.3, §10, §13, §18, §19, §20, and §21.1 by reference rather than folded into them
+silently, because it reverses one of them and that is worth being able to find later.
+
+### 28.1 The problem
+
+`stale-after` (§3.6) has no way to tell "neglected" apart from "deliberately dormant." A project whose
+relaunch was pushed a quarter out is neither, but `review --stale` cannot see the difference — the
+only levers that move `attention` are `note` and `measure`, and both mean something true happened. A
+note whose only purpose is to move the clock is dishonest, and writing one every week is exactly the
+toil `review` exists to eliminate, not to create.
+
+`due` is deliberately excluded from `attention` (§3.6) for the opposite reason: letting it count would
+let any `set --due` buy silence from every check, on every entity, forever. Suppression has to solve
+the first problem without reopening the second.
+
+### 28.2 `suppress` and `unsuppress`
+
+Full command shape in §13 and §18.7. In outline: two verbs shaped like `note`/`measure` rather than
+`set`, because a suppression is an event, not a field. `--note` is required on both, the same rule
+§18.2 already applies to `blocked`; `--until` is required on `suppress` and takes `due`'s precision
+(§15.1). One journal event kind, `suppress`; `unsuppress` is the same kind with `until` empty, since
+state folds to the newest event exactly as `attention` already does (§3.6) — there is no second kind
+and no delete-style operation to define. Neither verb moves `attention`: suppression and attention are
+independent facts, and letting one imply the other would reopen the hole `change` events were excluded
+from `attention` to close.
+
+### 28.3 What it changes in `review`
+
+Full table in §20. In outline: `--stale` and `--skills` — the two groups whose entire premise is
+"nothing happened recently" — exclude an entity with an unexpired suppression, because that premise is
+the one thing a suppression honestly asserts is false. `--blocked`, `--overdue`, and `--behind` are
+untouched: a suppressed project that is also overdue still appears under `--overdue`, timer-free and
+unhidden, exactly as §1.7 already promised a blown deadline would be. Suppression is a statement about
+activity, not about whether something needs attention for some other reason, and folding it into every
+group would let it hide the one thing this design has never let anything hide.
+
+No return event: when `until` passes, the entity re-enters `--stale`/`--skills` through the ordinary
+threshold check, the same one it would have hit regardless — not a one-time "suppression lapsed" row.
+Simpler, and it treats suppression as a fact about the past rather than a standing arrangement that
+needs its own closing event.
+
+### 28.4 `state.toml` gains a materialized field and a materialized table
+
+```toml
+# projects/acme-migration/.para/state.toml
+name       = "Acme migration"
+status     = "in-progress"
+priority   = "high"
+due        = "2026-09-30"
+tags       = ["kafka", "consumer"]
+created    = "2026-01-01T16:15:00Z"
+attention  = "2026-08-20T10:00:00Z"
+
+[suppression]
+until = "2027-03-01"
+note  = "paused, resumes with Q1 relaunch"
+```
+
+This reverses §2.5 and §8.3, which name `attention` explicitly as never stored, and it is worth being
+exact about what changes and what does not.
+
+**What does not change**: `attention`'s definition (§3.6) is untouched — still the newest `note` or
+`measurement` that counts, else `created`. There is still no `para set … --attention`; `state.toml` is
+still not where you *set* it. What changes is where the answer to "what is it right now" lives once
+computed, not how it is computed.
+
+**Why now, having held this line through v1 and v2's stored-clock failures** (§3.6's "gone and staying
+gone" list — `blocked-after`, `at-risk-after`, `sla-reset-at`, `status-changed-at`): those clocks were
+stored *instead of* being derived from the journal, maintained by write-time logic separate from
+whatever derived the live value, with nothing to catch the two drifting apart. That is the failure this
+must not repeat, and it is avoided by a narrower rule than "cache what is convenient":
+
+> **One function computes a derived value. It is called to write `state.toml`, and it is the only
+> function `doctor` calls to check `state.toml`.** There is no second implementation of "what is
+> `attention` right now" anywhere, so there is nothing for the write path and the check path to
+> disagree about.
+
+That rule is not new — it is §2.3's write-through invariant and §2.4's `rebuild` guarantee, applied to
+a truth file instead of only to projections, for the first time. `state.toml` was pure input because
+everything in it was something you typed; `attention` and `[suppression]` are the first fields in it
+that para writes to itself, on every mutation, from the same derivation `review` and `show` already
+trust — and the reason it is worth doing at all is that `review` walking every entity in the tree was
+paying a full journal scan per entity, per run, to answer a question whose answer had not changed since
+the last time it was asked.
+
+The precedent already exists one layer up: `README.md`'s frontmatter is generated and doctor-checked
+while its body is yours (§2.1) — one file, two regimes, decided by who writes which part rather than by
+the file's name. `state.toml` now works the same way: the fields you set are truth, unconditionally;
+`attention` and `[suppression]` are generated, in the same sense frontmatter is, just generated into the
+truth file instead of into a projection.
+
+**A `state.toml` written before §28 has neither key at all**, and that has to be a fact the reader
+handles, not an upgrade step every existing tree is required to run first. **Absence means
+"not yet cached," never "false" or "zero."** Every read path falls back exactly as every read path
+always has — compute `attention` (and any suppression) live from the journal — so a pre-§28 tree
+answers every question correctly from the moment the binary is upgraded, before anything has written
+a byte. Two things then backfill the cache, neither of them required before reads are trusted:
+**opportunistically**, the moment an entity is next mutated, write-through computes and writes the
+field per the rule above, same as any other entity from then on; **in bulk**, `para rebuild` computes
+and writes it for everything at once, which is not a new job for `rebuild` — "a new para version
+renders a template differently" (§2.4) already names exactly this shape of problem. `doctor`'s
+`stale-projection` finding (§10) reports a missing field the same way it reports a wrong one: "differs
+from what would be written now" already covers "isn't there."
+
+`§19` ("hand-editing truth is legal") gets the same caveat frontmatter already has: hand-editing
+`name`, `status`, `due`, and every other input field is still unconditionally legal, because it is
+still truth. Hand-editing `attention` or `[suppression]` is not an error either — nothing in
+`state.toml` ever is — but it is pointless in exactly the way hand-editing `ACTIVITY.md` is: the next
+mutation, or `rebuild`, overwrites it with what the journal actually says, and `doctor`'s
+`stale-projection` finding (§10) reports the mismatch in the meantime, extended to cover this one part
+of a truth file rather than replaced by a new finding class.
+
+### 28.5 Naming
+
+Considered and set aside: `shelve` — evocative, but implies the whole entity is set aside, when
+`--blocked`/`--overdue` deliberately keep firing underneath it. `mute` / `snooze` — the right shape,
+but this tool's existing vocabulary (`stale-after`, `attention`, `terminal`) is precise rather than
+casual, and `snooze` specifically undersells a suppression that can legitimately run a quarter long.
+`defer` — collides with an unrelated existing meaning ("defer this work, push the date") in the same
+toolchain this project sits alongside; reusing it here would suggest it also moves `due`, which it does
+not and must not (§28.1). `suppress` names the mechanism rather than implying a change to the entity
+itself, which matches what actually happens: nothing about the entity changes, only whether one
+specific class of signal fires.
+
+The record it produces is `suppression`, a noun, not `suppressed`, an adjective: `[suppression]` holds
+two attributes (`until`, `note`), which reads as a small record rather than a flag — the same
+relationship `note`-the-verb has to `note`-the-thing it produces.

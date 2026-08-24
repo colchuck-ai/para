@@ -1,4 +1,4 @@
-// Package review implements design §20: the five groups, what each of them can
+// Package review implements design §20: the six groups, what each of them can
 // contain, and the ordering within a group.
 //
 // It is a classifier over the read side and nothing more. Every value it tests
@@ -17,6 +17,7 @@ package review
 import (
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
@@ -24,7 +25,7 @@ import (
 	"github.com/colchuck-ai/para/internal/view"
 )
 
-// Group is one of §20's five reasons something is worth looking at.
+// Group is one of §20's six reasons something is worth looking at.
 type Group string
 
 const (
@@ -38,12 +39,15 @@ const (
 	GroupBehind Group = "behind"
 	// GroupSkills is a skill untouched for longer than its `review.cadence`.
 	GroupSkills Group = "skills"
+	// GroupSuppressed is an unexpired suppression (§28), sorted soonest-until-first.
+	GroupSuppressed Group = "suppressed"
 )
 
 // groups is §20's table order, which is the order sections print. It is
 // declared once because it is not an implementation detail: it runs from what
-// has gone quiet to what has gone wrong to what nobody has read in a year.
-var groups = []Group{GroupStale, GroupBlocked, GroupOverdue, GroupBehind, GroupSkills}
+// has gone quiet to what has gone wrong to what nobody has read in a year,
+// with suppressions last as the forward-looking exception.
+var groups = []Group{GroupStale, GroupBlocked, GroupOverdue, GroupBehind, GroupSkills, GroupSuppressed}
 
 // Groups returns every group, in §20's order.
 func Groups() []Group { return slices.Clone(groups) }
@@ -54,7 +58,7 @@ type Options struct {
 	// it names. The empty locator is the whole tree.
 	Scope locator.Locator
 
-	// Only selects the groups to run. Empty runs all five, which is what a bare
+	// Only selects the groups to run. Empty runs all six, which is what a bare
 	// `para review` asks: the flags name a subset, and naming none of them is
 	// not the same as naming an empty one.
 	Only []Group
@@ -180,7 +184,11 @@ func Run(env *view.Env, opts Options) (Result, error) {
 		if len(items) == 0 {
 			continue
 		}
-		order(items)
+		if g == GroupSuppressed {
+			orderSuppressed(items)
+		} else {
+			order(items)
+		}
 		total := len(items)
 		if opts.Limit > 0 && total > opts.Limit {
 			items = items[:opts.Limit]
@@ -192,7 +200,7 @@ func Run(env *view.Env, opts Options) (Result, error) {
 	return out, nil
 }
 
-// selected turns Options.Only into a set, treating empty as all five.
+// selected turns Options.Only into a set, treating empty as all six.
 func selected(only []Group) map[Group]bool {
 	out := map[Group]bool{}
 	if len(only) == 0 {
@@ -242,6 +250,8 @@ func classify(env *view.Env, ent view.Entity, g Group) (Item, bool, error) {
 		return overdueItem(env, ent)
 	case GroupBehind:
 		return behindItem(env, ent)
+	case GroupSuppressed:
+		return suppressedItem(env, ent)
 	default:
 		return Item{}, false, nil
 	}
@@ -255,6 +265,9 @@ func classify(env *view.Env, ent view.Entity, g Group) (Item, bool, error) {
 // outright — "unset everywhere means the check never fires" — and the reason
 // the three thresholds deliberately have no built-in default.
 func staleItem(env *view.Env, ent view.Entity) (Item, bool, error) {
+	if suppressed(env, ent) {
+		return Item{}, false, nil
+	}
 	th, stale, err := env.Stale(ent)
 	if err != nil || !stale {
 		return Item{}, false, err
@@ -317,6 +330,60 @@ func behindItem(env *view.Env, ent view.Entity) (Item, bool, error) {
 		return Item{}, false, nil
 	}
 	return Item{Entity: ent, Threshold: th, Over: th.Value - kr.Outlook.Pace}, true, nil
+}
+
+// suppressedItem is §20's sixth row and §28's read-path payoff: every entity
+// or skill with an unexpired suppression, read via view.ActiveSuppression.
+// Containers never qualify — a suppression on one would have nothing to
+// suppress (§20).
+func suppressedItem(env *view.Env, ent view.Entity) (Item, bool, error) {
+	if ent.Kind == kindmeta.KindContainer {
+		return Item{}, false, nil
+	}
+	end, ok := activeSuppressionUntil(env, ent)
+	if !ok {
+		return Item{}, false, nil
+	}
+	days := env.DaysUntil(end)
+	return Item{
+		Entity: ent,
+		Threshold: view.Threshold{
+			Key:   "suppression.until",
+			Value: float64(days),
+			Found: true,
+		},
+		Days:    days,
+		HasDays: true,
+		Over:    float64(days),
+	}, true, nil
+}
+
+// suppressed reports whether ent carries an unexpired suppression, via the
+// same view.ActiveSuppression fold staleItem and the skills path exclude.
+func suppressed(env *view.Env, ent view.Entity) bool {
+	_, ok := activeSuppressionUntil(env, ent)
+	return ok
+}
+
+// activeSuppressionUntil is the unexpired half of §28.2's fold, delegated to
+// view.ActiveSuppression so show and review share one read-path implementation.
+func activeSuppressionUntil(env *view.Env, ent view.Entity) (time.Time, bool) {
+	_, _, end, ok := env.ActiveSuppression(ent)
+	return end, ok
+}
+
+// orderSuppressed is §20's exception: soonest-until-first, because "what's
+// coming off the shelf" is the question that group exists to answer (§28).
+func orderSuppressed(items []Item) {
+	slices.SortStableFunc(items, func(a, b Item) int {
+		switch {
+		case a.Over < b.Over:
+			return -1
+		case a.Over > b.Over:
+			return 1
+		}
+		return strings.Compare(a.Entity.Locator.String(), b.Entity.Locator.String())
+	})
 }
 
 // order is §20's "ordered within a group by distance past the threshold":

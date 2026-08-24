@@ -68,8 +68,9 @@ func (e *Env) Measure(loc locator.Locator, value, at, note string) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
+	writeState := e.writeThroughCache(subj, prior, events)
 
-	wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil, false)
+	wrote, err := apply(e, []*plan{{subj: subj, events: events, writeState: writeState}}, nil, false)
 	return Result{Locator: loc, Kind: subj.kind, Wrote: wrote, Measured: measured}, err
 }
 

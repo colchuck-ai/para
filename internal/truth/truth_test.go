@@ -3,6 +3,7 @@ package truth_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/colchuck-ai/para/internal/kindmeta"
@@ -68,6 +69,122 @@ created = "2026-01-01T08:15:00-08:00"
 	}
 }
 
+// TestEncodeStateWritesAttentionAndSuppression pins §28.4's worked example
+// shape: attention lands after every §15 field, and [suppression] is a
+// separate table after a blank line.
+func TestEncodeStateWritesAttentionAndSuppression(t *testing.T) {
+	s := truth.State{
+		Name:      "Acme migration",
+		Status:    "in-progress",
+		Priority:  "high",
+		Due:       "2026-09-30",
+		Tags:      []string{"kafka", "consumer"},
+		Created:   "2026-01-01T16:15:00Z",
+		Attention: "2026-08-20T10:00:00Z",
+		Suppression: truth.Suppression{
+			Until: "2027-03-01",
+			Note:  "paused, resumes with Q1 relaunch",
+		},
+	}
+
+	got, err := truth.EncodeState(s)
+	if err != nil {
+		t.Fatalf("EncodeState: %v", err)
+	}
+
+	want := `name = "Acme migration"
+status = "in-progress"
+priority = "high"
+due = "2026-09-30"
+tags = ["kafka", "consumer"]
+created = "2026-01-01T16:15:00Z"
+attention = "2026-08-20T10:00:00Z"
+
+[suppression]
+until = "2027-03-01"
+note = "paused, resumes with Q1 relaunch"
+`
+	if string(got) != want {
+		t.Errorf("EncodeState =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestEncodeStateOmitsSuppressionWithEmptyUntil pins §28.4's "presence of the
+// table is the signal": an unsuppressed entity (or one never suppressed)
+// writes no [suppression] table at all, never one with an empty until.
+func TestEncodeStateOmitsSuppressionWithEmptyUntil(t *testing.T) {
+	s := truth.State{Name: "Acme migration", Attention: "2026-08-20T10:00:00Z"}
+
+	got, err := truth.EncodeState(s)
+	if err != nil {
+		t.Fatalf("EncodeState: %v", err)
+	}
+	if strings.Contains(string(got), "suppression") {
+		t.Errorf("EncodeState wrote a [suppression] table with no active suppression: %s", got)
+	}
+}
+
+// TestEncodeStateDoesNotDropAnOrphanedSuppressionNote is a data-loss
+// regression: a hand-edited state.toml can decode to a Suppression with a
+// Note but no Until (or vice versa), a shape the write-through derivation
+// never produces but EncodeState must not silently discard the next time
+// anything rewrites the file (§19: hand-editing truth is legal, and nothing
+// in it is ever corrupted or lost).
+func TestEncodeStateDoesNotDropAnOrphanedSuppressionNote(t *testing.T) {
+	s := truth.State{Name: "Acme migration", Suppression: truth.Suppression{Note: "orphaned note, no until"}}
+
+	got, err := truth.EncodeState(s)
+	if err != nil {
+		t.Fatalf("EncodeState: %v", err)
+	}
+	want := "name = \"Acme migration\"\n\n[suppression]\nnote = \"orphaned note, no until\"\n"
+	if string(got) != want {
+		t.Errorf("EncodeState =\n%s\nwant\n%s", got, want)
+	}
+
+	back, err := truth.DecodeState(got)
+	if err != nil {
+		t.Fatalf("DecodeState: %v", err)
+	}
+	if back.Suppression.Note != "orphaned note, no until" || back.Suppression.Until != "" {
+		t.Errorf("round trip = %+v, want the note preserved with no until", back.Suppression)
+	}
+}
+
+// TestEncodeStateOmitsAttentionAndSuppressionWhenUncached is the pre-§28
+// case: a State with neither field set writes neither key, matching a
+// state.toml written before §28 existed.
+func TestEncodeStateOmitsAttentionAndSuppressionWhenUncached(t *testing.T) {
+	s := truth.State{Name: "Acme migration", Status: "in-progress"}
+
+	got, err := truth.EncodeState(s)
+	if err != nil {
+		t.Fatalf("EncodeState: %v", err)
+	}
+	want := "name = \"Acme migration\"\nstatus = \"in-progress\"\n"
+	if string(got) != want {
+		t.Errorf("EncodeState =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestDecodeState_AttentionAndSuppressionAbsentIsNotYetCached is §28.4's
+// backward-compatibility case: a pre-§28 state.toml has neither key, and
+// decoding it must leave both fields at their zero value rather than
+// synthesizing false/zero — the read path is what interprets that as "not
+// yet cached" and falls back to a live journal derivation.
+func TestDecodeState_AttentionAndSuppressionAbsentIsNotYetCached(t *testing.T) {
+	s, err := truth.DecodeState([]byte("name = \"Acme migration\"\nstatus = \"in-progress\"\n"))
+	if err != nil {
+		t.Fatalf("DecodeState: %v", err)
+	}
+	if s.Attention != "" {
+		t.Errorf("Attention = %q, want empty (not yet cached)", s.Attention)
+	}
+	if s.Suppression != (truth.Suppression{}) {
+		t.Errorf("Suppression = %+v, want the zero value (not yet cached)", s.Suppression)
+	}
+}
+
 func TestEncodeStateIsByteStableAcrossCalls(t *testing.T) {
 	s := truth.State{
 		Name:  "Signups report",
@@ -114,6 +231,15 @@ scope = ["project.acme-migration", "area.growth"]
 description = "What acme-migration is trying to move."
 created = "2026-01-01T08:15:00-08:00"
 `,
+		"attention and suppression": `name = "Acme migration"
+status = "in-progress"
+created = "2026-01-01T08:15:00-08:00"
+attention = "2026-08-20T10:00:00Z"
+
+[suppression]
+until = "2027-03-01"
+note = "paused, resumes with Q1 relaunch"
+`,
 	}
 
 	for name, data := range cases {
@@ -158,6 +284,24 @@ func TestStateFieldRoundTripsThroughFieldAccessor(t *testing.T) {
 		if got := s.Field(f); got != "v-"+string(f) {
 			t.Errorf("Field(%q) = %q, want %q", f, got, "v-"+string(f))
 		}
+	}
+}
+
+// TestAttentionAndSuppressionAreNotSettableFields pins §28.4's "only ever
+// written by the derivation step, never by set/unset": neither is a
+// kindmeta.Field, so they cannot appear in the set of fields `set`/`unset`
+// validate against, and State.SetField — the one function those verbs call —
+// cannot reach either struct field even if handed the bare key by name.
+func TestAttentionAndSuppressionAreNotSettableFields(t *testing.T) {
+	for _, f := range kindmeta.AllFields() {
+		if string(f) == "attention" || string(f) == "suppression" {
+			t.Errorf("kindmeta.AllFields() contains %q, want attention/suppression unreachable from set/unset", f)
+		}
+	}
+	s := truth.State{}
+	s.SetField(kindmeta.Field("attention"), "2026-01-01T00:00:00Z")
+	if s.Attention != "" {
+		t.Errorf("SetField(%q, ...) wrote through to State.Attention, want it unreachable", "attention")
 	}
 }
 

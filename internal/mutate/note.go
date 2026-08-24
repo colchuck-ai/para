@@ -4,6 +4,7 @@ import (
 	"github.com/colchuck-ai/para/internal/journal"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/truth"
 )
 
 // Note appends a note to an entity's or a container's journal (§18.6).
@@ -55,6 +56,13 @@ func (e *Env) note(loc locator.Locator, text string, at string, noAttention, dry
 		note = journal.NewNoteNoAttention(when, text)
 	}
 	events := []journal.Event{note}
-	wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil, dryRun)
+
+	prior, err := journal.ReadAll(truth.LogsDir(subj.dir))
+	if err != nil {
+		return Result{}, err
+	}
+	writeState := e.writeThroughCache(subj, prior, events)
+
+	wrote, err := apply(e, []*plan{{subj: subj, events: events, writeState: writeState}}, nil, dryRun)
 	return e.syncSurface(Result{Locator: loc, Kind: subj.kind, Wrote: wrote, NoteRecorded: true}, err, dryRun, nil, nil)
 }

@@ -227,11 +227,20 @@ func CheckBounds(kind kindmeta.Kind, s State) error {
 // accepting, and this is where the difference is paid: an unknown key is either
 // a typo that silently does nothing (`descripton`) or a field written by a para
 // newer than this one, and both are worth a word from doctor (§10's `invalid`).
+//
+// `attention` and `suppression.until`/`suppression.note` are known here too
+// (§28.4): they are not §15 fields — no kindmeta.Field names them — but they
+// are a legitimate part of state.toml's schema as of §28, generated rather
+// than typed, and flagging them as unrecognised would make every suppressed
+// or attention-cached entity read as `invalid`.
 func UnknownStateKeys(data []byte) ([]string, error) {
-	known := make(map[string]bool, len(kindmeta.AllFields()))
+	known := make(map[string]bool, len(kindmeta.AllFields())+3)
 	for _, f := range kindmeta.AllFields() {
 		known[string(f)] = true
 	}
+	known[stateKeyAttention] = true
+	known[suppressionTableKey+"."+suppressionKeyUntil] = true
+	known[suppressionTableKey+"."+suppressionKeyNote] = true
 	return unknownKeys(data, known)
 }
 

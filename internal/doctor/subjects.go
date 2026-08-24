@@ -50,7 +50,7 @@ func (s *scan) checkSubjects() error {
 			// reported at the level that owns it.
 			continue
 		}
-		if err := s.checkStale(sub); err != nil {
+		if err := s.checkStale(sub, state); err != nil {
 			return err
 		}
 	}
@@ -348,7 +348,7 @@ func (s *scan) checkScope(sub rebuild.Subject, state truth.State) error {
 // finding and its repair cannot disagree — a doctor with its own renderer would
 // be a second opinion about the same bytes, and the whole point of principle 3
 // is that there is only one.
-func (s *scan) checkStale(sub rebuild.Subject) error {
+func (s *scan) checkStale(sub rebuild.Subject, state truth.State) error {
 	artifacts, err := s.rb.Derive(sub)
 	if err != nil {
 		// A projection para cannot produce is a projection that differs from
@@ -372,6 +372,49 @@ func (s *scan) checkStale(sub rebuild.Subject) error {
 			Detail: staleDetail(a),
 		})
 	}
+	return s.checkCacheStale(sub, state)
+}
+
+// checkCacheStale extends `stale-projection` to state.toml's own cached
+// `attention` and `[suppression]` (§10, §28.4): the one part of a truth file
+// para writes to itself, so it gets the same "differs from what would be
+// written now" comparison every generated file does, alongside them rather
+// than under a finding class of its own.
+//
+// It calls journal.AttentionAt and journal.ActiveSuppressionAt — the on-disk
+// forms of the exact two folds mutate's write-through step uses over events
+// already in hand (§28.4's "one function computes a derived value... it is
+// the only function doctor calls to check state.toml") — rather than reading
+// sub's whole journal into memory the way rebuild's backfill does: doctor
+// asks this once per entity in a tree-wide scan, and rebuild pays that larger
+// cost only when it is also about to rewrite the file.
+//
+// A container has neither field in its matrix at all (§20's "every kind
+// except a container"), so it is never compared; the root has no state.toml
+// either — its identity lives in tree.toml (§8.1) — so both are skipped
+// explicitly rather than by an empty comparison happening to agree.
+func (s *scan) checkCacheStale(sub rebuild.Subject, state truth.State) error {
+	if len(sub.Locator) == 0 || sub.Kind == kindmeta.KindContainer {
+		return nil
+	}
+	logs := truth.LogsDir(sub.Dir)
+	created, _ := ptime.StoredAt(state.Created)
+	attentionAt, err := journal.AttentionAt(logs, created)
+	if err != nil {
+		return err
+	}
+	attention := ptime.Stamp(attentionAt)
+	until, note, err := journal.ActiveSuppressionAt(logs)
+	if err != nil {
+		return err
+	}
+	suppression := truth.Suppression{Until: until, Note: note}
+
+	if state.Attention == attention && state.Suppression == suppression {
+		return nil
+	}
+	rel := join(s.rel(sub.Dir), ".para/state.toml")
+	s.add(Finding{Kind: KindStaleProjection, Path: rel, Locator: sub.Locator, Detail: "differs from journal"})
 	return nil
 }
 

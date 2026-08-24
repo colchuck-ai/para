@@ -1927,6 +1927,31 @@ first two — a helper or an assertion that encoded the platform it was written 
 
 ---
 
+## Post-v4: Suppression (§28)
+
+Added after v4's fifteen phases landed. Full design in `para-design-v4.md` §28 (also touches §2.5,
+§3.6, §8.3, §10, §13, §18.7, §19, §20, §21.1). The feature introduces `suppress`/`unsuppress`, a
+journal event kind, a materialized `[suppression]` table in `state.toml`, and review/show read-path
+changes — the first time derived values are cached in a truth file rather than computed only at read
+time.
+
+| Touchpoint | Package / command | What §28 adds |
+| --- | --- | --- |
+| Journal event kind | `internal/journal/` (`KindSuppress`, `ActiveSuppression`) | `suppress` events fold to the newest `(until, note)`; empty `until` clears |
+| Truth schema | `internal/truth/` (`State.Suppression`, encode/decode) | `[suppression]` table with `until` and `note`; omitted when uncached |
+| CLI verbs | `internal/cli/write.go` (`suppress`, `unsuppress`) | Same addressing as `note`; container refused; `--until`/`--note` required |
+| Write-through cache | `internal/mutate/cache.go` | Every mutation recomputes `attention` and `[suppression]` into `state.toml` |
+| `review` | `internal/review/`, `internal/cli/review.go` | `--suppressed` group (soonest-until-first); `--stale`/`--skills` exclude suppressed items; `--blocked`/`--overdue`/`--behind` unaffected |
+| `show` | `internal/cli/show.go` | Active suppression prints `until` and the full note beside `attention` (§16.1, §28) |
+| `rebuild` | `internal/rebuild/rebuild.go` | Backfills `attention` and `[suppression]` from the journal in bulk |
+| `doctor` | `internal/doctor/subjects.go` | `stale-projection` covers missing or drifted cached fields in `state.toml` |
+| Conformance | `testdata/script/`, `cmd/para/conformance_test.go` | §26 worked example for suppress/unsuppress/review interaction |
+
+**Status: done.** All touchpoints above are implemented and tested; this section exists so the plan
+and the design document do not drift the way §27's earlier gaps did.
+
+---
+
 ## Spec gaps — closed
 
 All six gaps this plan opened are now resolved in the design document. Recorded here so the phases that

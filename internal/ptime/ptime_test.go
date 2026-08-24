@@ -253,6 +253,18 @@ func FuzzParseAtNeverPanics(f *testing.F) {
 	})
 }
 
+// TestStampIsUTCRFC3339 is §28.4's format, the one every write-through and
+// stale-projection comparison of a cached clock must agree on: UTC,
+// RFC 3339, regardless of the zone the instant is handed in as.
+func TestStampIsUTCRFC3339(t *testing.T) {
+	pt := mustLoc(t, "America/Los_Angeles")
+	in := time.Date(2026, 8, 20, 3, 0, 0, 0, pt)
+	want := "2026-08-20T10:00:00Z"
+	if got := Stamp(in); got != want {
+		t.Fatalf("Stamp(%v) = %q, want %q", in, got, want)
+	}
+}
+
 // FuzzParseAtIsZoneSensitiveButNotZoneDependent is §15.1's rule stated as a
 // property: what you type is local, what is stored is UTC. A form that carries
 // no offset must land at a different instant in two zones — the whole reason the

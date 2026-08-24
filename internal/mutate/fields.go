@@ -235,7 +235,12 @@ func (e *Env) timestamp(field kindmeta.Field, raw string) (time.Time, error) {
 // §15.1 fixes it for `created`, and `due` follows for the same reason §3.5
 // gives: one representation on disk means one answer to "which day is this" for
 // every reader, and no comparison anywhere has to reason about two offsets.
-func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+//
+// It delegates to ptime.Stamp rather than formatting again, so that doctor's
+// stale-projection check and rebuild's backfill (§28.4) — neither of which can
+// import this package — compare against the identical formatting this package
+// writes.
+func stamp(t time.Time) string { return ptime.Stamp(t) }
 
 // eventTime resolves an event's instant: --at if given, in §15.1's progressive
 // precision zero-filled in the local offset, else now. Never in the future.

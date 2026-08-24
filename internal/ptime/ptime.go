@@ -67,6 +67,15 @@ func Equal(a, b time.Time) bool {
 	return a.Equal(b)
 }
 
+// Stamp formats t as every cached instant is stored (§15.1, §28.4): UTC,
+// RFC 3339. mutate's write-through step, doctor's stale-projection check, and
+// rebuild's backfill must all format the same instant identically, or a
+// correct derivation would still compare as stale against a cache that only
+// differs in how it was printed.
+func Stamp(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
+}
+
 // journalFilenameLayout has no separators, and the "Z" JournalFilename appends
 // is part of the format rather than decoration: the name is always UTC.
 const journalFilenameLayout = "20060102T150405"

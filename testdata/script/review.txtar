@@ -125,6 +125,14 @@ exec para review --stale
 stdout '^stale \(5\)$'
 exec para config set review.cadence 30
 
+# --- §28 suppression in review (§26's suppress block) -----------------------
+
+exec para suppress project acme-migration --until 2027-03-01 --note 'paused, resumes with Q1 relaunch'
+exec para review --stale
+cmp stdout $WORK/want-review-stale-suppressed.txt
+exec para review --suppressed
+cmp stdout $WORK/want-review-suppressed.txt
+
 # --- exclusions (§20) -------------------------------------------------------
 
 # Terminal and archived are out by default, and one flag brings both back.
@@ -235,6 +243,15 @@ stale (5)
   key-result.acme-migration.q1-growth.launch   59 days    key-result.stale-after 30 days
 behind (1)
   key-result.acme-migration.q1-growth.signups  pace 0.67  key-result.at-risk-pace 0.8     measurement
+-- want-review-stale-suppressed.txt --
+stale (4)
+  area.fitness                                63 days  area.stale-after 30 days
+  area.fitness.training                       63 days  area.stale-after 30 days
+  objective.acme-migration.q1-growth          59 days  objective.stale-after 30 days
+  key-result.acme-migration.q1-growth.launch  59 days  key-result.stale-after 30 days
+-- want-review-suppressed.txt --
+suppressed (1)
+  project.acme-migration  until 2027-03-01  paused, resumes with Q1 relaunch
 -- want-review-scoped.txt --
 stale (2)
   area.fitness           63 days  area.stale-after 30 days
