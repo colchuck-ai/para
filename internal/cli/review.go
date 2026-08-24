@@ -22,7 +22,8 @@ func newReviewCmd() *cobra.Command {
 		Use:   "review [<noun> [<chain>]]",
 		Short: "list what is worth looking at, grouped by reason",
 		Long: "Group what needs attention by why it needs it: stale, blocked, overdue,\n" +
-			"behind, and skills nobody has touched. Naming no group runs all five.\n\n" +
+			"behind, skills nobody has touched, and active suppressions. Naming no group\n" +
+			"runs all six.\n\n" +
 			"Ordering within a group is by distance past the threshold, which is why\n" +
 			"there is no --sort. Terminal items and archived things are excluded unless\n" +
 			"--all. It always exits 0: having work is not a failure, and a command that\n" +
@@ -57,7 +58,7 @@ func newReviewCmd() *cobra.Command {
 			if read.json {
 				return writeJSON(cmd.OutOrStdout(), reviewOutputOf(env, res))
 			}
-			printReview(cmd.OutOrStdout(), res)
+			printReview(cmd.OutOrStdout(), env, res)
 			return nil
 		},
 	}
@@ -89,7 +90,8 @@ var groupHelp = map[review.Group]string{
 	review.GroupBlocked: "status is blocked — no timer, blocked is always listed",
 	review.GroupOverdue: "open and past due",
 	review.GroupBehind:  "a key-result whose pace is below key-result.at-risk-pace",
-	review.GroupSkills:  "a skill untouched for longer than review.cadence",
+	review.GroupSkills:      "a skill untouched for longer than review.cadence",
+	review.GroupSuppressed:  "an unexpired suppression, sorted soonest-until-first",
 }
 
 // printReview is §26's shape: a heading naming the group and its count, then one
@@ -98,7 +100,7 @@ var groupHelp = map[review.Group]string{
 // One table across every group, not one per group, so the columns line up down
 // the whole output — which is how §26 prints it, and what makes two groups'
 // numbers comparable at a glance.
-func printReview(out io.Writer, res review.Result) {
+func printReview(out io.Writer, env *view.Env, res review.Result) {
 	if len(res.Sections) == 0 {
 		// A command that prints nothing at all leaves "did it run?" and "is
 		// there nothing?" looking identical, which for the command you run
@@ -111,7 +113,7 @@ func printReview(out io.Writer, res review.Result) {
 	for _, s := range res.Sections {
 		t.head(sectionHeading(s))
 		for _, item := range s.Items {
-			measure, threshold := cells(s.Group, item)
+			measure, threshold := cells(env, s.Group, item)
 			t.add(entityLocatorString(item.Entity.Locator), measure, threshold, attentionSource(item.Entity))
 		}
 	}
@@ -143,7 +145,7 @@ func sectionHeading(s review.Section) string {
 // Where the value came from is carried by --json rather than printed on every
 // row: `show <noun> <chain>` is the command for one thing's provenance, and repeating
 // a path down a column of twenty would bury the numbers.
-func cells(g review.Group, item review.Item) (measure, threshold string) {
+func cells(env *view.Env, g review.Group, item review.Item) (measure, threshold string) {
 	switch g {
 	case review.GroupOverdue:
 		// A deadline is not a configured number; it is the entity's own stored
@@ -155,6 +157,12 @@ func cells(g review.Group, item review.Item) (measure, threshold string) {
 			pace = number(v)
 		}
 		return "pace " + pace, knobCell(item)
+	case review.GroupSuppressed:
+		until, note, _, ok := env.ActiveSuppression(item.Entity)
+		if !ok {
+			return "", ""
+		}
+		return "until " + until, note
 	default:
 		return span(item.Days), knobCell(item)
 	}

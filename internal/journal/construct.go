@@ -46,3 +46,14 @@ func NewNoteNoAttention(at time.Time, note string) Event {
 func NewChild(at time.Time, op ChildOp, child, from, to, note string) Event {
 	return Event{At: at, Kind: KindChild, Op: op, Child: child, From: from, To: to, Note: note}
 }
+
+// NewSuppress constructs a suppress event (§18.7, §28.2): until is stored in
+// Value, taking due's progressive precision (§15.1) rather than being
+// resolved to a UTC instant, and note carries the required reason. `para
+// unsuppress` calls this with until == "" — the same kind, folding to "not
+// suppressed" — rather than a second constructor, since there is nothing an
+// unsuppress event carries that a suppress event does not already have a
+// field for.
+func NewSuppress(at time.Time, until, note string) Event {
+	return Event{At: at, Kind: KindSuppress, Value: until, Note: note}
+}

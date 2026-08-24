@@ -47,6 +47,7 @@ import (
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/paraerr"
+	"github.com/colchuck-ai/para/internal/ptime"
 	"github.com/colchuck-ai/para/internal/render"
 	"github.com/colchuck-ai/para/internal/tree"
 	"github.com/colchuck-ai/para/internal/truth"
@@ -142,7 +143,11 @@ func Run(env *Env, opts Options) (Result, error) {
 	var pending []string
 
 	for _, s := range subjects {
-		artifacts, err := env.Derive(s)
+		in, err := env.load(s)
+		if err != nil {
+			return res, err
+		}
+		artifacts, err := env.deriveArtifacts(in)
 		if err != nil {
 			return res, err
 		}
@@ -158,6 +163,12 @@ func Run(env *Env, opts Options) (Result, error) {
 		if err != nil {
 			return res, err
 		}
+
+		cacheWrote, err := env.applyCache(s, in, opts.DryRun)
+		if err != nil {
+			return res, err
+		}
+		res.Changed = append(res.Changed, cacheWrote...)
 	}
 
 	// The mirror last. A copy-mode mirror reproduces files the subject loop has
@@ -219,6 +230,83 @@ func (e *Env) apply(artifacts []Artifact, dryRun bool) (wrote, removed []string,
 		}
 	}
 	return wrote, removed, nil
+}
+
+// cachesAttention reports whether s is one of the kinds §28.4's cache
+// applies to: every subject with its own state.toml except a container,
+// which has no `attention` in its field matrix at all (§20's "every kind
+// except a container"), and the root, which has no state.toml — its identity
+// lives in tree.toml (§8.1).
+func cachesAttention(s Subject) bool {
+	return len(s.Locator) > 0 && s.Kind != kindmeta.KindContainer
+}
+
+// applyCache is state.toml's own backfill (§21.1, §28.4): the one part of a
+// rebuild's output that lands back in a truth file rather than a projection.
+//
+// It recomputes attention and [suppression] from in.Events — already loaded
+// in full for ACTIVITY.md's own re-derivation, so this pays no second read of
+// the journal — using journal.Attention and journal.ActiveSuppression, the
+// same two functions write-through calls (mutate's writeThroughCache). There
+// is no third implementation of either fold here: this is doctor's
+// stale-projection check's own comparison, run once more to decide whether to
+// write rather than only to report.
+//
+// It writes through writeset.Apply/Plan rather than writeset.WriteProjection,
+// because state.toml is truth and durability's rule for a truth file (fsynced)
+// differs from a projection's (not) — see writeset's package doc. --dry-run
+// (opts.DryRun) lists the path without writing it, the same contract every
+// other rebuild write already gives.
+func (e *Env) applyCache(s Subject, in render.In, dryRun bool) ([]string, error) {
+	if !cachesAttention(s) {
+		return nil, nil
+	}
+	created, _ := ptime.StoredAt(in.State.Created)
+	attention := ptime.Stamp(journal.Attention(in.Events, created))
+	until, note := journal.ActiveSuppression(in.Events)
+	suppression := truth.Suppression{Until: until, Note: note}
+
+	if in.State.Attention == attention && in.State.Suppression == suppression {
+		return nil, nil
+	}
+	next := in.State
+	next.Attention = attention
+	next.Suppression = suppression
+	data, err := truth.EncodeState(next)
+	if err != nil {
+		return nil, err
+	}
+
+	m := writeset.Mutation{Subjects: []writeset.Subject{{Dir: s.Dir, State: data}}}
+	var ops writeset.Ops
+	if dryRun {
+		ops, err = writeset.Plan(m)
+	} else {
+		ops, err = writeset.Apply(m)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return e.relWrites(ops), nil
+}
+
+// relWrites is the write operations among ops, as root-relative slash paths —
+// the same form every other entry in Result.Changed takes (Artifact.Path is
+// already root-relative by construction; writeset.Op's Path is an OS path,
+// since it comes from a Subject.Dir a caller built by joining onto e.Root).
+func (e *Env) relWrites(ops writeset.Ops) []string {
+	var out []string
+	for _, op := range ops {
+		if op.Kind != writeset.OpWrite {
+			continue
+		}
+		rel, err := filepath.Rel(e.Root, op.Path)
+		if err != nil {
+			rel = op.Path
+		}
+		out = append(out, filepath.ToSlash(rel))
+	}
+	return out
 }
 
 // scopeHoldsSkill reports whether the rebuild reached a skill, which is what
@@ -364,15 +452,25 @@ func (e *Env) Derive(s Subject) ([]Artifact, error) {
 	if err != nil {
 		return nil, err
 	}
+	return e.deriveArtifacts(in)
+}
 
+// deriveArtifacts is Derive's body over truth already loaded, so Run can share
+// one load of a subject's state and journal between the projections it
+// derives here and the state.toml cache it derives in applyCache — a subject
+// with a long journal must not pay ACTIVITY.md's full re-derivation cost
+// twice for one rebuild pass.
+func (e *Env) deriveArtifacts(in render.In) ([]Artifact, error) {
 	renderers := render.For(in)
 	if slices.Contains(renderers, render.Claude) {
 		// CLAUDE.md's import list is the one thing a renderer needs that is not
 		// in the subject's own truth (§6.1), and it is loaded only where that
 		// renderer is in the set.
-		if in.Rules, err = e.rules(nil, nil); err != nil {
+		rules, err := e.rules(nil, nil)
+		if err != nil {
 			return nil, err
 		}
+		in.Rules = rules
 	}
 
 	existing := map[string][]byte{}

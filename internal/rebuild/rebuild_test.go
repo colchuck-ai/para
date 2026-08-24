@@ -195,9 +195,8 @@ func TestRebuildIsIdempotent(t *testing.T) {
 }
 
 // TestRebuildIsANoOpAfterAMutation is the property the whole design rests on:
-// write-through already wrote every projection, so rebuild has nothing to do
-// (§2.3, §2.4). If this fails, doctor would report stale-projection on a tree
-// nobody touched.
+// write-through already wrote every projection and cached state.toml on add,
+// so rebuild has nothing left to rewrite (§2.3, §2.4, §28.4).
 func TestRebuildIsANoOpAfterAMutation(t *testing.T) {
 	root := plantTree(t)
 	run(t, root, rebuild.Options{})
@@ -221,8 +220,104 @@ func TestRebuildIsANoOpAfterAMutation(t *testing.T) {
 	}
 
 	res := run(t, root, rebuild.Options{})
-	if len(res.Changed) != 0 {
-		t.Fatalf("rebuild after a mutation rewrote %v, want nothing", res.Changed)
+	for _, path := range res.Changed {
+		if strings.HasSuffix(path, "state.toml") {
+			t.Fatalf("rebuild after write-through rewrote %q, want no state.toml changes", path)
+		}
+	}
+}
+
+// TestRebuildBackfillsAttentionForAnUntouchedEntity is §28.4's bulk backfill:
+// an entity whose state.toml lost its cache gets attention recomputed from
+// `created`, §3.6's own fallback.
+func TestRebuildBackfillsAttentionForAnUntouchedEntity(t *testing.T) {
+	root := plantTree(t)
+	e := mut(t, root)
+	if _, err := e.Add(loc(t, "projects.acme"), fields("name", "Acme", "description", "Rebuild the consumer.")); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	// Simulate a pre-§28 state.toml: write-through already ran on add, so strip
+	// the cache to exercise rebuild's bulk backfill path.
+	current := read(t, root, "projects/acme/.para/state.toml")
+	withoutCache, _, ok := strings.Cut(current, "\nattention")
+	if !ok {
+		t.Fatalf("Add wrote no attention to strip:\n%s", current)
+	}
+	write(t, root, "projects/acme/.para/state.toml", withoutCache+"\n")
+
+	run(t, root, rebuild.Options{})
+
+	got := read(t, root, "projects/acme/.para/state.toml")
+	if !strings.Contains(got, "attention = \"2026-03-05T17:00:00Z\"") {
+		t.Errorf("state.toml =\n%s\nwant attention backfilled to created", got)
+	}
+}
+
+// TestRebuildBackfillsSuppressionCache proves the [suppression] table is
+// rebuilt from the same journal fold write-through trusts
+// (journal.ActiveSuppression), not re-derived by some second comparison.
+func TestRebuildBackfillsSuppressionCache(t *testing.T) {
+	root := plantTree(t)
+	e := mut(t, root)
+	if _, err := e.Add(loc(t, "projects.acme"), fields("name", "Acme", "description", "Rebuild the consumer.")); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if _, err := e.Suppress(loc(t, "projects.acme"), "2027-03-01", "paused, resumes with Q1 relaunch"); err != nil {
+		t.Fatalf("Suppress: %v", err)
+	}
+	// Simulate drift: a state.toml written before this rebuild sees it.
+	current := read(t, root, "projects/acme/.para/state.toml")
+	withoutSuppression, _, _ := strings.Cut(current, "\n[suppression]")
+	write(t, root, "projects/acme/.para/state.toml", withoutSuppression+"\n")
+
+	run(t, root, rebuild.Options{})
+
+	got := read(t, root, "projects/acme/.para/state.toml")
+	for _, want := range []string{"[suppression]", "until = \"2027-03-01\"", "note = \"paused, resumes with Q1 relaunch\""} {
+		if !strings.Contains(got, want) {
+			t.Errorf("state.toml =\n%s\nwant it to contain %q", got, want)
+		}
+	}
+}
+
+// TestRebuildDryRunListsCacheBackfillWithoutWriting extends §21.1's --dry-run
+// contract to the one write that lands in a truth file: it is listed and
+// nothing is written.
+func TestRebuildDryRunListsCacheBackfillWithoutWriting(t *testing.T) {
+	root := plantTree(t)
+	e := mut(t, root)
+	if _, err := e.Add(loc(t, "projects.acme"), fields("name", "Acme", "description", "Rebuild the consumer.")); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	current := read(t, root, "projects/acme/.para/state.toml")
+	withoutCache, _, ok := strings.Cut(current, "\nattention")
+	if !ok {
+		t.Fatalf("Add wrote no attention to strip:\n%s", current)
+	}
+	write(t, root, "projects/acme/.para/state.toml", withoutCache+"\n")
+	before := read(t, root, "projects/acme/.para/state.toml")
+
+	res := run(t, root, rebuild.Options{DryRun: true})
+
+	if !slices.Contains(res.Changed, "projects/acme/.para/state.toml") {
+		t.Errorf("--dry-run reported %v, want projects/acme/.para/state.toml listed", res.Changed)
+	}
+	if got := read(t, root, "projects/acme/.para/state.toml"); got != before {
+		t.Errorf("--dry-run wrote state.toml:\n%s", got)
+	}
+}
+
+// TestRebuildSkipsCacheForContainers is §20's "every kind except a
+// container": a bucket has no `attention` in its field matrix, so rebuild
+// must never write one into its state.toml.
+func TestRebuildSkipsCacheForContainers(t *testing.T) {
+	root := plantTree(t)
+
+	run(t, root, rebuild.Options{})
+
+	got := read(t, root, "projects/.para/state.toml")
+	if strings.Contains(got, "attention") {
+		t.Errorf("state.toml =\n%s\nwant no attention cached on a container", got)
 	}
 }
 

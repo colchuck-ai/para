@@ -175,6 +175,30 @@ exec para measure acme-migration.q1-growth.signups 900/11000 --at 2026-01-03T09:
 ! exec para note area health 'later'  --at 2027-01-01
 stderr 'in the future'
 
+# --- §26/§28's `para suppress` / `unsuppress` block -------------------------
+
+exec para suppress project acme-migration --until 2027-03-01 --note 'paused, resumes with Q1 relaunch'
+cmp stdout $WORK/want-suppressed.txt
+grep '\[suppression\]' projects/acme-migration/.para/state.toml
+grep 'until = "2027-03-01"' projects/acme-migration/.para/state.toml
+grep 'Suppressed until 2027-03-01 — paused, resumes with Q1 relaunch\.' projects/acme-migration/ACTIVITY.md
+
+# --until and --note are both required (§18.7, §28.2), same rule §18.2
+# already applies to `blocked`.
+! exec para suppress project acme-migration --note x
+stderr '^error: --until is required for suppress$'
+! exec para suppress project acme-migration --until 2027-03-01
+stderr '^error: --note is required for suppress$'
+
+# unsuppress is the same event kind with until empty (§28.2) — no second kind,
+# nothing to delete.
+exec para unsuppress project acme-migration --note 'relaunch moved up'
+cmp stdout $WORK/want-unsuppressed.txt
+! grep '\[suppression\]' projects/acme-migration/.para/state.toml
+
+! exec para unsuppress project acme-migration
+stderr '^error: --note is required for unsuppress$'
+
 # Only a key-result takes measurements (§4.4: it lives there and nowhere
 # else) — since measure always resolves its bare chain against key-result's
 # own arity (R13), a chain of the wrong length is now the arity refusal
@@ -308,10 +332,23 @@ no change (name already Acme migration)
 measured signups = 880/11000   decimal 0.0800   progress 0.24   on-track
 
 wrote  projects/acme-migration/objectives/q1-growth/key-results/signups/.para/logs/20260103T080000Z.jsonl
+       projects/acme-migration/objectives/q1-growth/key-results/signups/.para/state.toml
        projects/acme-migration/objectives/q1-growth/key-results/signups/ACTIVITY.md
        projects/acme-migration/objectives/q1-growth/key-results/signups/MEASUREMENTS.csv
 -- want-measurements.txt --
 at,value,decimal,progress,note
 2026-01-03T08:00:00Z,880/11000,0.0800,0.2353,
+-- want-suppressed.txt --
+suppressed  project.acme-migration  until 2027-03-01
+
+wrote  projects/acme-migration/.para/logs/20260305T170000Z.jsonl
+       projects/acme-migration/.para/state.toml
+       projects/acme-migration/ACTIVITY.md
+-- want-unsuppressed.txt --
+unsuppressed  project.acme-migration
+
+wrote  projects/acme-migration/.para/logs/20260305T170000Z.jsonl
+       projects/acme-migration/.para/state.toml
+       projects/acme-migration/ACTIVITY.md
 -- outside/.keep --
 not a para tree

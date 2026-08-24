@@ -561,6 +561,95 @@ func newMeasureCmd() *cobra.Command {
 	return cmd
 }
 
+// newSuppressCmd implements `para suppress <noun> <chain> --until … --note
+// …` (R3, §18.7, §28.2). container is refused for the same reason typing it
+// as note's noun is (§13): it holds name, description, and created, and
+// nothing a suppression could ever apply to.
+func newSuppressCmd() *cobra.Command {
+	var until, note string
+	var archived archivedFlag
+	cmd := &cobra.Command{
+		Use:   "suppress <noun> <chain>",
+		Short: "quiet stale/skills review signals until a date",
+		Long: "Quiet `review --stale`/`--skills` for the entity or skill until --until,\n" +
+			"without a status change and without buying silence from --blocked,\n" +
+			"--overdue, or --behind (§28).\n\n" +
+			"One journal event, `suppress`. `unsuppress` appends the same kind with\n" +
+			"until empty — state folds to the newest event, so there is nothing to\n" +
+			"delete and no second kind to define. Neither verb moves attention:\n" +
+			"suppression and attention are independent facts.",
+		// One arg when "." stands in for the whole noun-and-chain pair
+		// (R16), two otherwise — the same shape archive's arity gives.
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if args[0] == address.Container.String() {
+				return paraerr.New(paraerr.KindValidation,
+					"container is refused: it holds name, description, and created and nothing a suppression could ever apply to")
+			}
+			env, cwd, err := openEnv(cmd)
+			if err != nil {
+				return err
+			}
+			loc, _, err := parseAddressArgs(env.Root, cwd, args, entityArity, archived.value)
+			if err != nil {
+				return err
+			}
+			res, err := env.Suppress(loc, until, note)
+			if err != nil {
+				return err
+			}
+			printResult(cmd.OutOrStdout(), []string{
+				fmt.Sprintf("suppressed  %s  until %s", entityLocatorString(res.Locator), until),
+			}, res)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&until, "until", "", "quiet review until this date, in progressive precision (required)")
+	cmd.Flags().StringVar(&note, "note", "", "the reason, recorded with the suppression (required)")
+	archived.register(cmd)
+	return cmd
+}
+
+// newUnsuppressCmd implements `para unsuppress <noun> <chain> --note …`
+// (R3, §18.7, §28.2): the same event kind as suppress, with until empty.
+func newUnsuppressCmd() *cobra.Command {
+	var note string
+	var archived archivedFlag
+	cmd := &cobra.Command{
+		Use:   "unsuppress <noun> <chain>",
+		Short: "clear an active suppression",
+		Long: "Clear whatever suppression is active on the entity or skill (§28.2):\n" +
+			"the same `suppress` event kind, appended with until empty, since state\n" +
+			"folds to the newest one and there is nothing to delete.",
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if args[0] == address.Container.String() {
+				return paraerr.New(paraerr.KindValidation,
+					"container is refused: it holds name, description, and created and nothing a suppression could ever apply to")
+			}
+			env, cwd, err := openEnv(cmd)
+			if err != nil {
+				return err
+			}
+			loc, _, err := parseAddressArgs(env.Root, cwd, args, entityArity, archived.value)
+			if err != nil {
+				return err
+			}
+			res, err := env.Unsuppress(loc, note)
+			if err != nil {
+				return err
+			}
+			printResult(cmd.OutOrStdout(), []string{
+				fmt.Sprintf("unsuppressed  %s", entityLocatorString(res.Locator)),
+			}, res)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&note, "note", "", "the reason, recorded with the unsuppress (required)")
+	archived.register(cmd)
+	return cmd
+}
+
 // measuredLine is §26's reply to a measurement:
 //
 //	measured signups = 880/11000   decimal 0.0800   progress 0.24   at-risk

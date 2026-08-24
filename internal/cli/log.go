@@ -78,15 +78,17 @@ func newLogCmd() *cobra.Command {
 	}
 	read.register(cmd)
 	archived.register(cmd)
-	cmd.Flags().StringVar(&kind, "kind", "", "only events of this kind: change, measurement, note, child")
+	cmd.Flags().StringVar(&kind, "kind", "", "only events of this kind: change, measurement, note, child, suppress")
 	cmd.Flags().IntVar(&limit, "limit", 0, "print at most this many")
 	cmd.Flags().BoolVar(&reverse, "reverse", false, "chronological rather than newest first")
 	return cmd
 }
 
-// eventKinds is §3.1's four, in the order the error message lists them.
+// eventKinds is every event kind this package's Decode accepts, in the order
+// the error message lists them — §3.1's original four, plus suppress
+// (§28.2), added after §3.1's own table was written.
 var eventKinds = []journal.Kind{
-	journal.KindChange, journal.KindMeasurement, journal.KindNote, journal.KindChild,
+	journal.KindChange, journal.KindMeasurement, journal.KindNote, journal.KindChild, journal.KindSuppress,
 }
 
 func filterKind(events []journal.Event, kind string) ([]journal.Event, error) {
@@ -134,6 +136,11 @@ func logDetail(e journal.Event) string {
 		return ""
 	case journal.KindChild:
 		return childDetail(e)
+	case journal.KindSuppress:
+		if e.Value == "" {
+			return ""
+		}
+		return "until " + e.Value
 	default:
 		return ""
 	}

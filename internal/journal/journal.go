@@ -1,6 +1,6 @@
 // Package journal implements the append-only event codec design §3.1
-// requires: one JSON object per line, for the four event kinds and the
-// note field every kind carries. This phase covers only the codec —
+// requires: one JSON object per line, for the event kinds and the note
+// field every kind carries. This phase covers only the codec —
 // appending, rotation (§3.4), and ordered multi-file reads (§3.1's "never
 // by position") land in Phase 5 on top of it.
 //
@@ -19,7 +19,8 @@ import (
 	"github.com/colchuck-ai/para/internal/paraerr"
 )
 
-// Kind is one of the four event kinds §3.1 defines.
+// Kind is one of the event kinds §3.1 defines, plus suppress (§28.2), added
+// after §3.1's own table was written.
 type Kind string
 
 const (
@@ -27,6 +28,13 @@ const (
 	KindMeasurement Kind = "measurement"
 	KindNote        Kind = "note"
 	KindChild       Kind = "child"
+	// KindSuppress is §28.2's one event kind for both verbs: `suppress`
+	// carries Value as the until date and Note as the required reason;
+	// `unsuppress` is the same kind with Value empty. State folds to the
+	// newest suppress event exactly as attention already folds to the
+	// newest note or measurement (§3.6), so there is no second kind and no
+	// delete-style event to define.
+	KindSuppress Kind = "suppress"
 )
 
 // ChildOp is a child event's operation (§3.1).
@@ -71,7 +79,7 @@ func Encode(e Event) ([]byte, error) {
 }
 
 // Decode parses one journal line into an Event, rejecting anything outside
-// the four kinds §3.1 defines and any line with no instant.
+// the kinds this package defines and any line with no instant.
 //
 // The two required keys are `at` and `kind`, and they are required here rather
 // than checked by each reader because §3.1 makes the first of them load
@@ -86,7 +94,7 @@ func Decode(line []byte) (Event, error) {
 		return Event{}, paraerr.Wrap(paraerr.KindValidation, err, "invalid journal event")
 	}
 	switch e.Kind {
-	case KindChange, KindMeasurement, KindNote, KindChild:
+	case KindChange, KindMeasurement, KindNote, KindChild, KindSuppress:
 	default:
 		return Event{}, paraerr.Newf(paraerr.KindValidation, "unknown journal event kind %q", e.Kind)
 	}

@@ -605,6 +605,142 @@ func TestStaleProjectionMissingFile(t *testing.T) {
 	}
 }
 
+// TestStaleProjectionIsCleanWhenAttentionCacheMatchesTheJournal is the case
+// checkCacheStale exists to get right: an entity whose journal has moved the
+// clock must not read as stale when rebuild (or write-through) has cached the
+// same answer. Passing this requires AttentionAt to be asked of the logs
+// directory, not the entity directory — the journal lives under .para/logs/.
+func TestStaleProjectionIsCleanWhenAttentionCacheMatchesTheJournal(t *testing.T) {
+	root := cleanTree(t)
+	e := mutate.NewEnv(root, clock.Fixed{At: now(t)})
+	if _, err := e.Note(loc(t, "projects.acme"), "waiting on the ingest team", "", false); err != nil {
+		t.Fatalf("Note: %v", err)
+	}
+	if _, err := rebuild.Run(rebuild.NewEnv(root), rebuild.Options{}); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+
+	rep := run(t, root, doctor.Options{})
+	if got := findings(rep, doctor.KindStaleProjection); len(got) != 0 {
+		t.Errorf("stale-projection findings = %v, want none after rebuild backfilled the cache", got)
+	}
+}
+
+// TestStaleProjectionCoversStateAttentionCache is §28.4's extension of the
+// same finding: state.toml's own cached `attention` is compared against a
+// fresh derivation exactly as ACTIVITY.md's fold of the journal is, and a
+// hand-edit that disagrees with it is reported the same way.
+func TestStaleProjectionCoversStateAttentionCache(t *testing.T) {
+	root := cleanTree(t)
+	current := readFile(t, root, "projects/acme/.para/state.toml")
+	if !strings.Contains(current, "attention") {
+		t.Fatalf("fixture's state.toml has no cached attention to break:\n%s", current)
+	}
+	broken := strings.Replace(current, "attention = \"2026-03-05T17:00:00Z\"", "attention = \"2020-01-01T00:00:00Z\"", 1)
+	if broken == current {
+		t.Fatalf("could not find the attention line to break:\n%s", current)
+	}
+	write(t, root, "projects/acme/.para/state.toml", broken)
+
+	rep := run(t, root, doctor.Options{})
+
+	got := findings(rep, doctor.KindStaleProjection)
+	want := []string{"projects/acme/.para/state.toml: differs from journal"}
+	if !slices.Equal(got, want) {
+		t.Errorf("stale-projection findings = %v, want %v", got, want)
+	}
+}
+
+// TestStaleProjectionCoversMissingStateCache is §28.4's upgrade case: a
+// state.toml written before §28 (or never yet backfilled) has neither
+// `attention` nor `[suppression]` at all, and that absence is reported the
+// same way a wrong value is — "differs from what would be written now"
+// already covers "isn't there".
+func TestStaleProjectionCoversMissingStateCache(t *testing.T) {
+	root := cleanTree(t)
+	current := readFile(t, root, "projects/acme/.para/state.toml")
+	withoutCache, _, ok := strings.Cut(current, "\nattention")
+	if !ok {
+		t.Fatalf("fixture's state.toml has no cached attention to strip:\n%s", current)
+	}
+	write(t, root, "projects/acme/.para/state.toml", withoutCache+"\n")
+
+	rep := run(t, root, doctor.Options{})
+
+	got := findings(rep, doctor.KindStaleProjection)
+	want := []string{"projects/acme/.para/state.toml: differs from journal"}
+	if !slices.Equal(got, want) {
+		t.Errorf("stale-projection findings = %v, want %v", got, want)
+	}
+}
+
+// TestStaleProjectionCoversSuppressionCache proves the [suppression] table
+// gets the same comparison as `attention`, using the derivation the write
+// path itself trusts (§28.4's "one function").
+func TestStaleProjectionCoversSuppressionCache(t *testing.T) {
+	root := cleanTree(t)
+	e := mutate.NewEnv(root, clock.Fixed{At: now(t)})
+	if _, err := e.Suppress(loc(t, "projects.acme"), "2027-03-01", "paused, resumes with Q1 relaunch"); err != nil {
+		t.Fatalf("Suppress: %v", err)
+	}
+	current := readFile(t, root, "projects/acme/.para/state.toml")
+	broken := strings.Replace(current, "until = \"2027-03-01\"", "until = \"2027-06-01\"", 1)
+	if broken == current {
+		t.Fatalf("could not find the suppression's until line to break:\n%s", current)
+	}
+	write(t, root, "projects/acme/.para/state.toml", broken)
+
+	rep := run(t, root, doctor.Options{})
+
+	got := findings(rep, doctor.KindStaleProjection)
+	want := []string{"projects/acme/.para/state.toml: differs from journal"}
+	if !slices.Equal(got, want) {
+		t.Errorf("stale-projection findings = %v, want %v", got, want)
+	}
+}
+
+// TestStaleProjectionSkipsContainers is §20's "every kind except a
+// container": a bucket has no `attention` in its field matrix at all, so
+// rebuild must never write one into its state.toml, and doctor must never
+// expect one there.
+func TestStaleProjectionSkipsContainers(t *testing.T) {
+	root := cleanTree(t)
+
+	bucket := readFile(t, root, "projects/.para/state.toml")
+	if strings.Contains(bucket, "attention") {
+		t.Fatalf("rebuild wrote attention into a container's state.toml:\n%s", bucket)
+	}
+
+	rep := run(t, root, doctor.Options{})
+	if !rep.Clean() {
+		t.Fatalf("cleanTree is not clean: %v", rep.Findings)
+	}
+}
+
+// TestRebuildBackfillsStateCacheKeepsDoctorClean proves prx.6 and prx.7 agree:
+// a whole-tree rebuild after a hand-stripped cache is what cleanTree already
+// relies on (it rebuilds once, at the end, over entities that were never
+// noted or measured), and doctor must read that as clean, not as freshly
+// stale.
+func TestRebuildBackfillsStateCacheKeepsDoctorClean(t *testing.T) {
+	root := cleanTree(t)
+	current := readFile(t, root, "projects/acme/.para/state.toml")
+	withoutCache, _, ok := strings.Cut(current, "\nattention")
+	if !ok {
+		t.Fatalf("fixture's state.toml has no cached attention to strip:\n%s", current)
+	}
+	write(t, root, "projects/acme/.para/state.toml", withoutCache+"\n")
+
+	if _, err := rebuild.Run(rebuild.NewEnv(root), rebuild.Options{}); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+
+	rep := run(t, root, doctor.Options{})
+	if !rep.Clean() {
+		t.Fatalf("doctor after rebuild = %v, want clean", rep.Findings)
+	}
+}
+
 // TestUntracked is §10's one advisory, and its exit code: 2, so that CI can
 // gate on 1 and ignore this (§21.2).
 func TestUntracked(t *testing.T) {

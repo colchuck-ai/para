@@ -176,3 +176,61 @@ func TestAttentionAtNeverPrecedesCreated(t *testing.T) {
 		t.Errorf("AttentionAt: got %s, want created %s", got, created)
 	}
 }
+
+// TestActiveSuppressionAtAgreesWithActiveSuppressionOverTheWholeJournal is
+// ActiveSuppression's twin to TestAttentionAtAgreesWithAttentionOverTheWholeJournal:
+// the cheap disk read and the whole-journal fold must be the same answer, or
+// substituting one for the other is not safe.
+func TestActiveSuppressionAtAgreesWithActiveSuppressionOverTheWholeJournal(t *testing.T) {
+	events := []journal.Event{
+		journal.NewSuppress(at(t, "2026-08-20T00:00:00Z"), "2027-03-01", "paused, resumes with Q1 relaunch"),
+		journal.NewSuppress(at(t, "2026-09-01T00:00:00Z"), "", "relaunch moved up"),
+	}
+
+	dir := t.TempDir()
+	for _, e := range events {
+		if _, err := journal.Append(dir, e, journal.DefaultRotateBytes); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	until, note, err := journal.ActiveSuppressionAt(dir)
+	if err != nil {
+		t.Fatalf("ActiveSuppressionAt: %v", err)
+	}
+	wantUntil, wantNote := journal.ActiveSuppression(events)
+	if until != wantUntil || note != wantNote {
+		t.Errorf("ActiveSuppressionAt: got (%q, %q), want (%q, %q)", until, note, wantUntil, wantNote)
+	}
+}
+
+// TestActiveSuppressionAtAgreesOnATie is the disk-based twin's own version
+// of TestActiveSuppression_SameSecondUnsuppressClearsASuppress: appended in
+// two separate calls tied at the same instant — exactly what a same-second
+// suppress followed by an unsuppress produces on disk — the later append
+// must still be the one both folds report.
+func TestActiveSuppressionAtAgreesOnATie(t *testing.T) {
+	tie := at(t, "2026-08-20T00:00:00Z")
+	dir := t.TempDir()
+	events := []journal.Event{
+		journal.NewSuppress(tie, "2027-01-01", "paused"),
+		journal.NewSuppress(tie, "", "resumed"),
+	}
+	for _, e := range events {
+		if _, err := journal.Append(dir, e, journal.DefaultRotateBytes); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	until, note, err := journal.ActiveSuppressionAt(dir)
+	if err != nil {
+		t.Fatalf("ActiveSuppressionAt: %v", err)
+	}
+	if until != "" || note != "" {
+		t.Errorf("ActiveSuppressionAt: got (%q, %q), want cleared by the tied, later-appended unsuppress", until, note)
+	}
+	wantUntil, wantNote := journal.ActiveSuppression(events)
+	if until != wantUntil || note != wantNote {
+		t.Errorf("ActiveSuppressionAt: got (%q, %q), disagrees with ActiveSuppression's (%q, %q) on the same tie", until, note, wantUntil, wantNote)
+	}
+}

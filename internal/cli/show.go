@@ -388,6 +388,13 @@ func fieldBlock(env *view.Env, s shown, zone *time.Location) []string {
 		attentionComputed += "   " + src
 	}
 	add("attention", day(ent.Attention, zone), attentionComputed)
+	if untilDate, note, end, ok := env.ActiveSuppression(ent); ok {
+		suppressionComputed := until(env.DaysUntilIn(end, zone))
+		if note != "" {
+			suppressionComputed += "   " + note
+		}
+		add("suppression", untilDate, suppressionComputed)
+	}
 	if s.isStale {
 		// §16.1: "stale names where its threshold came from", because §7's
 		// chain resolution is only defensible if it is visible.

@@ -59,3 +59,27 @@ func TestNewChild_Moved(t *testing.T) {
 		t.Errorf("NewChild() = %+v, want %+v", got, want)
 	}
 }
+
+func TestNewSuppress(t *testing.T) {
+	at := mustParseAt(t, "2026-08-20T10:00:00-07:00")
+	got := NewSuppress(at, "2027-03-01", "paused, resumes with Q1 relaunch")
+	want := Event{At: at, Kind: KindSuppress, Value: "2027-03-01", Note: "paused, resumes with Q1 relaunch"}
+	if got != want {
+		t.Errorf("NewSuppress() = %+v, want %+v", got, want)
+	}
+}
+
+// TestNewSuppress_EmptyUntilIsUnsuppress pins §28.2's "no second kind": para
+// unsuppress calls NewSuppress with until == "", and that is the whole
+// distinction — same kind, empty Value.
+func TestNewSuppress_EmptyUntilIsUnsuppress(t *testing.T) {
+	at := mustParseAt(t, "2026-09-01T09:00:00-07:00")
+	got := NewSuppress(at, "", "relaunch moved up")
+	want := Event{At: at, Kind: KindSuppress, Note: "relaunch moved up"}
+	if got != want {
+		t.Errorf("NewSuppress() = %+v, want %+v", got, want)
+	}
+	if got.Value != "" {
+		t.Errorf("NewSuppress with until=\"\" has Value %q, want empty", got.Value)
+	}
+}

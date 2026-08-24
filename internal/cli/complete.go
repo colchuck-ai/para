@@ -498,7 +498,7 @@ func registerCompletions(root *cobra.Command) {
 	setArgCompletion(byName["list"], completeList)
 
 	// R17: entity only — container is refused, so it is never offered.
-	for _, name := range []string{"archive", "unarchive", "remove"} {
+	for _, name := range []string{"archive", "unarchive", "remove", "suppress", "unsuppress"} {
 		setArgCompletion(byName[name], positional(completeNoun(addableNounWords()), completeChain))
 	}
 	setArgCompletion(byName["note"], positional(completeNoun(addableNounWords()), completeChain, nothing))

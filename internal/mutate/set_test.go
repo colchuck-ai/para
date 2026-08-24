@@ -136,7 +136,10 @@ func TestSetDryRunOfANoOpReportsTheNoteWithoutWriting(t *testing.T) {
 // §15's no-op rule and that line disagree, and the line wins for the half it
 // covers: the field writes nothing, but the reason the user took the trouble to
 // type is an act of attention, and dropping it would lose the only new
-// information in the command.
+// information in the command. As of §28.4, it is also a real note event —
+// journal.NewNote, the same construction `para note` itself uses — so it is
+// one of the call sites write-through must cache attention from, even though
+// no §15 field changed.
 func TestSetRecordsANoteWhenNothingElseChanged(t *testing.T) {
 	root := plantTree(t)
 	e := env(t, root)
@@ -158,11 +161,11 @@ func TestSetRecordsANoteWhenNothingElseChanged(t *testing.T) {
 	if got := read(t, root, "projects/acme/.para/logs/20260305T170000Z.jsonl"); !strings.Contains(got, `"kind":"note","note":"still waiting"`) {
 		t.Errorf("journal =\n%s\nwant a note event", got)
 	}
-	// state.toml is untouched: the field really did not change.
-	for _, path := range res.Wrote {
-		if strings.HasSuffix(path, "state.toml") {
-			t.Errorf("a no-op set rewrote %s", path)
-		}
+	// state.toml is rewritten, but only to cache attention — no §15 field
+	// changed, so the change-fold itself is still empty (res.Changes above).
+	state := read(t, root, "projects/acme/.para/state.toml")
+	if !strings.Contains(state, `attention = "2026-03-05T17:00:00Z"`) {
+		t.Errorf("state.toml = %q, want the note's instant cached as attention (§28.4)", state)
 	}
 }
 

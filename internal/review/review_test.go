@@ -178,6 +178,17 @@ func run(t *testing.T, root string, opts review.Options) review.Result {
 	return res
 }
 
+// sectionItems returns the named group's items.
+func sectionItems(t *testing.T, res review.Result, g review.Group) []review.Item {
+	t.Helper()
+	for _, s := range res.Sections {
+		if s.Group == g {
+			return s.Items
+		}
+	}
+	return nil
+}
+
 // section returns the named group's locators, in the order Run put them.
 func section(t *testing.T, res review.Result, g review.Group) []string {
 	t.Helper()
@@ -211,7 +222,7 @@ func assertLocators(t *testing.T, got []string, want ...string) {
 func TestGroupsInSpecOrder(t *testing.T) {
 	want := []review.Group{
 		review.GroupStale, review.GroupBlocked, review.GroupOverdue,
-		review.GroupBehind, review.GroupSkills,
+		review.GroupBehind, review.GroupSkills, review.GroupSuppressed,
 	}
 	got := review.Groups()
 	if len(got) != len(want) {
@@ -705,5 +716,132 @@ func TestAnItemsPaceIsSafeToAskFor(t *testing.T) {
 		if _, ok := item.Pace(); ok {
 			t.Errorf("%s is not a key-result and must have no pace", item.Entity.Locator)
 		}
+	}
+}
+
+// TestSuppressedExcludesStaleAndSkills is §20/§28: an unexpired suppression
+// silences --stale and --skills but not --overdue or --blocked.
+func TestSuppressedExcludesStaleAndSkills(t *testing.T) {
+	root := fixture(t)
+	w := writer(t, root)
+	configure(t, root, "project.stale-after", "30", "review.cadence", "30")
+	if _, err := w.Suppress(loc(t, "projects.acme-migration"), "2027-03-01", "paused"); err != nil {
+		t.Fatalf("Suppress: %v", err)
+	}
+
+	stale := run(t, root, review.Options{Only: []review.Group{review.GroupStale}})
+	for _, item := range sectionItems(t, stale, review.GroupStale) {
+		if item.Entity.Locator.String() == "projects.acme-migration" {
+			t.Errorf("projects.acme-migration is in --stale; suppressions exclude it (§28)")
+		}
+	}
+
+	skills := run(t, root, review.Options{Only: []review.Group{review.GroupSkills}})
+	add(t, w, "skills.old", "name", "Old", "description", "when doing the old thing", "created", "2026-01-01")
+	if _, err := w.Suppress(loc(t, "skills.old"), "2027-06-01", "on hold"); err != nil {
+		t.Fatalf("Suppress skill: %v", err)
+	}
+	skills = run(t, root, review.Options{Only: []review.Group{review.GroupSkills}})
+	for _, item := range sectionItems(t, skills, review.GroupSkills) {
+		if item.Entity.Locator.String() == "skills.old" {
+			t.Errorf("skills.old is in --skills; suppressions exclude it (§28)")
+		}
+	}
+
+	add(t, w, "projects.acme-migration.objectives.q1-growth.key-results.launch",
+		"name", "Launch", "type", "boolean", "target", "true", "created", "2026-01-05", "due", "2026-02-01")
+
+	overdue := run(t, root, review.Options{Only: []review.Group{review.GroupOverdue}})
+	foundOverdue := false
+	for _, item := range sectionItems(t, overdue, review.GroupOverdue) {
+		if item.Entity.Locator.String() == "projects.acme-migration.objectives.q1-growth.key-results.launch" {
+			foundOverdue = true
+		}
+	}
+	if !foundOverdue {
+		t.Error("launch key-result is overdue and must still appear under --overdue")
+	}
+}
+
+// TestSuppressedListsActiveSuppressionsSoonestFirst is §20's sixth group:
+// every unexpired suppression, entities and skills, ordered soonest-until-first.
+func TestSuppressedListsActiveSuppressionsSoonestFirst(t *testing.T) {
+	root := fixture(t)
+	w := writer(t, root)
+	if _, err := w.Suppress(loc(t, "projects.acme-migration"), "2027-06-01", "paused longer"); err != nil {
+		t.Fatalf("Suppress project: %v", err)
+	}
+	add(t, w, "skills.old", "name", "Old", "description", "when doing the old thing", "created", "2026-01-01")
+	if _, err := w.Suppress(loc(t, "skills.old"), "2027-03-01", "paused shorter"); err != nil {
+		t.Fatalf("Suppress skill: %v", err)
+	}
+
+	got := run(t, root, review.Options{Only: []review.Group{review.GroupSuppressed}})
+	items := sectionItems(t, got, review.GroupSuppressed)
+	locs := make([]string, len(items))
+	for i, item := range items {
+		locs[i] = item.Entity.Locator.String()
+	}
+	assertLocators(t, locs, "skills.old", "projects.acme-migration")
+	if locs[0] != "skills.old" {
+		t.Errorf("first suppressed item = %s, want skills.old (until 2027-03-01, soonest first)", locs[0])
+	}
+}
+
+// TestSuppressedFallsBackToTheJournalWhenCacheIsAbsent is §28.4's upgrade
+// case: a suppress event in the journal must exclude --stale even when
+// state.toml has not yet been backfilled with [suppression].
+func TestSuppressedFallsBackToTheJournalWhenCacheIsAbsent(t *testing.T) {
+	root := fixture(t)
+	w := writer(t, root)
+	configure(t, root, "project.stale-after", "30")
+	if _, err := w.Suppress(loc(t, "projects.acme-migration"), "2027-03-01", "paused"); err != nil {
+		t.Fatalf("Suppress: %v", err)
+	}
+	// Strip the cache write-through just performed, leaving the journal intact.
+	current, err := os.ReadFile(filepath.Join(root, "projects/acme-migration/.para/state.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	without, _, ok := strings.Cut(string(current), "\n[suppression]")
+	if !ok {
+		t.Fatalf("state.toml has no [suppression] to strip:\n%s", current)
+	}
+	if err := os.WriteFile(filepath.Join(root, "projects/acme-migration/.para/state.toml"), []byte(without+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stale := run(t, root, review.Options{Only: []review.Group{review.GroupStale}})
+	for _, item := range sectionItems(t, stale, review.GroupStale) {
+		if item.Entity.Locator.String() == "projects.acme-migration" {
+			t.Errorf("projects.acme-migration is in --stale; journal fallback must honor suppression")
+		}
+	}
+	sup := run(t, root, review.Options{Only: []review.Group{review.GroupSuppressed}})
+	assertLocators(t, section(t, sup, review.GroupSuppressed), "projects.acme-migration")
+}
+
+// eligible for --stale again and vanishes from --suppressed.
+func TestExpiredSuppressionReachesStaleAgain(t *testing.T) {
+	root := fixture(t)
+	w := writer(t, root)
+	configure(t, root, "project.stale-after", "30")
+	if _, err := w.Suppress(loc(t, "projects.acme-migration"), "2026-01-15", "already over"); err != nil {
+		t.Fatalf("Suppress: %v", err)
+	}
+
+	sup := run(t, root, review.Options{Only: []review.Group{review.GroupSuppressed}})
+	if len(sectionItems(t, sup, review.GroupSuppressed)) != 0 {
+		t.Errorf("--suppressed = %d items, want none after until passed", len(sectionItems(t, sup, review.GroupSuppressed)))
+	}
+	stale := run(t, root, review.Options{Only: []review.Group{review.GroupStale}})
+	found := false
+	for _, loc := range section(t, stale, review.GroupStale) {
+		if loc == "projects.acme-migration" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("--stale = %v, want projects.acme-migration after suppression expired", section(t, stale, review.GroupStale))
 	}
 }

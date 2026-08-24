@@ -299,6 +299,56 @@ func TestShowAttentionLineNamesAMeasurement(t *testing.T) {
 	}
 }
 
+// TestShowSuppressionLinePrintsUntilAndNote is §28.3/para-prx.9: show prints an
+// active suppression's until date and full note next to attention, so a reader
+// landing on the entity understands immediately why it is quiet in review.
+func TestShowSuppressionLinePrintsUntilAndNote(t *testing.T) {
+	chdirToTestTree(t)
+	mustAddViaCLI(t, "project", "acme")
+
+	root := &cobra.Command{Use: "para"}
+	root.AddCommand(newSuppressCmd())
+	var suppressOut bytes.Buffer
+	root.SetOut(&suppressOut)
+	root.SetErr(&suppressOut)
+	root.SetArgs([]string{
+		"suppress", "project", "acme",
+		"--until", "2027-03-01", "--note", "paused, resumes with Q1 relaunch",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("suppress project acme: %v (%s)", err, suppressOut.String())
+	}
+
+	out, err := execRead(newShowCmd(), []string{"project", "acme"})
+	if err != nil {
+		t.Fatalf("show project acme: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "2027-03-01") {
+		t.Errorf("show output = %q, want the suppression until date", out)
+	}
+	if !strings.Contains(out, "paused, resumes with Q1 relaunch") {
+		t.Errorf("show output = %q, want the full suppression note", out)
+	}
+	if !strings.Contains(out, "suppression") {
+		t.Errorf("show output = %q, want a suppression field line", out)
+	}
+}
+
+// TestShowSuppressionAbsentWhenNone is para-prx.9: an entity with no active
+// suppression must not print an empty [suppression] line.
+func TestShowSuppressionAbsentWhenNone(t *testing.T) {
+	chdirToTestTree(t)
+	mustAddViaCLI(t, "project", "acme")
+
+	out, err := execRead(newShowCmd(), []string{"project", "acme"})
+	if err != nil {
+		t.Fatalf("show project acme: %v (%s)", err, out)
+	}
+	if strings.Contains(out, "suppression") {
+		t.Errorf("show output = %q, want no suppression line on an unsuppressed entity", out)
+	}
+}
+
 // TestNoteNoAttentionFlagDoesNotMoveTheClock is para-c3u end to end through
 // the real `para note --no-attention` command: a note recorded with the flag
 // is real activity but must not become what `show`'s attention line names, and

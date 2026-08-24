@@ -145,12 +145,20 @@ func (e *Env) write(subj *subject, f Fields, next truth.State, note string, dryR
 		// Nothing about the thing changed. A --note given anyway is still an
 		// act of attention the user performed, and §26 records it: "no change
 		// (status already blocked); note recorded". It becomes a note event of
-		// its own, since there is no change event left to carry it.
+		// its own, since there is no change event left to carry it — and,
+		// being a genuine note event, it is exactly the kind of event
+		// write-through (§28.4) must cache attention from, the same as one
+		// `para note` itself would append.
 		if note == "" {
 			return res, nil
 		}
 		events := []journal.Event{journal.NewNote(e.Now.UTC(), note)}
-		wrote, err := apply(e, []*plan{{subj: subj, events: events}}, nil, dryRun)
+		prior, err := journal.ReadAll(truth.LogsDir(subj.dir))
+		if err != nil {
+			return Result{}, err
+		}
+		writeState := e.writeThroughCache(subj, prior, events)
+		wrote, err := apply(e, []*plan{{subj: subj, events: events, writeState: writeState}}, nil, dryRun)
 		res.Wrote, res.NoteRecorded = wrote, true
 		return e.syncSurface(res, err, dryRun, nil, nil)
 	}
@@ -164,7 +172,12 @@ func (e *Env) write(subj *subject, f Fields, next truth.State, note string, dryR
 		events = append(events, journal.NewChange(e.Now.UTC(), string(c.Field), c.From, c.To, note))
 	}
 
+	prior, err := journal.ReadAll(truth.LogsDir(subj.dir))
+	if err != nil {
+		return Result{}, err
+	}
 	subj.state = next
+	e.writeThroughCache(subj, prior, events)
 	p := &plan{subj: subj, events: events, writeState: true, createdMoved: changed(changes, kindmeta.FieldCreated)}
 	wrote, err := apply(e, []*plan{p}, nil, dryRun)
 	res.Wrote = wrote

@@ -418,6 +418,32 @@ func (e *Env) Threshold(loc locator.Locator, key string) (Threshold, error) {
 // negotiable case and take DaysSinceIn.
 func (e *Env) DaysSince(t time.Time) int { return e.DaysSinceIn(t, time.UTC) }
 
+// ActiveSuppression is §28.2's unexpired fold for the read path: state.toml's
+// cache when present, the journal when not yet cached (§28.4). One function
+// for every read command that asks whether a suppression is live right now.
+func (e *Env) ActiveSuppression(ent Entity) (until, note string, end time.Time, ok bool) {
+	until = ent.State.Suppression.Until
+	note = ent.State.Suppression.Note
+	if until == "" && note == "" {
+		var err error
+		until, note, err = journal.ActiveSuppressionAt(truth.LogsDir(ent.Dir))
+		if err != nil || until == "" {
+			return "", "", time.Time{}, false
+		}
+	}
+	if until == "" {
+		return "", "", time.Time{}, false
+	}
+	end, err := ptime.Deadline(until)
+	if err != nil {
+		return "", "", time.Time{}, false
+	}
+	if e.Now.After(end) {
+		return "", "", time.Time{}, false
+	}
+	return until, note, end, true
+}
+
 // DaysUntil is whole UTC days from now to t, the same count in the other
 // direction.
 func (e *Env) DaysUntil(t time.Time) int { return e.DaysUntilIn(t, time.UTC) }

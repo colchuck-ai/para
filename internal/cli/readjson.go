@@ -69,8 +69,13 @@ type entityJSON struct {
 	// empty together when nothing has beaten `created` yet.
 	AttentionKind string `json:"attention-kind,omitempty"`
 	AttentionNote string `json:"attention-note,omitempty"`
-	Overdue       bool   `json:"overdue"`
-	DueDays       *int   `json:"due-days,omitempty"`
+	// SuppressionUntil and SuppressionNote are the active [suppression] record
+	// when one is unexpired (§28); omitted together when none is live.
+	SuppressionUntil string `json:"suppression-until,omitempty"`
+	SuppressionNote  string `json:"suppression-note,omitempty"`
+	SuppressionDays  *int   `json:"suppression-days,omitempty"`
+	Overdue          bool   `json:"overdue"`
+	DueDays          *int   `json:"due-days,omitempty"`
 
 	KeyResult *keyResultJSON `json:"key-result,omitempty"`
 }
@@ -113,6 +118,12 @@ func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 		AttentionKind:   string(e.AttentionKind),
 		AttentionNote:   e.AttentionNote,
 		Overdue:         e.Overdue(),
+	}
+	if until, note, end, ok := env.ActiveSuppression(e); ok {
+		out.SuppressionUntil = until
+		out.SuppressionNote = note
+		days := env.DaysUntilIn(end, time.UTC)
+		out.SuppressionDays = &days
 	}
 	if len(e.DormantUnder) > 0 {
 		out.DormantUnder = entityLocatorString(e.DormantUnder)

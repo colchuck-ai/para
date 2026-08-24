@@ -66,6 +66,27 @@ func TestBoundsOrderByAtNotByFilePosition(t *testing.T) {
 	}
 }
 
+// TestLatestOfSuppress_HonorsBackdatingSafeScan proves an entity's current
+// suppression state (§28.2) is decided the same backdating-safe way every
+// other clock in this package is: a newest-by-`at` full scan, not a
+// newest-*file* shortcut. A later unsuppress backdated into an earlier file
+// must still win over an earlier suppress sitting in a later-named file.
+func TestLatestOfSuppress_HonorsBackdatingSafeScan(t *testing.T) {
+	dir := t.TempDir()
+	writeJournalFile(t, dir, "20260101T000000Z.jsonl",
+		journal.NewSuppress(at(t, "2026-09-01T00:00:00Z"), "", "relaunch moved up (backdated)"))
+	writeJournalFile(t, dir, "20260801T000000Z.jsonl",
+		journal.NewSuppress(at(t, "2026-08-20T00:00:00Z"), "2027-03-01", "paused, resumes with Q1 relaunch"))
+
+	newest, ok, err := journal.LatestOf(dir, journal.KindSuppress)
+	if err != nil || !ok {
+		t.Fatalf("LatestOf: %v ok=%v", err, ok)
+	}
+	if newest.Value != "" || newest.Note != "relaunch moved up (backdated)" {
+		t.Errorf("LatestOf: got %+v, want the later-at unsuppress with empty until", newest)
+	}
+}
+
 func TestBoundsFindNothingInAJournalWithNoMatch(t *testing.T) {
 	dir := t.TempDir()
 	writeJournalFile(t, dir, "20260101T000000Z.jsonl",

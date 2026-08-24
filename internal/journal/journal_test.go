@@ -159,6 +159,63 @@ func TestChildMove(t *testing.T) {
 	}
 }
 
+// TestSuppress_RoundTrip proves a suppress event round-trips through
+// Encode/Decode, and that Decode accepts an empty `value` — the shape
+// `para unsuppress` writes (§28.2) — as a legal, decodable event.
+func TestSuppress_RoundTrip(t *testing.T) {
+	cases := []struct {
+		name string
+		e    Event
+	}{
+		{
+			name: "suppress",
+			e: Event{
+				At:    mustParseAt(t, "2026-08-20T10:00:00-07:00"),
+				Kind:  KindSuppress,
+				Value: "2027-03-01",
+				Note:  "paused, resumes with Q1 relaunch",
+			},
+		},
+		{
+			name: "unsuppress (empty until)",
+			e: Event{
+				At:   mustParseAt(t, "2026-09-01T09:00:00-07:00"),
+				Kind: KindSuppress,
+				Note: "relaunch moved up",
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			data, err := Encode(c.e)
+			if err != nil {
+				t.Fatalf("Encode: %v", err)
+			}
+			got, err := Decode(data)
+			if err != nil {
+				t.Fatalf("Decode: %v", err)
+			}
+			if got != c.e {
+				t.Errorf("Decode(Encode(e)) = %+v, want %+v", got, c.e)
+			}
+		})
+	}
+}
+
+// TestDecode_SuppressEncoding pins the wire shape: `value` carries `until` as
+// typed (due's precision, §15.1, §28.2), not a UTC instant.
+func TestDecode_SuppressEncoding(t *testing.T) {
+	line := []byte(`{"at":"2026-08-20T10:00:00-07:00","kind":"suppress","value":"2027-03-01","note":"paused, resumes with Q1 relaunch"}`)
+	e, err := Decode(line)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if e.Kind != KindSuppress || e.Value != "2027-03-01" || e.Note != "paused, resumes with Q1 relaunch" {
+		t.Errorf("Decode() = %+v, unexpected fields", e)
+	}
+}
+
 func TestDecode_UnknownKind(t *testing.T) {
 	line := []byte(`{"at":"2026-01-01T08:15:02-08:00","kind":"bogus"}`)
 	if _, err := Decode(line); err == nil {

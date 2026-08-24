@@ -124,6 +124,12 @@ func (e *Env) add(loc locator.Locator, f Fields, dryRun bool) (Result, error) {
 		return Result{}, err
 	}
 
+	for _, p := range plans {
+		if len(p.subj.loc) > 0 && p.subj.kind != kindmeta.KindContainer {
+			e.writeThroughCache(p.subj, nil, nil)
+		}
+	}
+
 	// A real run's syncSurface runs after apply has already written this entity,
 	// so tree.SkillIDs already sees it. A dry run writes nothing, so the new
 	// skill has to be named explicitly or the surface refresh would compute its
