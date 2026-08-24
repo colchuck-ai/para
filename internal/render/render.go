@@ -42,6 +42,12 @@ type Config struct {
 	// EmitClaudeSkills is "symlink" (default) or "copy" (§6.1). The mirror
 	// itself is Phase 13's; this carries the setting through.
 	EmitClaudeSkills string
+	// EmitCursor turns on the Cursor IDE compatibility surface:
+	// .cursor/rules/para-*.mdc and the .cursor/skills mirror (§6.2). Off by
+	// default.
+	EmitCursor bool
+	// EmitCursorSkills is "symlink" (default) or "copy" (§6.2).
+	EmitCursorSkills string
 	// EmitGitattributes writes the .gitattributes block (§9). On by default.
 	EmitGitattributes bool
 }
@@ -52,10 +58,14 @@ const (
 	MirrorCopy    = "copy"
 )
 
-// DefaultConfig is §7's defaults for the keys render reads: the Claude surface
-// off, .gitattributes on, and symlink as the mirror mode.
+// DefaultConfig is §7's defaults for the keys render reads: both compatibility
+// surfaces off, .gitattributes on, and symlink as the mirror mode.
 func DefaultConfig() Config {
-	return Config{EmitClaude: false, EmitClaudeSkills: MirrorSymlink, EmitGitattributes: true}
+	return Config{
+		EmitClaude: false, EmitClaudeSkills: MirrorSymlink,
+		EmitCursor: false, EmitCursorSkills: MirrorSymlink,
+		EmitGitattributes: true,
+	}
 }
 
 // In is everything a renderer reads about one subject — a root, a bucket, a

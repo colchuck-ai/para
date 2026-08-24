@@ -16,6 +16,8 @@ func TestSpecsIsExactlySection7sTable(t *testing.T) {
 		"area.stale-after",
 		"emit.claude",
 		"emit.claude-skills",
+		"emit.cursor",
+		"emit.cursor-skills",
 		"emit.gitattributes",
 		"key-result.at-risk-pace",
 		"key-result.stale-after",
@@ -41,9 +43,11 @@ func TestSpecDefaults(t *testing.T) {
 		hasDefault bool
 		want       string // the display form of the default
 	}{
-		// §7's four defaults, and the only four keys that have one.
+		// §7's six defaults, and the only six keys that have one.
 		{key: "emit.claude", hasDefault: true, want: "false"},
 		{key: "emit.claude-skills", hasDefault: true, want: "symlink"},
+		{key: "emit.cursor", hasDefault: true, want: "false"},
+		{key: "emit.cursor-skills", hasDefault: true, want: "symlink"},
 		{key: "emit.gitattributes", hasDefault: true, want: "true"},
 		{key: "log.rotate-bytes", hasDefault: true, want: "4194304"},
 		// §7: "Unset everywhere means the check never fires" — so no
@@ -129,6 +133,13 @@ func TestParseValueByDeclaredType(t *testing.T) {
 		{key: "emit.claude-skills", raw: "copy", want: "copy"},
 		{key: "emit.claude-skills", raw: "hardlink", wantErr: true},
 		{key: "emit.claude-skills", raw: `"copy"`, wantErr: true}, // the shell's quotes are not the value
+
+		{key: "emit.cursor", raw: "true", want: "true"},
+		{key: "emit.cursor", raw: "false", want: "false"},
+		{key: "emit.cursor", raw: "yes", wantErr: true},
+		{key: "emit.cursor-skills", raw: "symlink", want: "symlink"},
+		{key: "emit.cursor-skills", raw: "copy", want: "copy"},
+		{key: "emit.cursor-skills", raw: "hardlink", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -175,6 +186,10 @@ func TestCheckRejectsAWrongTypedStoredValue(t *testing.T) {
 		{key: "emit.claude-skills", value: ptoml.String("copy")},
 		{key: "emit.claude-skills", value: ptoml.String("hardlink"), wantErr: true},
 		{key: "emit.claude-skills", value: ptoml.Bool(true), wantErr: true},
+		{key: "emit.cursor", value: ptoml.Bool(true)},
+		{key: "emit.cursor", value: ptoml.String("true"), wantErr: true},
+		{key: "emit.cursor-skills", value: ptoml.String("copy")},
+		{key: "emit.cursor-skills", value: ptoml.String("hardlink"), wantErr: true},
 		{key: "key-result.at-risk-pace", value: ptoml.Float64(0.8)},
 		// An integer where a float belongs is the one coercion worth
 		// allowing: TOML reads `at-risk-pace = 1` as an integer, and
@@ -197,6 +212,34 @@ func TestCheckRejectsAWrongTypedStoredValue(t *testing.T) {
 				t.Errorf("Check(%v) = %v, want nil", Format(tt.value), err)
 			}
 		})
+	}
+}
+
+func TestAffectsCursorSurface(t *testing.T) {
+	for _, key := range []string{"emit.cursor", "emit.cursor-skills"} {
+		if !AffectsCursorSurface(key) {
+			t.Errorf("AffectsCursorSurface(%q) = false, want true", key)
+		}
+	}
+	for _, key := range []string{"emit.claude", "emit.gitattributes", "project.stale-after"} {
+		if AffectsCursorSurface(key) {
+			t.Errorf("AffectsCursorSurface(%q) = true, want false", key)
+		}
+	}
+}
+
+func TestRootOnlyIncludesCursorKeys(t *testing.T) {
+	for _, key := range []string{
+		"emit.claude", "emit.claude-skills",
+		"emit.cursor", "emit.cursor-skills",
+		"emit.gitattributes",
+	} {
+		if !RootOnly(key) {
+			t.Errorf("RootOnly(%q) = false, want true", key)
+		}
+	}
+	if RootOnly("project.stale-after") {
+		t.Error("RootOnly(project.stale-after) = true, want false")
 	}
 }
 

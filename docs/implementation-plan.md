@@ -1973,6 +1973,37 @@ Two consequences for the phase plan:
 - **Phase 11** excludes containers from every group and reads `review.cadence` — not `stale-after` —
   for `--skills`.
 
+---
+
+## Phase 16 — The Cursor IDE surface
+
+**Status: in progress.** Opt-in Cursor compatibility mirroring Phase 13's Claude surface (§6.2):
+`.cursor/skills/` mirrors, `.cursor/rules/para-*.mdc` rule projections, and the same doctor/rebuild
+discipline applied to a second provider directory.
+
+Late and separable, because it is opt-in, independent of `emit.claude`, and touches nothing else
+(§6.2).
+
+**Tasks**
+
+1. **Spec (§6.2):** normative design for `emit.cursor`, mirror modes, `.mdc` format, doctor findings,
+   and coexistence with `emit.claude`.
+2. **Config:** root-only keys `emit.cursor` and `emit.cursor-skills`; `render.Config` fields;
+   `AffectsCursorSurface()` for `config set` refresh recognition.
+3. **Render:** `.cursor/rules/para-*.mdc` — map skill scope to `alwaysApply` or `globs`, body
+   references the mirrored skill; integrate into `render.For` for skills.
+4. **Mirror:** generalize `internal/mirror` for `.cursor/skills/` alongside `.claude/skills/`.
+5. **Tree:** `tree.CursorRules()` listing for doctor orphan detection.
+6. **Rebuild:** cursor surface write and residue pruning.
+7. **Mutate:** refresh cursor surface on skill/config writes.
+8. **Doctor:** cursor mirror and orphan-rule findings.
+9. **Gitattributes:** `.cursor/rules/para-*.mdc merge=ours`.
+10. **Acceptance:** `testdata/script/cursor.txtar`.
+
+**Done when** both mirror modes round-trip through `rebuild`, switching modes leaves no residue,
+`doctor` is clean with the surface on, turning `emit.cursor` off removes para-owned cursor artifacts,
+and `cursor.txtar` passes.
+
 ## ADR actions — done
 
 - **ADR 0001 is superseded by [ADR 0003](adr/0003-no-merge-driver-git-not-a-precondition.md)**, which
@@ -1997,4 +2028,5 @@ Two consequences for the phase plan:
 | Git a precondition; merge behavior tested against it | Para never invokes git; `.gitattributes` is just a file | §9 |
 | — | Crash-consistency phase | Write-through touches four or five files per mutation (§0.2) |
 | — | Windows CI job | `emit.claude-skills` has a platform-sensitive mode (§6.1) |
+| — | Cursor surface (Phase 16) | `emit.cursor` mirrors Phase 13's pattern for Cursor IDE (§6.2) |
 | 14 phases | 15 | `rebuild`/`doctor` and the Claude surface split out; `import` phase deleted |

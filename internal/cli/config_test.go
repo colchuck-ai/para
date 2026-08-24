@@ -434,6 +434,8 @@ func TestConfigListPrintsEveryKnobAndWhereItCameFrom(t *testing.T) {
 	want := map[string][]string{
 		"emit.claude":             {"true", "<root>"},
 		"emit.claude-skills":      {"symlink", "(default)"},
+		"emit.cursor":             {"false", "(default)"},
+		"emit.cursor-skills":      {"symlink", "(default)"},
 		"emit.gitattributes":      {"true", "(default)"},
 		"project.stale-after":     {"30 days", "<root>"},
 		"review.cadence":          {"—", "—"},
@@ -441,8 +443,8 @@ func TestConfigListPrintsEveryKnobAndWhereItCameFrom(t *testing.T) {
 		"log.rotate-bytes":        {"4194304", "(default)"},
 	}
 	got := listRows(stdout)
-	if len(got) != 11 {
-		t.Errorf("listed %d keys, want all 11 of §7's table:\n%s", len(got), stdout)
+	if len(got) != 13 {
+		t.Errorf("listed %d keys, want all 13 of §7's table:\n%s", len(got), stdout)
 	}
 	for key, cols := range want {
 		if !slices.Equal(got[key], cols) {
