@@ -736,12 +736,11 @@ func TestSuppressedExcludesStaleAndSkills(t *testing.T) {
 		}
 	}
 
-	skills := run(t, root, review.Options{Only: []review.Group{review.GroupSkills}})
 	add(t, w, "skills.old", "name", "Old", "description", "when doing the old thing", "created", "2026-01-01")
 	if _, err := w.Suppress(loc(t, "skills.old"), "2027-06-01", "on hold"); err != nil {
 		t.Fatalf("Suppress skill: %v", err)
 	}
-	skills = run(t, root, review.Options{Only: []review.Group{review.GroupSkills}})
+	skills := run(t, root, review.Options{Only: []review.Group{review.GroupSkills}})
 	for _, item := range sectionItems(t, skills, review.GroupSkills) {
 		if item.Entity.Locator.String() == "skills.old" {
 			t.Errorf("skills.old is in --skills; suppressions exclude it (§28)")

@@ -86,12 +86,12 @@ func newReviewCmd() *cobra.Command {
 
 // groupHelp is §20's table as help text, one row per flag.
 var groupHelp = map[review.Group]string{
-	review.GroupStale:   "no note or measurement within <kind>.stale-after",
-	review.GroupBlocked: "status is blocked — no timer, blocked is always listed",
-	review.GroupOverdue: "open and past due",
-	review.GroupBehind:  "a key-result whose pace is below key-result.at-risk-pace",
-	review.GroupSkills:      "a skill untouched for longer than review.cadence",
-	review.GroupSuppressed:  "an unexpired suppression, sorted soonest-until-first",
+	review.GroupStale:      "no note or measurement within <kind>.stale-after",
+	review.GroupBlocked:    "status is blocked — no timer, blocked is always listed",
+	review.GroupOverdue:    "open and past due",
+	review.GroupBehind:     "a key-result whose pace is below key-result.at-risk-pace",
+	review.GroupSkills:     "a skill untouched for longer than review.cadence",
+	review.GroupSuppressed: "an unexpired suppression, sorted soonest-until-first",
 }
 
 // printReview is §26's shape: a heading naming the group and its count, then one
