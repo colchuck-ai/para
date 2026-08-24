@@ -245,13 +245,13 @@ behind (1)
   key-result.acme-migration.q1-growth.signups  pace 0.67  key-result.at-risk-pace 0.8     measurement
 -- want-review-stale-suppressed.txt --
 stale (4)
-  area.fitness                                 63 days       area.stale-after 30 days
-  area.fitness.training                        63 days       area.stale-after 30 days
-  objective.acme-migration.q1-growth           59 days       objective.stale-after 30 days
-  key-result.acme-migration.q1-growth.launch     59 days       key-result.stale-after 30 days
+  area.fitness                                63 days  area.stale-after 30 days
+  area.fitness.training                       63 days  area.stale-after 30 days
+  objective.acme-migration.q1-growth          59 days  objective.stale-after 30 days
+  key-result.acme-migration.q1-growth.launch  59 days  key-result.stale-after 30 days
 -- want-review-suppressed.txt --
 suppressed (1)
-  project.acme-migration                       until 2027-03-01   paused, resumes with Q1 relaunch
+  project.acme-migration  until 2027-03-01  paused, resumes with Q1 relaunch
 -- want-review-scoped.txt --
 stale (2)
   area.fitness           63 days  area.stale-after 30 days

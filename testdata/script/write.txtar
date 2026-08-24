@@ -285,6 +285,7 @@ name = "Acme migration"
 description = "Rebuild the consumer so it stops falling over under replay load."
 status = "planned"
 created = "2026-03-05T17:00:00Z"
+attention = "2026-03-05T17:00:00Z"
 -- want-project-readme.txt --
 ---
 kind: "project"
@@ -305,6 +306,7 @@ created = "2026-03-05T17:00:00Z"
 type = "ratio"
 start = "480/9000"
 target = "2000/12000"
+attention = "2026-03-05T17:00:00Z"
 -- want-add-skill.txt --
 added  skill.signups-report  skill
 path   .agents/skills/para-signups-report
@@ -332,7 +334,6 @@ no change (name already Acme migration)
 measured signups = 880/11000   decimal 0.0800   progress 0.24   on-track
 
 wrote  projects/acme-migration/objectives/q1-growth/key-results/signups/.para/logs/20260103T080000Z.jsonl
-       projects/acme-migration/objectives/q1-growth/key-results/signups/.para/state.toml
        projects/acme-migration/objectives/q1-growth/key-results/signups/ACTIVITY.md
        projects/acme-migration/objectives/q1-growth/key-results/signups/MEASUREMENTS.csv
 -- want-measurements.txt --
