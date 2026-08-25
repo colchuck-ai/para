@@ -434,23 +434,42 @@ func write(root string, target Target, cfg render.Config, id string) error {
 //
 // Neither is removed while anything is still in it. The parent directory in
 // particular is one the IDE itself writes to, and §6.1/§6.2's "para never
-// reads or writes anything else under it" cuts both ways.
+// reads or writes anything else under it" cuts both ways. Checking parentDir
+// even after Dir turned out non-empty would just find Dir sitting in it and
+// answer "no" a second time, so there is no need to short-circuit the loop.
 func pruneEmpty(root string, target Target) error {
 	for _, rel := range []string{target.Dir, target.parentDir} {
-		abs := filepath.Join(root, filepath.FromSlash(rel))
-		entries, err := os.ReadDir(abs)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("reading %s", rel))
+		if err := PruneIfEmpty(root, rel); err != nil {
+			return err
 		}
-		if len(entries) > 0 {
+	}
+	return nil
+}
+
+// PruneIfEmpty removes the directory at root/rel if it is there and holds
+// nothing, and does nothing — no error — if there is no directory there or
+// there is something in it.
+//
+// It is the one rule behind every "turning a surface off should leave no
+// empty directory behind" repair that touches a directory this package does
+// not otherwise own: pruneEmpty's own two directories call it in a loop
+// above, and rebuild's .cursor/rules/ (§6.2) — which has no mirror entry of
+// its own to prune through, since a rule file is not a mirror — calls it
+// directly rather than reimplementing the same read-then-remove.
+func PruneIfEmpty(root, rel string) error {
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	entries, err := os.ReadDir(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
 			return nil
 		}
-		if err := os.Remove(abs); err != nil {
-			return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("removing %s", rel))
-		}
+		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("reading %s", rel))
+	}
+	if len(entries) > 0 {
+		return nil
+	}
+	if err := os.Remove(abs); err != nil {
+		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("removing %s", rel))
 	}
 	return nil
 }

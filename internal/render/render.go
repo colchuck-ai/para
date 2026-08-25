@@ -231,6 +231,16 @@ func HasClaude(loc locator.Locator, cfg Config) bool {
 	return cfg.EmitClaude && HasAgents(loc)
 }
 
+// HasCursor reports whether a skill's Cursor rule file is emitted: the Cursor
+// surface turned on (§6.2). There is no location gate the way HasClaude has
+// one — every skill gets a rule file, not just eight fixed places — but the
+// reason for a shared predicate is the same as HasClaude's: For, rebuild's
+// residue, and doctor's orphan-rule check must not each re-ask cfg.EmitCursor
+// and risk disagreeing about it.
+func HasCursor(cfg Config) bool {
+	return cfg.EmitCursor
+}
+
 // For returns the renderers the subject in owns, in the order a mutation
 // writes them. Order matters twice: within a write it is the projection order
 // §0.2 fixes, and within doctor it is the order findings are reported in.
@@ -260,7 +270,7 @@ func For(in In) []Renderer {
 		// two rule files are added independently rather than one implying
 		// the other.
 		rs = append(rs, Skill, Activity, Rule)
-		if in.Config.EmitCursor {
+		if HasCursor(in.Config) {
 			rs = append(rs, CursorRule)
 		}
 	case shapeRoot:
