@@ -42,6 +42,7 @@ const gitAttributesBlock = `# journals: order lives in the data, so keeping both
 **/ACTIVITY.md          merge=ours linguist-generated=true
 **/MEASUREMENTS.csv     merge=ours linguist-generated=true
 .agents/rules/**/*.md   merge=ours linguist-generated=true
+.cursor/rules/para-*.mdc merge=ours linguist-generated=true
 `
 
 func (gitAttributesRenderer) Render(in In) ([]byte, error) {

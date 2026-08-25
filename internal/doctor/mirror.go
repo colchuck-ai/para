@@ -136,7 +136,7 @@ func (s *scan) checkMirrorEntries(ids []string) error {
 	if err != nil {
 		return err
 	}
-	issues, err := mirror.Inspect(s.root, cfg, ids, nil)
+	issues, err := mirror.Inspect(s.root, mirror.Claude, cfg, ids, nil)
 	if err != nil {
 		return err
 	}

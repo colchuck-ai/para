@@ -316,6 +316,7 @@ func everyShape(t *testing.T) []render.In {
 					"area.growth",
 				},
 			},
+			Config: render.Config{EmitCursor: true},
 		},
 		{
 			Locator: loc(t, "skills.commit-style"),
@@ -325,6 +326,7 @@ func everyShape(t *testing.T) []render.In {
 				Description: "when writing a commit message",
 				Created:     "2026-01-01T08:20:00-08:00",
 			},
+			Config: render.Config{EmitCursor: true},
 		},
 	}
 }

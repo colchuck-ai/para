@@ -343,12 +343,12 @@ func (e *Env) SyncMirror(dryRun bool, pending, adding, removing []string) ([]mir
 		return nil, err
 	}
 	ids = pendingSkillIDs(ids, adding, removing)
-	issues, err := mirror.Inspect(e.Root, cfg, ids, pending)
+	issues, err := mirror.Inspect(e.Root, mirror.Claude, cfg, ids, pending)
 	if err != nil {
 		return nil, err
 	}
 	if dryRun {
-		return mirror.Planned(cfg, issues), nil
+		return mirror.Planned(mirror.Claude, cfg, issues), nil
 	}
-	return mirror.Repair(e.Root, cfg, issues)
+	return mirror.Repair(e.Root, mirror.Claude, cfg, issues)
 }

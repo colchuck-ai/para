@@ -140,6 +140,7 @@ var (
 	Measurements  Renderer = measurementsRenderer{}
 	Skill         Renderer = skillRenderer{}
 	Rule          Renderer = ruleRenderer{}
+	CursorRule    Renderer = cursorRuleRenderer{}
 	Agents        Renderer = agentsRenderer{}
 	Claude        Renderer = claudeRenderer{}
 	GitAttributes Renderer = gitAttributesRenderer{}
@@ -254,8 +255,14 @@ func For(in In) []Renderer {
 		// filenames exist to avoid.
 		//
 		// Its third artifact lives outside its directory — the derived rule
-		// (§5.3).
+		// (§5.3). A second, independent rule joins it when the Cursor
+		// surface is on (§6.2) — a separate concern from emit.claude, so the
+		// two rule files are added independently rather than one implying
+		// the other.
 		rs = append(rs, Skill, Activity, Rule)
+		if in.Config.EmitCursor {
+			rs = append(rs, CursorRule)
+		}
 	case shapeRoot:
 		rs = append(rs, Readme, Agents, Activity)
 		if HasClaude(in.Locator, in.Config) {
