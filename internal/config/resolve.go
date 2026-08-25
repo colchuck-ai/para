@@ -217,7 +217,7 @@ func (r *Resolver) Resolve(loc locator.Locator, key string) (Resolution, error) 
 // that did would be reading truth it was not given — so this is the seam
 // between §7's chain and the projection engine.
 //
-// The three keys config.RootOnly names are resolved **at the root** whatever loc
+// The five keys config.RootOnly names are resolved **at the root** whatever loc
 // is, and they are the only keys in the design that are. §6.1 opens by saying the whole
 // subsection is "off by default and turns on together, because it is one
 // concern", and §7's table gives both keys `root` as where they live. The reason
@@ -244,6 +244,22 @@ func (r *Resolver) RenderConfig(loc locator.Locator) (render.Config, error) {
 	}
 	if v, ok := skills.Str(); ok {
 		out.EmitClaudeSkills = v
+	}
+
+	cursor, err := r.Resolve(nil, KeyEmitCursor)
+	if err != nil {
+		return render.Config{}, err
+	}
+	if v, ok := cursor.Bool(); ok {
+		out.EmitCursor = v
+	}
+
+	cursorSkills, err := r.Resolve(nil, KeyEmitCursorSkills)
+	if err != nil {
+		return render.Config{}, err
+	}
+	if v, ok := cursorSkills.Str(); ok {
+		out.EmitCursorSkills = v
 	}
 
 	// At the root, whatever loc is, for the reason RootOnly gives: .gitattributes

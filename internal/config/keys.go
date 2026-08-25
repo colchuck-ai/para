@@ -41,6 +41,11 @@ const (
 	// to recognise a write to either of them and refresh the surface.
 	KeyEmitClaude       = "emit.claude"
 	KeyEmitClaudeSkills = "emit.claude-skills"
+	// The two keys that decide the Cursor IDE surface's shape, and turn on
+	// together because it is one concern (§6.2). Named because a mutation has
+	// to recognise a write to either of them and refresh the surface.
+	KeyEmitCursor       = "emit.cursor"
+	KeyEmitCursorSkills = "emit.cursor-skills"
 	// KeyEmitGitattributes decides whether §9's block sits in .gitattributes.
 	// Named for the same reason: a `config set` of it has to put the block in
 	// or take it out in the same command, or the command leaves a tree doctor
@@ -55,14 +60,23 @@ func AffectsClaudeSurface(key string) bool {
 	return key == KeyEmitClaude || key == KeyEmitClaudeSkills
 }
 
+// AffectsCursorSurface reports whether writing key changes what the Cursor IDE
+// surface should contain — which is the question `config set` asks before
+// deciding whether to refresh `.cursor/rules/` and `.cursor/skills/` (§6.2).
+func AffectsCursorSurface(key string) bool {
+	return key == KeyEmitCursor || key == KeyEmitCursorSkills
+}
+
 // RootOnly reports whether key is read at the tree root whatever locator it is
-// asked about — the three keys in §7's table whose "where it usefully lives"
+// asked about — the five keys in §7's table whose "where it usefully lives"
 // column says `root` and means it.
 //
-// It is a rule rather than advice for all three, and for one reason: each
+// It is a rule rather than advice for all five, and for one reason: each
 // decides whether a file at a *fixed* location exists or what it holds. The two
 // `emit.claude` keys govern eight CLAUDE.md files and one `.claude/skills/`,
 // which sit at different depths, so a chained answer cannot be one answer (§6.1).
+// The two `emit.cursor` keys govern one `.cursor/skills/` and one
+// `.cursor/rules/para-*.mdc` per skill, all at the root (§6.2).
 // `emit.gitattributes` governs a single file at the root (§9), so a value set
 // anywhere else is read by nothing at all — a knob the user believes in and para
 // never consults, which is precisely what this package's closed key set exists
@@ -72,7 +86,7 @@ func AffectsClaudeSurface(key string) bool {
 // resolves these keys at the root whatever it is asked, and `config set --at`
 // refuses them, naming the root.
 func RootOnly(key string) bool {
-	return AffectsClaudeSurface(key) || key == KeyEmitGitattributes
+	return AffectsClaudeSurface(key) || AffectsCursorSurface(key) || key == KeyEmitGitattributes
 }
 
 // Type is a config key's declared value type. It decides how a command-line
@@ -122,7 +136,7 @@ type Spec struct {
 
 // DefaultValue returns the key's built-in default and whether it has one.
 //
-// Only §7's four emit/log knobs do. The three thresholds deliberately do not:
+// Only §7's six emit/log knobs do. The three thresholds deliberately do not:
 // §7 says "unset everywhere means the check never fires", so a default would
 // make review fire on a tree that never asked it to.
 func (s Spec) DefaultValue() (ptoml.Value, bool) {
@@ -157,6 +171,16 @@ func buildSpecs() []Spec {
 			Key: KeyEmitClaudeSkills, Type: TypeEnum, Enum: []string{"symlink", "copy"},
 			def: ptoml.String("symlink"), hasDef: true,
 			Doc: "how skills are mirrored into .claude/skills when emit.claude is on",
+		},
+		{
+			Key: KeyEmitCursor, Type: TypeBool,
+			def: ptoml.Bool(false), hasDef: true,
+			Doc: "emit the Cursor IDE compatibility surface: .cursor/rules/para-*.mdc and the .cursor/skills mirror",
+		},
+		{
+			Key: KeyEmitCursorSkills, Type: TypeEnum, Enum: []string{"symlink", "copy"},
+			def: ptoml.String("symlink"), hasDef: true,
+			Doc: "how skills are mirrored into .cursor/skills when emit.cursor is on",
 		},
 		{
 			Key: KeyEmitGitattributes, Type: TypeBool,

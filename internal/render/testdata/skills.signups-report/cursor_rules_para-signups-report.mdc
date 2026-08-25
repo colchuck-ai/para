@@ -1,0 +1,5 @@
+---
+globs: "projects/acme-migration/objectives/q1-growth/**,areas/growth/**"
+generated_from: "para-signups-report"
+---
+Use the **Signups report** skill (`.cursor/skills/para-signups-report/SKILL.md`) when asked for the weekly signups number.

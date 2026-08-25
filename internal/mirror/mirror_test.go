@@ -49,13 +49,13 @@ func cfg(enabled bool, mode string) render.Config {
 
 // sync inspects and repairs in one step, which is what every caller does, and
 // returns what the repair reported.
-func sync(t *testing.T, root string, c render.Config, skills ...string) []mirror.Change {
+func sync(t *testing.T, root string, target mirror.Target, c render.Config, skills ...string) []mirror.Change {
 	t.Helper()
-	issues, err := mirror.Inspect(root, c, skills, nil)
+	issues, err := mirror.Inspect(root, target, c, skills, nil)
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}
-	changes, err := mirror.Repair(root, c, issues)
+	changes, err := mirror.Repair(root, target, c, issues)
 	if err != nil {
 		t.Fatalf("Repair: %v", err)
 	}
@@ -81,7 +81,7 @@ func paths(changes []mirror.Change) []string {
 func TestInspectReportsNothingWhenTheSurfaceIsOffAndAbsent(t *testing.T) {
 	root := plant(t, "signups-report")
 
-	issues, err := mirror.Inspect(root, cfg(false, render.MirrorSymlink), []string{"signups-report"}, nil)
+	issues, err := mirror.Inspect(root, mirror.Claude, cfg(false, render.MirrorSymlink), []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestSymlinkModeLinksEverySkill(t *testing.T) {
 	root := plant(t, "commit-style", "signups-report")
 	c := cfg(true, render.MirrorSymlink)
 
-	changes := sync(t, root, c, "commit-style", "signups-report")
+	changes := sync(t, root, mirror.Claude, c, "commit-style", "signups-report")
 	want := []string{
 		"linked .claude/skills/para-commit-style",
 		"linked .claude/skills/para-signups-report",
@@ -124,7 +124,7 @@ func TestSymlinkModeLinksEverySkill(t *testing.T) {
 	// tree forever. It cannot fail on Unix, where FromSlash and ToSlash are both
 	// the identity, so the Windows CI job is what actually exercises it. That is
 	// the job's whole reason for existing (§6.1).
-	if changes := sync(t, root, c, "commit-style", "signups-report"); len(changes) != 0 {
+	if changes := sync(t, root, mirror.Claude, c, "commit-style", "signups-report"); len(changes) != 0 {
 		t.Errorf("second sync = %v, want nothing", paths(changes))
 	}
 }
@@ -133,7 +133,7 @@ func TestCopyModeCopiesTheSkillWithoutItsPara(t *testing.T) {
 	root := plant(t, "signups-report")
 	c := cfg(true, render.MirrorCopy)
 
-	changes := sync(t, root, c, "signups-report")
+	changes := sync(t, root, mirror.Claude, c, "signups-report")
 	if want := []string{"copied .claude/skills/para-signups-report"}; !slices.Equal(paths(changes), want) {
 		t.Errorf("Repair = %v, want %v", paths(changes), want)
 	}
@@ -160,7 +160,7 @@ func TestCopyModeCopiesTheSkillWithoutItsPara(t *testing.T) {
 		t.Error("the copied script is not executable; a skill that ships scripts ships them runnable")
 	}
 
-	if changes := sync(t, root, c, "signups-report"); len(changes) != 0 {
+	if changes := sync(t, root, mirror.Claude, c, "signups-report"); len(changes) != 0 {
 		t.Errorf("second sync = %v, want nothing", paths(changes))
 	}
 }
@@ -177,7 +177,7 @@ func TestCopyModeCarriesASymlinkInsideTheSkill(t *testing.T) {
 		t.Skipf("this filesystem does not support symlinks: %v", err)
 	}
 
-	sync(t, root, c, "signups-report")
+	sync(t, root, mirror.Claude, c, "signups-report")
 	target, err := os.Readlink(filepath.Join(root, ".claude", "skills", "para-signups-report", "scripts", "latest.sh"))
 	if err != nil {
 		t.Fatalf("the copy dropped the skill's own symlink: %v", err)
@@ -185,7 +185,7 @@ func TestCopyModeCarriesASymlinkInsideTheSkill(t *testing.T) {
 	if target != "run.sh" {
 		t.Errorf("copied link target = %q, want %q", target, "run.sh")
 	}
-	if changes := sync(t, root, c, "signups-report"); len(changes) != 0 {
+	if changes := sync(t, root, mirror.Claude, c, "signups-report"); len(changes) != 0 {
 		t.Errorf("second sync = %v, want nothing", paths(changes))
 	}
 }
@@ -193,12 +193,12 @@ func TestCopyModeCarriesASymlinkInsideTheSkill(t *testing.T) {
 func TestCopyModeReportsAnEditedCopyAsStale(t *testing.T) {
 	root := plant(t, "signups-report")
 	c := cfg(true, render.MirrorCopy)
-	sync(t, root, c, "signups-report")
+	sync(t, root, mirror.Claude, c, "signups-report")
 
 	edited := filepath.Join(root, ".claude", "skills", "para-signups-report", "SKILL.md")
 	write(t, edited, "hand-edited\n", 0o644)
 
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
+	issues, err := mirror.Inspect(root, mirror.Claude, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestCopyModeReportsAnEditedCopyAsStale(t *testing.T) {
 		t.Fatalf("Inspect = %v, want %v", states(issues), want)
 	}
 
-	sync(t, root, c, "signups-report")
+	sync(t, root, mirror.Claude, c, "signups-report")
 	got, err := os.ReadFile(edited)
 	if err != nil {
 		t.Fatal(err)
@@ -220,12 +220,12 @@ func TestCopyModeReportsAnEditedCopyAsStale(t *testing.T) {
 func TestCopyModeReportsAnExtraFileAsStale(t *testing.T) {
 	root := plant(t, "signups-report")
 	c := cfg(true, render.MirrorCopy)
-	sync(t, root, c, "signups-report")
+	sync(t, root, mirror.Claude, c, "signups-report")
 
 	extra := filepath.Join(root, ".claude", "skills", "para-signups-report", "notes.md")
 	write(t, extra, "mine\n", 0o644)
 
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
+	issues, err := mirror.Inspect(root, mirror.Claude, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestCopyModeReportsAnExtraFileAsStale(t *testing.T) {
 		t.Fatalf("Inspect = %v, want %v", states(issues), want)
 	}
 
-	sync(t, root, c, "signups-report")
+	sync(t, root, mirror.Claude, c, "signups-report")
 	if _, err := os.Stat(extra); !os.IsNotExist(err) {
 		t.Error("the repair left a file the skill does not have")
 	}
@@ -241,9 +241,9 @@ func TestCopyModeReportsAnExtraFileAsStale(t *testing.T) {
 
 func TestSwitchingModesLeavesNoResidue(t *testing.T) {
 	root := plant(t, "signups-report")
-	sync(t, root, cfg(true, render.MirrorSymlink), "signups-report")
+	sync(t, root, mirror.Claude, cfg(true, render.MirrorSymlink), "signups-report")
 
-	changes := sync(t, root, cfg(true, render.MirrorCopy), "signups-report")
+	changes := sync(t, root, mirror.Claude, cfg(true, render.MirrorCopy), "signups-report")
 	if want := []string{"copied .claude/skills/para-signups-report"}; !slices.Equal(paths(changes), want) {
 		t.Errorf("switching to copy = %v, want %v", paths(changes), want)
 	}
@@ -256,7 +256,7 @@ func TestSwitchingModesLeavesNoResidue(t *testing.T) {
 		t.Error("the copy did not replace the symlink")
 	}
 
-	changes = sync(t, root, cfg(true, render.MirrorSymlink), "signups-report")
+	changes = sync(t, root, mirror.Claude, cfg(true, render.MirrorSymlink), "signups-report")
 	if want := []string{"linked .claude/skills/para-signups-report"}; !slices.Equal(paths(changes), want) {
 		t.Errorf("switching back to symlink = %v, want %v", paths(changes), want)
 	}
@@ -267,9 +267,9 @@ func TestSwitchingModesLeavesNoResidue(t *testing.T) {
 
 func TestTurningTheSurfaceOffSweepsTheMirror(t *testing.T) {
 	root := plant(t, "signups-report")
-	sync(t, root, cfg(true, render.MirrorSymlink), "signups-report")
+	sync(t, root, mirror.Claude, cfg(true, render.MirrorSymlink), "signups-report")
 
-	issues, err := mirror.Inspect(root, cfg(false, render.MirrorSymlink), []string{"signups-report"}, nil)
+	issues, err := mirror.Inspect(root, mirror.Claude, cfg(false, render.MirrorSymlink), []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestTurningTheSurfaceOffSweepsTheMirror(t *testing.T) {
 		t.Fatalf("Inspect with emit.claude off = %v, want %v", states(issues), want)
 	}
 
-	changes := sync(t, root, cfg(false, render.MirrorSymlink), "signups-report")
+	changes := sync(t, root, mirror.Claude, cfg(false, render.MirrorSymlink), "signups-report")
 	if want := []string{"removed .claude/skills/para-signups-report"}; !slices.Equal(paths(changes), want) {
 		t.Errorf("Repair = %v, want %v", paths(changes), want)
 	}
@@ -292,12 +292,12 @@ func TestTurningTheSurfaceOffSweepsTheMirror(t *testing.T) {
 func TestASkillThatIsGoneLeavesAnOrphanMirror(t *testing.T) {
 	root := plant(t, "signups-report", "commit-style")
 	c := cfg(true, render.MirrorSymlink)
-	sync(t, root, c, "signups-report", "commit-style")
+	sync(t, root, mirror.Claude, c, "signups-report", "commit-style")
 
 	if err := os.RemoveAll(filepath.Join(root, ".agents", "skills", "para-commit-style")); err != nil {
 		t.Fatal(err)
 	}
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
+	issues, err := mirror.Inspect(root, mirror.Claude, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +305,7 @@ func TestASkillThatIsGoneLeavesAnOrphanMirror(t *testing.T) {
 		t.Fatalf("Inspect = %v, want %v", states(issues), want)
 	}
 
-	changes := sync(t, root, c, "signups-report")
+	changes := sync(t, root, mirror.Claude, c, "signups-report")
 	if want := []string{"removed .claude/skills/para-commit-style"}; !slices.Equal(paths(changes), want) {
 		t.Errorf("Repair = %v, want %v", paths(changes), want)
 	}
@@ -322,7 +322,7 @@ func TestASkillThatIsGoneLeavesAnOrphanMirror(t *testing.T) {
 func TestAPlainFileWhereALinkBelongsIsBroken(t *testing.T) {
 	root := plant(t, "signups-report")
 	c := cfg(true, render.MirrorSymlink)
-	sync(t, root, c, "signups-report")
+	sync(t, root, mirror.Claude, c, "signups-report")
 
 	path := filepath.Join(root, ".claude", "skills", "para-signups-report")
 	if err := os.Remove(path); err != nil {
@@ -330,7 +330,7 @@ func TestAPlainFileWhereALinkBelongsIsBroken(t *testing.T) {
 	}
 	write(t, path, "../../.agents/skills/para-signups-report", 0o644)
 
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
+	issues, err := mirror.Inspect(root, mirror.Claude, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +338,7 @@ func TestAPlainFileWhereALinkBelongsIsBroken(t *testing.T) {
 		t.Fatalf("Inspect = %v, want %v", states(issues), want)
 	}
 
-	sync(t, root, c, "signups-report")
+	sync(t, root, mirror.Claude, c, "signups-report")
 	if _, err := os.Readlink(path); err != nil {
 		t.Errorf("rebuild did not repair the hostile checkout: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestAPlainFileWhereALinkBelongsIsBroken(t *testing.T) {
 func TestALinkThatDoesNotResolveIsBroken(t *testing.T) {
 	root := plant(t, "signups-report")
 	c := cfg(true, render.MirrorSymlink)
-	sync(t, root, c, "signups-report")
+	sync(t, root, mirror.Claude, c, "signups-report")
 
 	path := filepath.Join(root, ".claude", "skills", "para-signups-report")
 	if err := os.Remove(path); err != nil {
@@ -357,7 +357,7 @@ func TestALinkThatDoesNotResolveIsBroken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
+	issues, err := mirror.Inspect(root, mirror.Claude, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,13 +369,13 @@ func TestALinkThatDoesNotResolveIsBroken(t *testing.T) {
 func TestSomethingWithoutTheParaPrefixIsNeverTouched(t *testing.T) {
 	root := plant(t, "signups-report")
 	c := cfg(true, render.MirrorSymlink)
-	sync(t, root, c, "signups-report")
+	sync(t, root, mirror.Claude, c, "signups-report")
 
 	mine := filepath.Join(root, ".claude", "skills", "my-own-skill", "SKILL.md")
 	write(t, mine, "mine\n", 0o644)
 
 	// Not reported when the surface is on...
-	issues, err := mirror.Inspect(root, c, []string{"signups-report"}, nil)
+	issues, err := mirror.Inspect(root, mirror.Claude, c, []string{"signups-report"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +385,7 @@ func TestSomethingWithoutTheParaPrefixIsNeverTouched(t *testing.T) {
 
 	// ...nor swept when it is turned off, and its presence is what keeps
 	// .claude/skills/ from being pruned.
-	sync(t, root, cfg(false, render.MirrorSymlink), "signups-report")
+	sync(t, root, mirror.Claude, cfg(false, render.MirrorSymlink), "signups-report")
 	if _, err := os.Stat(mine); err != nil {
 		t.Errorf("para removed something that was not its own: %v", err)
 	}
@@ -394,9 +394,9 @@ func TestSomethingWithoutTheParaPrefixIsNeverTouched(t *testing.T) {
 func TestAMissingMirrorIsReported(t *testing.T) {
 	root := plant(t, "signups-report", "commit-style")
 	c := cfg(true, render.MirrorSymlink)
-	sync(t, root, c, "signups-report")
+	sync(t, root, mirror.Claude, c, "signups-report")
 
-	issues, err := mirror.Inspect(root, c, []string{"signups-report", "commit-style"}, nil)
+	issues, err := mirror.Inspect(root, mirror.Claude, c, []string{"signups-report", "commit-style"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

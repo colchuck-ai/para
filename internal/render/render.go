@@ -42,6 +42,12 @@ type Config struct {
 	// EmitClaudeSkills is "symlink" (default) or "copy" (§6.1). The mirror
 	// itself is Phase 13's; this carries the setting through.
 	EmitClaudeSkills string
+	// EmitCursor turns on the Cursor IDE compatibility surface:
+	// .cursor/rules/para-*.mdc and the .cursor/skills mirror (§6.2). Off by
+	// default.
+	EmitCursor bool
+	// EmitCursorSkills is "symlink" (default) or "copy" (§6.2).
+	EmitCursorSkills string
 	// EmitGitattributes writes the .gitattributes block (§9). On by default.
 	EmitGitattributes bool
 }
@@ -52,10 +58,14 @@ const (
 	MirrorCopy    = "copy"
 )
 
-// DefaultConfig is §7's defaults for the keys render reads: the Claude surface
-// off, .gitattributes on, and symlink as the mirror mode.
+// DefaultConfig is §7's defaults for the keys render reads: both compatibility
+// surfaces off, .gitattributes on, and symlink as the mirror mode.
 func DefaultConfig() Config {
-	return Config{EmitClaude: false, EmitClaudeSkills: MirrorSymlink, EmitGitattributes: true}
+	return Config{
+		EmitClaude: false, EmitClaudeSkills: MirrorSymlink,
+		EmitCursor: false, EmitCursorSkills: MirrorSymlink,
+		EmitGitattributes: true,
+	}
 }
 
 // In is everything a renderer reads about one subject — a root, a bucket, a
@@ -130,6 +140,7 @@ var (
 	Measurements  Renderer = measurementsRenderer{}
 	Skill         Renderer = skillRenderer{}
 	Rule          Renderer = ruleRenderer{}
+	CursorRule    Renderer = cursorRuleRenderer{}
 	Agents        Renderer = agentsRenderer{}
 	Claude        Renderer = claudeRenderer{}
 	GitAttributes Renderer = gitAttributesRenderer{}
@@ -220,6 +231,16 @@ func HasClaude(loc locator.Locator, cfg Config) bool {
 	return cfg.EmitClaude && HasAgents(loc)
 }
 
+// HasCursor reports whether a skill's Cursor rule file is emitted: the Cursor
+// surface turned on (§6.2). There is no location gate the way HasClaude has
+// one — every skill gets a rule file, not just eight fixed places — but the
+// reason for a shared predicate is the same as HasClaude's: For, rebuild's
+// residue, and doctor's orphan-rule check must not each re-ask cfg.EmitCursor
+// and risk disagreeing about it.
+func HasCursor(cfg Config) bool {
+	return cfg.EmitCursor
+}
+
 // For returns the renderers the subject in owns, in the order a mutation
 // writes them. Order matters twice: within a write it is the projection order
 // §0.2 fixes, and within doctor it is the order findings are reported in.
@@ -244,8 +265,14 @@ func For(in In) []Renderer {
 		// filenames exist to avoid.
 		//
 		// Its third artifact lives outside its directory — the derived rule
-		// (§5.3).
+		// (§5.3). A second, independent rule joins it when the Cursor
+		// surface is on (§6.2) — a separate concern from emit.claude, so the
+		// two rule files are added independently rather than one implying
+		// the other.
 		rs = append(rs, Skill, Activity, Rule)
+		if HasCursor(in.Config) {
+			rs = append(rs, CursorRule)
+		}
 	case shapeRoot:
 		rs = append(rs, Readme, Agents, Activity)
 		if HasClaude(in.Locator, in.Config) {

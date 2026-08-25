@@ -6,4 +6,5 @@
 **/ACTIVITY.md          merge=ours linguist-generated=true
 **/MEASUREMENTS.csv     merge=ours linguist-generated=true
 .agents/rules/**/*.md   merge=ours linguist-generated=true
+.cursor/rules/para-*.mdc merge=ours linguist-generated=true
 # para:end

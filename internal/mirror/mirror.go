@@ -1,9 +1,10 @@
-// Package mirror owns `.claude/skills/`: the half of the Claude Code
-// compatibility surface that an `@` import cannot express, because a skill
-// ships scripts and references and not just prose (design §6.1).
+// Package mirror owns `.claude/skills/` and `.cursor/skills/`: the half of
+// the Claude Code and Cursor compatibility surfaces that an import or a rule
+// file cannot express, because a skill ships scripts and references and not
+// just prose (design §6.1, §6.2).
 //
-// It is one package with two consumers and one opinion, which is the whole
-// reason it exists. `doctor` reports what is wrong with the mirror and
+// It is one package with two consumers and one opinion per target, which is
+// the whole reason it exists. `doctor` reports what is wrong with a mirror and
 // `rebuild` repairs it, and §10 gives two of those reports their own names —
 // `orphan-mirror` and `broken-link` — so the classification has to be shared
 // rather than written twice. Inspect is that classification: it says what is
@@ -11,18 +12,24 @@
 // produced. A doctor that decided for itself which links were broken would be
 // a second opinion about the same directory.
 //
-// Three rules from §6.1 are enforced here and nowhere else:
+// Claude and Cursor are two instances of one Target, not two implementations:
+// Inspect, Planned, and Repair take a Target and do not otherwise care which
+// one it is. The two directories are independent surfaces (§6.2 — "neither
+// implies the other"), never read together and never pruned into each other.
+//
+// Three rules from §6.1 (and §6.2, for the Cursor target) are enforced here
+// and nowhere else:
 //
 //   - **`.para/` is never mirrored.** A reachable
-//     `.claude/skills/para-X/.para/state.toml` would satisfy §1.2's entity
-//     test, and doctor's deep scan would report a phantom orphan living
-//     outside the tree. In copy mode it is excluded; in symlink mode doctor
-//     does not follow para-owned links.
+//     `.claude/skills/para-X/.para/state.toml` (or its Cursor equivalent)
+//     would satisfy §1.2's entity test, and doctor's deep scan would report a
+//     phantom orphan living outside the tree. In copy mode it is excluded; in
+//     symlink mode doctor does not follow para-owned links.
 //
 //   - **Ownership is the name, not a frontmatter line.** `generated_from`
-//     cannot live on a symlink, so anything under `.claude/skills/` carrying
-//     the `para-` prefix is para's and anything else is yours — never read,
-//     never written, never removed.
+//     cannot live on a symlink, so anything under a target's directory
+//     carrying the `para-` prefix is para's and anything else is yours —
+//     never read, never written, never removed.
 //
 //   - **Both modes are projections.** Nothing here is ever read back as truth.
 //     A copy that drifts is stale, not a second source, and the repair for
@@ -48,31 +55,70 @@ import (
 	"github.com/colchuck-ai/para/internal/render"
 )
 
-// Dir is where mirrors live, relative to the tree root, slash-separated.
-const Dir = ".claude/skills"
-
-// claudeDir is the directory above it. Para writes nothing else under it, and
-// removes it only when the sweep leaves it empty (§6.1).
-const claudeDir = ".claude"
-
 // prefix marks para's own entries. It is the same prefix a skill's own
 // directory carries, and it is what makes ownership checkable without
 // frontmatter.
 const prefix = "para-"
 
-// skillsDir is where the skills themselves live (§1.4).
+// skillsDir is where the skills themselves live (§1.4), the same for every
+// target: both mirrors copy or link the one skill directory under
+// .agents/skills/.
 const skillsDir = ".agents/skills"
 
-// Name is the mirror's directory name for a skill id.
-func Name(id string) string { return prefix + id }
+// Target names one mirror surface — Claude's or Cursor's — and the four
+// things the two differ on: where mirrors live, what governs turning the
+// surface on, which mode it writes in, and what a leftover entry's report
+// says. Inspect, Planned, and Repair are the same three functions either way;
+// only these answers change per target, which is what keeps the two surfaces
+// from drifting into two implementations of one idea (§6.1, §6.2).
+type Target struct {
+	// Dir is where this target's mirrors live, relative to the tree root,
+	// slash-separated.
+	Dir string
+	// parentDir is the directory directly above Dir. Para writes nothing
+	// else under it, and removes it only when the sweep leaves it empty.
+	parentDir string
+	// residueDetail is the sentence a report prints about anything this
+	// surface left behind when its flag turns off.
+	residueDetail string
+	// enabled reports whether cfg turns this surface on.
+	enabled func(render.Config) bool
+	// mode reports the configured mirror mode ("symlink" or "copy") for this
+	// surface.
+	mode func(render.Config) string
+}
 
-// Target is the body of a symlink-mode mirror: relative, and therefore
+// Claude is the §6.1 target: .claude/skills/, governed by emit.claude and
+// emit.claude-skills.
+var Claude = Target{
+	Dir:           ".claude/skills",
+	parentDir:     ".claude",
+	residueDetail: ResidueDetail,
+	enabled:       func(c render.Config) bool { return c.EmitClaude },
+	mode:          func(c render.Config) string { return c.EmitClaudeSkills },
+}
+
+// Cursor is the §6.2 target: .cursor/skills/, governed by emit.cursor and
+// emit.cursor-skills.
+var Cursor = Target{
+	Dir:           ".cursor/skills",
+	parentDir:     ".cursor",
+	residueDetail: "should not exist; emit.cursor is off",
+	enabled:       func(c render.Config) bool { return c.EmitCursor },
+	mode:          func(c render.Config) string { return c.EmitCursorSkills },
+}
+
+// Name is the mirror's directory name for a skill id — the same for every
+// target, since it is the skill's own directory name that gets mirrored.
+func (t Target) Name(id string) string { return prefix + id }
+
+// LinkTarget is the body of a symlink-mode mirror: relative, and therefore
 // unchanged by cloning the tree somewhere else or moving it. Two levels up
-// from `.claude/skills/` is the tree root.
-func Target(id string) string { return "../../" + skillsDir + "/" + Name(id) }
+// from t.Dir is the tree root.
+func (t Target) LinkTarget(id string) string { return "../../" + skillsDir + "/" + t.Name(id) }
 
 // Path is a mirror's location relative to the tree root, slash-separated.
-func Path(id string) string { return Dir + "/" + Name(id) }
+func (t Target) Path(id string) string { return t.Dir + "/" + t.Name(id) }
 
 // State is what is wrong with one mirror entry. There is no state for "fine":
 // Inspect returns only entries that need something done, so an empty result is
@@ -172,15 +218,15 @@ type Change struct {
 // Every other caller passes nil, because every other caller is looking at a
 // tree that has already been written.
 //
-// When `emit.claude` is off, every para- prefixed entry is residue and nothing
-// else. That is deliberate, and it answers the question Phase 12 left open:
-// naming a doomed entry `orphan-mirror` would send the reader to look at a
-// skill, and `broken-link` would tell them their checkout mangled a link that
-// is about to be deleted. Both would be true and neither would be the repair.
-// The surface is off; the entry goes.
-func Inspect(root string, cfg render.Config, skills, pending []string) ([]Issue, error) {
+// When a target's flag is off, every para- prefixed entry is residue and
+// nothing else. That is deliberate, and it answers the question Phase 12 left
+// open: naming a doomed entry `orphan-mirror` would send the reader to look at
+// a skill, and `broken-link` would tell them their checkout mangled a link
+// that is about to be deleted. Both would be true and neither would be the
+// repair. The surface is off; the entry goes.
+func Inspect(root string, target Target, cfg render.Config, skills, pending []string) ([]Issue, error) {
 	want := map[string]bool{}
-	if cfg.EmitClaude {
+	if target.enabled(cfg) {
 		for _, id := range skills {
 			want[id] = true
 		}
@@ -190,17 +236,17 @@ func Inspect(root string, cfg render.Config, skills, pending []string) ([]Issue,
 		stale[id] = true
 	}
 
-	entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(Dir)))
+	entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(target.Dir)))
 	if err != nil {
 		if os.IsNotExist(err) {
 			// No mirror directory is the default: the surface is off unless
-			// asked for (§6.1). Every wanted skill is then missing.
+			// asked for (§6.1, §6.2). Every wanted skill is then missing.
 			if len(want) == 0 {
 				return nil, nil
 			}
 			entries = nil
 		} else {
-			return nil, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("reading %s", Dir))
+			return nil, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("reading %s", target.Dir))
 		}
 	}
 
@@ -215,7 +261,7 @@ func Inspect(root string, cfg render.Config, skills, pending []string) ([]Issue,
 			continue
 		}
 		seen[id] = true
-		if issue, bad := classify(root, cfg, want, stale, id, entry); bad {
+		if issue, bad := classify(root, target, cfg, want, stale, id, entry); bad {
 			issues = append(issues, issue)
 		}
 	}
@@ -225,7 +271,7 @@ func Inspect(root string, cfg render.Config, skills, pending []string) ([]Issue,
 			continue
 		}
 		issues = append(issues, Issue{
-			ID: id, Path: Path(id), State: StateMissing,
+			ID: id, Path: target.Path(id), State: StateMissing,
 			Detail: fmt.Sprintf("is missing; skill.%s has no mirror", id),
 		})
 	}
@@ -235,21 +281,21 @@ func Inspect(root string, cfg render.Config, skills, pending []string) ([]Issue,
 }
 
 // classify decides what, if anything, is wrong with one existing entry.
-func classify(root string, cfg render.Config, want, pending map[string]bool, id string, entry fs.DirEntry) (Issue, bool) {
-	issue := Issue{ID: id, Path: Path(id)}
+func classify(root string, target Target, cfg render.Config, want, pending map[string]bool, id string, entry fs.DirEntry) (Issue, bool) {
+	issue := Issue{ID: id, Path: target.Path(id)}
 	switch {
-	case !cfg.EmitClaude:
-		issue.State, issue.Detail = StateResidue, ResidueDetail
+	case !target.enabled(cfg):
+		issue.State, issue.Detail = StateResidue, target.residueDetail
 		return issue, true
 	case !want[id]:
 		issue.State, issue.Detail = StateOrphan, fmt.Sprintf("mirrors skill.%s, which is gone", id)
 		return issue, true
 	}
 
-	abs := filepath.Join(root, filepath.FromSlash(Dir), entry.Name())
+	abs := filepath.Join(root, filepath.FromSlash(target.Dir), entry.Name())
 	link := entry.Type()&fs.ModeSymlink != 0
 
-	if cfg.EmitClaudeSkills == render.MirrorCopy {
+	if target.mode(cfg) == render.MirrorCopy {
 		switch {
 		case link:
 			issue.State, issue.Detail = StateStale, "is a symlink where a copy belongs"
@@ -277,7 +323,7 @@ func classify(root string, cfg render.Config, want, pending map[string]bool, id 
 			issue.State, issue.Detail = StateBroken, "is a symlink that does not resolve"
 			break
 		}
-		// ToSlash before comparing, because Target is slash-separated by
+		// ToSlash before comparing, because LinkTarget is slash-separated by
 		// contract and the link was written through filepath.FromSlash. On
 		// Windows os.Readlink hands back `..\..\.agents\skills\para-x`, which
 		// is the same link — so without this, doctor reported `stale-projection`
@@ -285,8 +331,8 @@ func classify(root string, cfg render.Config, want, pending map[string]bool, id 
 		// identical bytes, and doctor stayed red forever. The write converts
 		// one way and the read has to convert back; a rule applied at one end
 		// of a round trip and not the other is not a rule.
-		if target, err := os.Readlink(abs); err != nil || filepath.ToSlash(target) != Target(id) {
-			issue.State, issue.Detail = StateStale, fmt.Sprintf("points at %q, not at the skill", target)
+		if link, err := os.Readlink(abs); err != nil || filepath.ToSlash(link) != target.LinkTarget(id) {
+			issue.State, issue.Detail = StateStale, fmt.Sprintf("points at %q, not at the skill", link)
 		}
 	case entry.IsDir():
 		issue.State, issue.Detail = StateStale, "is a copied directory where a symlink belongs"
@@ -303,24 +349,24 @@ func classify(root string, cfg render.Config, want, pending map[string]bool, id 
 // It shares plan with Repair rather than reproducing its reasoning, because a
 // dry run whose list differs from what the real run does is worse than no dry
 // run at all.
-func Planned(cfg render.Config, issues []Issue) []Change {
+func Planned(target Target, cfg render.Config, issues []Issue) []Change {
 	out := make([]Change, 0, len(issues))
 	for _, issue := range issues {
-		out = append(out, plan(cfg, issue))
+		out = append(out, plan(target, cfg, issue))
 	}
 	return out
 }
 
 // plan is what fixing one issue amounts to: a removal, or a removal followed by
 // a write in the configured mode.
-func plan(cfg render.Config, issue Issue) Change {
+func plan(target Target, cfg render.Config, issue Issue) Change {
 	switch {
 	case issue.State == StateResidue || issue.State == StateOrphan:
 		return Change{Verb: VerbRemoved, Path: issue.Path}
-	case cfg.EmitClaudeSkills == render.MirrorCopy:
+	case target.mode(cfg) == render.MirrorCopy:
 		return Change{Verb: VerbCopied, Path: issue.Path}
 	default:
-		return Change{Verb: VerbLinked, Path: issue.Path, Target: Target(issue.ID)}
+		return Change{Verb: VerbLinked, Path: issue.Path, Target: target.LinkTarget(issue.ID)}
 	}
 }
 
@@ -331,12 +377,12 @@ func plan(cfg render.Config, issue Issue) Change {
 // write what the skill says — because a mirror is a projection and there is
 // nothing in it worth salvaging. What differs is only whether a write follows
 // the removal.
-func Repair(root string, cfg render.Config, issues []Issue) ([]Change, error) {
+func Repair(root string, target Target, cfg render.Config, issues []Issue) ([]Change, error) {
 	var changes []Change
 	removed := false
 
 	for _, issue := range issues {
-		change := plan(cfg, issue)
+		change := plan(target, cfg, issue)
 		abs := filepath.Join(root, filepath.FromSlash(issue.Path))
 		if err := os.RemoveAll(abs); err != nil {
 			return changes, paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("removing %s", issue.Path))
@@ -346,14 +392,14 @@ func Repair(root string, cfg render.Config, issues []Issue) ([]Change, error) {
 			changes = append(changes, change)
 			continue
 		}
-		if err := write(root, cfg, issue.ID); err != nil {
+		if err := write(root, target, cfg, issue.ID); err != nil {
 			return changes, err
 		}
 		changes = append(changes, change)
 	}
 
 	if removed {
-		if err := pruneEmpty(root); err != nil {
+		if err := pruneEmpty(root, target); err != nil {
 			return changes, err
 		}
 	}
@@ -362,49 +408,68 @@ func Repair(root string, cfg render.Config, issues []Issue) ([]Change, error) {
 
 // write puts the mirror for one skill in place, in whichever mode is
 // configured. Its destination is known not to exist: Repair removes it first.
-func write(root string, cfg render.Config, id string) error {
-	rel := Path(id)
+func write(root string, target Target, cfg render.Config, id string) error {
+	rel := target.Path(id)
 	abs := filepath.Join(root, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("creating %s", Dir))
+		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("creating %s", target.Dir))
 	}
 
-	if cfg.EmitClaudeSkills == render.MirrorCopy {
+	if target.mode(cfg) == render.MirrorCopy {
 		return copyTree(sourceDir(root, id), abs)
 	}
-	if err := os.Symlink(filepath.FromSlash(Target(id)), abs); err != nil {
+	if err := os.Symlink(filepath.FromSlash(target.LinkTarget(id)), abs); err != nil {
 		// The one failure with a configuration answer rather than a filesystem
-		// one: a platform that will not create links is exactly what
-		// `emit.claude-skills = "copy"` exists for (§6.1).
-		return paraerr.Wrap(paraerr.KindInternal, err,
-			fmt.Sprintf("linking %s (set `emit.claude-skills = \"copy\"` where links do not survive)", rel))
+		// one: a platform that will not create links is exactly what the
+		// copy mode exists for (§6.1, §6.2).
+		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("linking %s (switch this surface's skills mode to \"copy\" where links do not survive)", rel))
 	}
 	return nil
 }
 
-// pruneEmpty removes `.claude/skills/` and then `.claude/` when the sweep has
-// left them empty, so that turning the surface off returns the tree to the
-// shape §26's `init` describes: "no CLAUDE.md, no .claude/".
+// pruneEmpty removes target.Dir and then its parent when the sweep has left
+// them empty, so that turning the surface off returns the tree to the shape
+// §26's `init` describes: "no CLAUDE.md, no .claude/" — and the Cursor
+// equivalent.
 //
-// Neither is removed while anything is still in it. `.claude/` in particular is
-// a directory Claude Code itself writes to, and §6.1's "para never reads or
-// writes anything else under it" cuts both ways.
-func pruneEmpty(root string) error {
-	for _, rel := range []string{Dir, claudeDir} {
-		abs := filepath.Join(root, filepath.FromSlash(rel))
-		entries, err := os.ReadDir(abs)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("reading %s", rel))
+// Neither is removed while anything is still in it. The parent directory in
+// particular is one the IDE itself writes to, and §6.1/§6.2's "para never
+// reads or writes anything else under it" cuts both ways. Checking parentDir
+// even after Dir turned out non-empty would just find Dir sitting in it and
+// answer "no" a second time, so there is no need to short-circuit the loop.
+func pruneEmpty(root string, target Target) error {
+	for _, rel := range []string{target.Dir, target.parentDir} {
+		if err := PruneIfEmpty(root, rel); err != nil {
+			return err
 		}
-		if len(entries) > 0 {
+	}
+	return nil
+}
+
+// PruneIfEmpty removes the directory at root/rel if it is there and holds
+// nothing, and does nothing — no error — if there is no directory there or
+// there is something in it.
+//
+// It is the one rule behind every "turning a surface off should leave no
+// empty directory behind" repair that touches a directory this package does
+// not otherwise own: pruneEmpty's own two directories call it in a loop
+// above, and rebuild's .cursor/rules/ (§6.2) — which has no mirror entry of
+// its own to prune through, since a rule file is not a mirror — calls it
+// directly rather than reimplementing the same read-then-remove.
+func PruneIfEmpty(root, rel string) error {
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	entries, err := os.ReadDir(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
 			return nil
 		}
-		if err := os.Remove(abs); err != nil {
-			return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("removing %s", rel))
-		}
+		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("reading %s", rel))
+	}
+	if len(entries) > 0 {
+		return nil
+	}
+	if err := os.Remove(abs); err != nil {
+		return paraerr.Wrap(paraerr.KindInternal, err, fmt.Sprintf("removing %s", rel))
 	}
 	return nil
 }
@@ -412,9 +477,10 @@ func pruneEmpty(root string) error {
 // sourceDir is the skill a mirror mirrors, as an absolute OS path. It is the
 // §1.4 mapping `skills.<id>` ↔ `.agents/skills/para-<id>`, spelled here rather
 // than taken from locator so that this package needs no locator to answer a
-// question about a directory name it already has.
+// question about a directory name it already has. The same for every target:
+// both mirror the one skill directory.
 func sourceDir(root, id string) string {
-	return filepath.Join(root, filepath.FromSlash(skillsDir), Name(id))
+	return filepath.Join(root, filepath.FromSlash(skillsDir), prefix+id)
 }
 
 // file is one entry of a copy-mode mirror: where it sits inside the skill,

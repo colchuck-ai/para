@@ -354,7 +354,11 @@ func TestRenderConfigResolvesTheEmitKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderConfig: %v", err)
 	}
-	want := render.Config{EmitClaude: true, EmitClaudeSkills: render.MirrorCopy, EmitGitattributes: true}
+	want := render.Config{
+		EmitClaude: true, EmitClaudeSkills: render.MirrorCopy,
+		EmitCursor: false, EmitCursorSkills: render.MirrorSymlink,
+		EmitGitattributes: true,
+	}
 	if got != want {
 		t.Errorf("RenderConfig() = %+v, want %+v", got, want)
 	}
@@ -370,6 +374,26 @@ func TestRenderConfigOnAnEmptyTreeIsTheDefaults(t *testing.T) {
 	}
 	if got != render.DefaultConfig() {
 		t.Errorf("RenderConfig() = %+v, want the defaults %+v", got, render.DefaultConfig())
+	}
+}
+
+func TestRenderConfigResolvesTheCursorEmitKeys(t *testing.T) {
+	root := plant(t, map[string]string{
+		".para/config.toml": "emit.cursor = true\nemit.cursor-skills = \"copy\"\n",
+	})
+	r := NewResolver(root)
+
+	got, err := r.RenderConfig(nil)
+	if err != nil {
+		t.Fatalf("RenderConfig: %v", err)
+	}
+	want := render.Config{
+		EmitClaude: false, EmitClaudeSkills: render.MirrorSymlink,
+		EmitCursor: true, EmitCursorSkills: render.MirrorCopy,
+		EmitGitattributes: true,
+	}
+	if got != want {
+		t.Errorf("RenderConfig() = %+v, want %+v", got, want)
 	}
 }
 

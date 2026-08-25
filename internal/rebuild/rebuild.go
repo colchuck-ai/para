@@ -171,21 +171,38 @@ func Run(env *Env, opts Options) (Result, error) {
 		res.Changed = append(res.Changed, cacheWrote...)
 	}
 
-	// The mirror last. A copy-mode mirror reproduces files the subject loop has
-	// just rewritten, so syncing it first would copy the versions being
-	// replaced.
+	// The mirrors last, Claude's and Cursor's both — two independent surfaces
+	// (§6.2: "neither implies the other"), each synced whether or not the
+	// other's flag is on. A copy-mode mirror reproduces files the subject loop
+	// has just rewritten, so syncing either one first would copy the versions
+	// being replaced.
 	//
-	// It is skipped for a scope that holds no skill, because `.claude/skills/`
-	// sits in no *entity's* subtree and `rebuild projects` reaching it would
-	// make a scoped repair quietly tree-wide — the same rule that keeps a scoped
-	// `doctor` off the derived rules (§5.3). A scope that *does* hold a skill is
-	// the other case, and skipping it there was wrong: `rebuild skills.x` in
-	// copy mode rewrites the skill's SKILL.md and left its mirror holding the
-	// old bytes, so the command you run to repair a tree finished and `doctor`
-	// stayed red.
+	// Both are skipped for a scope that holds no skill, because `.claude/
+	// skills/` and `.cursor/skills/` sit in no *entity's* subtree and `rebuild
+	// projects` reaching them would make a scoped repair quietly tree-wide —
+	// the same rule that keeps a scoped `doctor` off the derived rules (§5.3).
+	// A scope that *does* hold a skill is the other case, and skipping it
+	// there was wrong: `rebuild skills.x` in copy mode rewrites the skill's
+	// SKILL.md and left its mirrors holding the old bytes, so the command you
+	// run to repair a tree finished and `doctor` stayed red.
 	if len(opts.Scope) == 0 || scopeHoldsSkill(subjects) {
+		// The subject loop above has already removed every stale-off rule file
+		// through residue (cursorRuleResidue); what it cannot do is take the
+		// directory with it, since apply's removals are per-file. Without this,
+		// an emptied .cursor/rules/ sits there forever and keeps the Cursor
+		// mirror's own sweep below from ever taking .cursor/ itself.
+		if !opts.DryRun {
+			if err := env.pruneCursorRulesDir(); err != nil {
+				return res, err
+			}
+		}
 		changes, err := env.SyncMirror(opts.DryRun, pending, nil, nil)
-		res.Mirror = changes
+		res.Mirror = append(res.Mirror, changes...)
+		if err != nil {
+			return res, err
+		}
+		cursorChanges, err := env.SyncCursorMirror(opts.DryRun, pending, nil, nil)
+		res.Mirror = append(res.Mirror, cursorChanges...)
 		if err != nil {
 			return res, err
 		}
@@ -329,11 +346,12 @@ func scopeHoldsSkill(subjects []Subject) bool {
 // staleSkill reports the id of a skill whose files *inside its own directory*
 // are stale, which is what a copy-mode mirror reproduces.
 //
-// The skill's derived rule is deliberately not counted. It lives in
-// `.agents/rules/` (§5.3), outside the skill and outside the mirror, so a run
-// that rewrites only the rule changes nothing a copy holds — and saying it did
-// would make a dry run over-report by exactly as much as ignoring the rest made
-// it under-report.
+// The skill's derived rules are deliberately not counted, Claude's or
+// Cursor's either one. They live in `.agents/rules/` (§5.3) and
+// `.cursor/rules/` (§6.2), outside the skill and outside either mirror, so a
+// run that rewrites only a rule changes nothing a copy holds — and saying it
+// did would make a dry run over-report by exactly as much as ignoring the
+// rest made it under-report.
 func staleSkill(s Subject, artifacts []Artifact) (string, bool) {
 	if s.Kind != kindmeta.KindSkill || len(s.Locator) != 2 {
 		return "", false

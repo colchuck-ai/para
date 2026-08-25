@@ -4,10 +4,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/mirror"
 	"github.com/colchuck-ai/para/internal/render"
 	"github.com/colchuck-ai/para/internal/tree"
+	"github.com/colchuck-ai/para/internal/truth"
 )
 
 // This file is the Claude Code compatibility surface's half of rebuild (§6.1):
@@ -40,7 +42,11 @@ func (e *Env) residue(in render.In) ([]Artifact, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(claude, git...), nil
+	cursor, err := e.cursorRuleResidue(in)
+	if err != nil {
+		return nil, err
+	}
+	return append(append(claude, git...), cursor...), nil
 }
 
 // claudeResidue is para's block sitting in a CLAUDE.md at one of the eight
@@ -134,6 +140,41 @@ func (e *Env) blockResidue(path string, remove func([]byte) ([]byte, bool, error
 		return Artifact{Path: path, Existing: existing, Present: true}, nil
 	}
 	return Artifact{Path: path, Derived: shortened, Existing: existing, Present: true, Wanted: true}, nil
+}
+
+// cursorRuleResidue is a skill's .cursor/rules/para-X.mdc with `emit.cursor`
+// off (§6.2, R6). Unlike claudeResidue and gitAttributesResidue there is no
+// block to take out of a file para shares with someone else: the rule file is
+// wholly generated and wholly para's, so residue here is the whole file or
+// nothing.
+func (e *Env) cursorRuleResidue(in render.In) ([]Artifact, error) {
+	if in.Kind != kindmeta.KindSkill || render.HasCursor(in.Config) {
+		// Not a skill, or the key is on — in which case render.For already has
+		// this file and deriving it twice would be two opinions about it.
+		return nil, nil
+	}
+	path, err := render.CursorRule.Path(in)
+	if err != nil {
+		return nil, err
+	}
+	a, err := e.wholeFileResidue(path)
+	if err != nil || !a.Stale() {
+		return nil, err
+	}
+	return []Artifact{a}, nil
+}
+
+// wholeFileResidue is a generated file with its owning key off, where the
+// file has no human-owned content to preserve: present means it is residue to
+// remove, absent means there is nothing to do. It is cursorRuleResidue's and
+// cursorRuleArtifact's shared off-branch, the whole-file counterpart of
+// blockResidue's block-scoped one (§6.2, R6).
+func (e *Env) wholeFileResidue(path string) (Artifact, error) {
+	existing, err := e.read(path)
+	if err != nil {
+		return Artifact{}, err
+	}
+	return Artifact{Path: path, Existing: existing, Present: existing != nil}, nil
 }
 
 // WriteGitAttributes brings the root's .gitattributes into line with
@@ -307,6 +348,109 @@ func (e *Env) WriteClaudeSurface(dryRun bool, adding, removing []string) (wrote,
 	return e.apply(artifacts, dryRun)
 }
 
+// CursorSurface derives every existing skill's Cursor rule file (§6.2): the
+// bytes it should hold with the surface on, or the removal of one left
+// behind with it off (R5-R7) — one entry per skill tree.SkillIDs sees.
+//
+// Unlike ClaudeSurface's eight fixed locations, a skill's rule is not a
+// shared pointer file — each one is its own, wholly generated from that
+// skill's own truth (§6.2) — so there is nothing here for an `adding` or
+// `removing` parameter to adjust the way ClaudeSurface's import list needs
+// them: a skill AddDryRun is rehearsing has no state.toml yet to read, and
+// its own plan already reports what its rule file would hold (mutate's own
+// render, not this); a skill a rehearsed `remove` is about to delete is still
+// on disk and renders exactly as it does today.
+func (e *Env) CursorSurface() ([]Artifact, error) {
+	ids, err := tree.SkillIDs(e.Root)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Artifact, 0, len(ids))
+	for _, id := range ids {
+		a, err := e.cursorRuleArtifact(id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// cursorRuleArtifact is one skill's Cursor rule file: the bytes it should
+// hold, or — with the surface off there — the removal of the file (R5-R7),
+// through wholeFileResidue, the same rule rebuild.Run's residue uses.
+//
+// The config is asked for at the skill's own locator, for the reason
+// claudeArtifact's does the same at each of its locations: the two `emit.
+// cursor` keys answer with the root's value wherever they are asked (see
+// config.Resolver.RenderConfig), and asking normally is what keeps this,
+// the mirror, and render.For unable to disagree.
+func (e *Env) cursorRuleArtifact(id string) (Artifact, error) {
+	loc := locator.Locator{"skills", id}
+	cfg, err := e.Resolver.RenderConfig(loc)
+	if err != nil {
+		return Artifact{}, err
+	}
+	in := render.In{Locator: loc, Kind: kindmeta.KindSkill, Config: cfg}
+	path, err := render.CursorRule.Path(in)
+	if err != nil {
+		return Artifact{}, err
+	}
+	if !render.HasCursor(cfg) {
+		return e.wholeFileResidue(path)
+	}
+
+	dir, err := e.locationDir(loc)
+	if err != nil {
+		return Artifact{}, err
+	}
+	if in.State, err = truth.ReadState(dir); err != nil {
+		return Artifact{}, err
+	}
+	existing, err := e.read(path)
+	if err != nil {
+		return Artifact{}, err
+	}
+	a := Artifact{Path: path, Existing: existing, Present: existing != nil, Wanted: true}
+	if a.Derived, err = render.CursorRule.Render(in); err != nil {
+		return Artifact{}, err
+	}
+	return a, nil
+}
+
+// WriteCursorRules derives every skill's Cursor rule file and writes or
+// removes the ones that are not what they should be, reporting both lists —
+// or, under dryRun, reports them and writes nothing (§21.1).
+//
+// It is CursorSurface's write half, the same split WriteClaudeSurface is
+// ClaudeSurface's — and, like that one, separate from Run because Run
+// re-derives a tree and this re-derives one file per skill.
+func (e *Env) WriteCursorRules(dryRun bool) (wrote, removed []string, err error) {
+	artifacts, err := e.CursorSurface()
+	if err != nil {
+		return nil, nil, err
+	}
+	wrote, removed, err = e.apply(artifacts, dryRun)
+	if err != nil || dryRun {
+		return wrote, removed, err
+	}
+	return wrote, removed, e.pruneCursorRulesDir()
+}
+
+// pruneCursorRulesDir removes .cursor/rules/ once every rule file in it is
+// gone. Unlike the mirror, which owns pruning its own two directories
+// through mirror.pruneEmpty, nothing else prunes this one — apply's removals
+// are per-file — so an emptied .cursor/rules/ would sit there forever and,
+// worse, would keep the mirror's own sweep from ever taking .cursor/ itself:
+// that check sees the directory as one more thing still inside it (§6.2's
+// "no .claude/" rule, generalized). mirror.PruneIfEmpty is the one function
+// behind both this and pruneEmpty's own loop, so a rule file and a mirror
+// entry cannot drift into two opinions about when a directory counts as
+// empty.
+func (e *Env) pruneCursorRulesDir() error {
+	return mirror.PruneIfEmpty(e.Root, render.CursorRulesDir)
+}
+
 // SyncMirror brings `.claude/skills/` into line with the skills that exist, and
 // reports what it did — or, under dryRun, what it would do.
 //
@@ -334,6 +478,22 @@ func (e *Env) WriteClaudeSurface(dryRun bool, adding, removing []string) (wrote,
 // compare the mirror against a want set that still contains the skill being
 // removed, and report no change at all (para-ato).
 func (e *Env) SyncMirror(dryRun bool, pending, adding, removing []string) ([]mirror.Change, error) {
+	return e.syncMirror(mirror.Claude, dryRun, pending, adding, removing)
+}
+
+// SyncCursorMirror is SyncMirror's Cursor counterpart: `.cursor/skills/`
+// brought into line with the skills that exist, governed by `emit.cursor`
+// and `emit.cursor-skills` (§6.2) rather than their Claude equivalents. Every
+// parameter carries SyncMirror's own meaning against the Cursor target.
+func (e *Env) SyncCursorMirror(dryRun bool, pending, adding, removing []string) ([]mirror.Change, error) {
+	return e.syncMirror(mirror.Cursor, dryRun, pending, adding, removing)
+}
+
+// syncMirror is the one rule behind SyncMirror and SyncCursorMirror: which
+// skills should have a mirror, and whether to write that mirror or only
+// report it, differs by nothing but which Target answers the two `emit.*`
+// keys.
+func (e *Env) syncMirror(target mirror.Target, dryRun bool, pending, adding, removing []string) ([]mirror.Change, error) {
 	cfg, err := e.Resolver.RenderConfig(nil)
 	if err != nil {
 		return nil, err
@@ -343,12 +503,12 @@ func (e *Env) SyncMirror(dryRun bool, pending, adding, removing []string) ([]mir
 		return nil, err
 	}
 	ids = pendingSkillIDs(ids, adding, removing)
-	issues, err := mirror.Inspect(e.Root, cfg, ids, pending)
+	issues, err := mirror.Inspect(e.Root, target, cfg, ids, pending)
 	if err != nil {
 		return nil, err
 	}
 	if dryRun {
-		return mirror.Planned(cfg, issues), nil
+		return mirror.Planned(target, cfg, issues), nil
 	}
-	return mirror.Repair(e.Root, cfg, issues)
+	return mirror.Repair(e.Root, target, cfg, issues)
 }

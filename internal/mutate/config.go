@@ -59,6 +59,9 @@ func (e *Env) ConfigChange(loc locator.Locator, key, from, to string, file []byt
 	if err == nil && config.AffectsClaudeSurface(key) {
 		return e.refreshSurface(res, dryRun, nil, nil, file)
 	}
+	if err == nil && config.AffectsCursorSurface(key) {
+		return e.refreshCursorSurface(res, dryRun, nil, nil, file)
+	}
 	if err == nil && key == config.KeyEmitGitattributes {
 		res, err = e.refreshGitAttributes(res, dryRun, file)
 	}

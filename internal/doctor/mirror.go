@@ -48,7 +48,13 @@ func (s *scan) checkMirrors() error {
 	if err := s.checkRules(exists); err != nil {
 		return err
 	}
-	return s.checkMirrorEntries(ids)
+	if err := s.checkCursorRules(exists); err != nil {
+		return err
+	}
+	if err := s.checkMirrorEntries(mirror.Claude, ids); err != nil {
+		return err
+	}
+	return s.checkMirrorEntries(mirror.Cursor, ids)
 }
 
 // checkRules reports §10's `orphan-rule`: a derived rule file whose
@@ -65,9 +71,33 @@ func (s *scan) checkRules(skills map[string]bool) error {
 	if err != nil {
 		return err
 	}
+	s.checkRuleFiles(skills, tree.RulesDir(), names, tree.RuleSkillID)
+	return nil
+}
+
+// checkCursorRules is checkRules' Cursor counterpart (§6.2): the same
+// `orphan-rule` question asked of .cursor/rules/para-*.mdc rather than
+// .agents/rules/. cursorRuleRenderer writes the same `generated_from`
+// provenance line §5.3's rule carries, so the one rule behind checkRuleFiles
+// answers both without being asked twice.
+func (s *scan) checkCursorRules(skills map[string]bool) error {
+	names, err := tree.CursorRules(s.root)
+	if err != nil {
+		return err
+	}
+	s.checkRuleFiles(skills, tree.CursorRulesDir(), names, tree.CursorRuleSkillID)
+	return nil
+}
+
+// checkRuleFiles is the one rule behind checkRules and checkCursorRules:
+// which of a directory's files are rules and which skill each names is
+// answered the same way regardless of which directory or extension holds
+// them, so a rule judged orphaned in one cannot silently use a different
+// test than the other (para's own "one rule, one function").
+func (s *scan) checkRuleFiles(skills map[string]bool, dir string, names []string, fallback func(string) (string, bool)) {
 	for _, name := range names {
-		rel := tree.RulesDir() + "/" + name
-		id, ok := s.ruleSkillID(rel, name)
+		rel := dir + "/" + name
+		id, ok := s.ruleSkillID(rel, name, fallback)
 		if !ok {
 			continue
 		}
@@ -78,35 +108,40 @@ func (s *scan) checkRules(skills map[string]bool) error {
 			})
 		}
 	}
-	return nil
 }
 
-// ruleSkillID reads a rule file's generated_from, falling back to its filename.
-func (s *scan) ruleSkillID(rel, name string) (string, bool) {
+// ruleSkillID reads a rule file's generated_from, falling back to fallback —
+// tree.RuleSkillID or tree.CursorRuleSkillID, whichever reads that file's own
+// filename convention — when there is no frontmatter to read or no
+// provenance line in it.
+func (s *scan) ruleSkillID(rel, name string, fallback func(string) (string, bool)) (string, bool) {
 	data, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(rel)))
 	if err != nil {
-		return tree.RuleSkillID(name)
+		return fallback(name)
 	}
 	front, _, err := mdfile.Split(data)
 	if err != nil {
-		return tree.RuleSkillID(name)
+		return fallback(name)
 	}
 	doc, err := mdfile.DecodeFrontmatter(front)
 	if err != nil {
-		return tree.RuleSkillID(name)
+		return fallback(name)
 	}
 	from, ok := doc.String("generated_from")
 	if !ok {
-		return tree.RuleSkillID(name)
+		return fallback(name)
 	}
 	id, ok := strings.CutPrefix(from, mirrorPrefix)
 	if !ok || id == "" {
-		return tree.RuleSkillID(name)
+		return fallback(name)
 	}
 	return id, true
 }
 
-// checkMirrorEntries reports what is wrong with `.claude/skills/`.
+// checkMirrorEntries reports what is wrong with `.claude/skills/` or, when
+// target is mirror.Cursor, its independent §6.2 counterpart `.cursor/skills/`
+// — the same question about a different target, governed by that target's
+// own `emit.*` keys (mirror.Claude and mirror.Cursor).
 //
 // Nothing here decides what is wrong with a mirror; `mirror.Inspect` does, and
 // `rebuild` acts on the same list. That split is the same one `stale-projection`
@@ -117,9 +152,9 @@ func (s *scan) ruleSkillID(rel, name string) (string, bool) {
 //
 // The mapping from a mirror state to a §10 finding is the whole of this
 // function, and only `residue` is not obvious. A mirror left behind by turning
-// `emit.claude` off is a generated thing that nothing generates any more, which
-// is what `stale-projection` means, and `rebuild` is the repair that row
-// promises. It is deliberately *not* reported as `orphan-mirror` or
+// the target's `emit.*` key off is a generated thing that nothing generates any
+// more, which is what `stale-projection` means, and `rebuild` is the repair
+// that row promises. It is deliberately *not* reported as `orphan-mirror` or
 // `broken-link` even when the skill is also gone or the link also dangles:
 // those two sentences would send a reader to look at a skill or at their git
 // config, when the answer is that the surface is switched off.
@@ -131,12 +166,12 @@ func (s *scan) ruleSkillID(rel, name string) (string, bool) {
 // problem twice. What the omission cannot break is the invariant that matters:
 // a clean doctor means no skill artifact is stale, so no skill gets rewritten,
 // so the mirror comparison is against final bytes and `rebuild` is a no-op.
-func (s *scan) checkMirrorEntries(ids []string) error {
+func (s *scan) checkMirrorEntries(target mirror.Target, ids []string) error {
 	cfg, err := s.env.Resolver.RenderConfig(nil)
 	if err != nil {
 		return err
 	}
-	issues, err := mirror.Inspect(s.root, cfg, ids, nil)
+	issues, err := mirror.Inspect(s.root, target, cfg, ids, nil)
 	if err != nil {
 		return err
 	}

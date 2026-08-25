@@ -70,6 +70,9 @@ brain/
 │           └── .para/{state.toml, config.toml, logs/}
 ├── .claude/                         only if emit.claude (§6.1); holds skill symlinks
 │   └── skills/para-signups-report → ../../.agents/skills/para-signups-report
+├── .cursor/                         only if emit.cursor (§6.2); holds skill mirrors and rule files
+│   ├── skills/para-signups-report → ../../.agents/skills/para-signups-report
+│   └── rules/para-signups-report.mdc
 ├── README.md  AGENTS.md  CLAUDE.md  ACTIVITY.md
 ├── projects/
 │   ├── README.md  AGENTS.md  CLAUDE.md  ACTIVITY.md
@@ -400,6 +403,8 @@ everything else is a path para alone writes, and keeps what it has.
 | `AGENTS.md` (root + 4 buckets + `archive/{projects,areas,resources}`) | a delimited para-owned block | everything outside the markers (§6) | normal; your prose is at stake |
 | `CLAUDE.md` | a delimited para-owned block | everything outside the markers (§6) | normal; your prose is at stake |
 | `.claude/skills/para-X` | wholly — one mirror per skill, if `emit.claude` (§6.1) | none | `merge=ours` in `copy` mode; n/a for a symlink |
+| `.cursor/skills/para-X` | wholly — one mirror per skill, if `emit.cursor` (§6.2) | none | `merge=ours` in `copy` mode; n/a for a symlink |
+| `.cursor/rules/para-X.mdc` | wholly ← the skill's `state.toml` (§6.2) | none | `merge=ours` |
 | `SKILL.md` | frontmatter ← the skill's `state.toml` | the body, plus `scripts/`, `references/`, anything else in the directory | normal; your prose is at stake |
 | `.agents/rules/para-X.md` | wholly ← the skill's `state.toml` | none | `merge=ours` |
 | `.gitattributes` | wholly, if enabled | append-only to an existing file | normal |
@@ -957,6 +962,78 @@ generated file:
 Nothing else in the tree changes when the flag is on. `.claude/` holds only mirrored skills, and para
 never reads or writes anything else under it.
 
+### 6.2 `emit.cursor` — the Cursor IDE compatibility surface
+
+Everything in this subsection is **off by default** and turns on together, because it is one concern:
+making the tree legible to Cursor specifically. Enable it in the root's `config.toml`:
+
+```toml
+emit.cursor = true
+```
+
+The flag is named for the surface, not for a file, because it emits more than one thing. It is
+**independent of `emit.claude`** — both may be on at once, and neither implies the other.
+
+Cursor has no shared-path pointer file like `CLAUDE.md`. Rules reach Cursor as **`.cursor/rules/para-X.mdc`
+files** — wholly generated, one per skill — and skills reach Cursor as **mirrors under
+`.cursor/skills/`**, because a rule file cannot express a directory that ships scripts and references.
+There is no `@`-import layer; the `.mdc` body points at the mirrored skill's `SKILL.md` directly.
+
+**Rule files** live at `.cursor/rules/para-X.mdc`, where `X` is the skill id. Each file carries:
+
+- **`alwaysApply: true`** when the skill's scope is the whole tree (no explicit `scope` entries, or
+  scope that resolves to "everywhere");
+- **`globs:`** otherwise — one `path/**` glob per resolved scope entry, comma-separated in the
+  frontmatter Cursor reads;
+- **`generated_from:`** — the skill id, same as §5.3's rule files, for `doctor`'s `orphan-rule`
+  check (§10);
+- a body that references `.cursor/skills/para-X/SKILL.md`, so Cursor loads the skill text from the
+  mirror rather than from `.agents/`.
+
+Scope is the same input §5.4 already defines: para expands enumerated locators into paths on `move`,
+`archive`, and id changes, and `doctor` flags entries that name nothing. The difference from
+`.agents/rules/para-X.md` is only the output shape — globs and `alwaysApply` rather than a prose
+sentence — not a second copy of scope logic.
+
+**Skills are mirrored into `.cursor/skills/`** under the same rules as §6.1's Claude mirror. *How*
+they are mirrored is a second knob:
+
+```toml
+emit.cursor        = true
+emit.cursor-skills = "symlink"   # or "copy"
+```
+
+Two flat keys rather than an `[emit.cursor]` table, for the same TOML collision reason §6.1 gives.
+The shape is forced; do not "fix" it into a table.
+
+| Mode | What lands in `.cursor/skills/para-X` | Cost |
+| --- | --- | --- |
+| `symlink` (default) | a link to `../../.agents/skills/para-X` | breaks on checkouts that do not support links |
+| `copy` | a full copy of the skill directory, minus `.para/` | doubles the bytes, and every skill edit shows up in two trees |
+
+**`symlink` is the default** for the same reasons as §6.1: one copy on disk, no drift, one tree in git.
+**`copy` is the escape hatch** where links do not survive checkout. **Per-machine auto-detection is
+deliberately not an option** — the mode is configuration, checked in, the same for everyone.
+
+Three further consequences mirror §6.1 exactly, applied to `.cursor/skills/`:
+
+- **Ownership is a different test.** `generated_from` frontmatter cannot live on a symlink, so
+  ownership is *anything under `.cursor/skills/` whose name carries the `para-` prefix* — a link whose
+  target resolves inside `.agents/skills/`, or a copy of a directory that exists there. `doctor`
+  carries findings for orphaned and broken mirrors (§10).
+- **`.para/` is never mirrored.** In `copy` mode it is excluded; in `symlink` mode `doctor` does not
+  follow para-owned links — for the same phantom-entity reason §6.1 gives.
+- **Both modes are projections**: regenerated by `rebuild`, pruned when a skill is removed, and
+  reported by `doctor` when they drift or dangle. Switching modes is a config change plus a
+  `rebuild` — para removes the old shape and writes the new one.
+
+With `emit.cursor` off, every `para-` entry under `.cursor/skills/` and every `.cursor/rules/para-*.mdc`
+is **residue** — the same posture §6.1 takes for a turned-off Claude surface. `doctor` names them;
+`rebuild` removes them.
+
+Nothing else in the tree changes when the flag is on. `.cursor/` holds only mirrored skills and
+para-owned rule files, and para never reads or writes anything else under it.
+
 ---
 
 ## 7. Config
@@ -981,6 +1058,8 @@ this defensible. A skill's chain is its own `config.toml`, then the root —
 | `log.rotate-bytes` | `4194304` | root |
 | `emit.claude` | `false` | root |
 | `emit.claude-skills` | `"symlink"` (default) or `"copy"` | root |
+| `emit.cursor` | `false` | root |
+| `emit.cursor-skills` | `"symlink"` (default) or `"copy"` | root |
 | `emit.gitattributes` | `true` | root |
 | `<kind>.stale-after` | `project.stale-after = 14` | root, or any subtree |
 | `key-result.at-risk-pace` | `0.8` | root, or one key-result |
@@ -1134,6 +1213,7 @@ The one thing para writes for git's benefit is `.gitattributes`, on by default a
 **/ACTIVITY.md          merge=ours linguist-generated=true
 **/MEASUREMENTS.csv     merge=ours linguist-generated=true
 .agents/rules/**/*.md   merge=ours linguist-generated=true
+.cursor/rules/para-*.mdc merge=ours linguist-generated=true
 ```
 
 `CLAUDE.md` and `AGENTS.md` carry no line here, and for the same reason: git attributes are per-file
@@ -1186,9 +1266,9 @@ the model can be checked against them.
 | `journal` | a line that is not valid JSON, or has no `at`/`kind`, or an unknown `kind`, or an `at` in the future — reported with file and line |
 | `collision` | a reserved name used as an id (§1.4) |
 | `scope-unresolved` | a `scope` entry naming a locator that does not exist (§5.4) |
-| `orphan-rule` | a derived rule file whose `generated_from` skill is gone (§5.3) |
-| `orphan-mirror` | something under `.claude/skills/` carrying the `para-` prefix whose skill is gone (§6.1) |
-| `broken-link` | a `symlink`-mode mirror that does not resolve — including one materialised as a plain file by a `core.symlinks=false` checkout (§6.1) |
+| `orphan-rule` | a derived rule file — under `.agents/rules/` or `.cursor/rules/` — whose `generated_from` skill is gone (§5.3, §6.2) |
+| `orphan-mirror` | something under `.claude/skills/` or `.cursor/skills/` carrying the `para-` prefix whose skill is gone (§6.1, §6.2) |
+| `broken-link` | a `symlink`-mode mirror that does not resolve — including one materialised as a plain file by a `core.symlinks=false` checkout (§6.1, §6.2) |
 | `stale-projection` | a generated file differs from what would be written now → `para rebuild` (§2.4) |
 
 `stale-projection` is the load-bearing one, because principle 3 rests on it, and it is **full
@@ -1286,6 +1366,12 @@ Settled in the session that produced this half. Nothing structural is open.
   auto-detection was rejected** — it would make the tree's shape depend on which machine last ran
   `rebuild`. Two flat config keys, because TOML cannot hold `emit.claude = true` and an
   `[emit.claude]` table at once.
+- **`emit.cursor` is one flag for one concern** — Cursor IDE compatibility, off by default,
+  independent of `emit.claude`. It writes one `.cursor/rules/para-X.mdc` per skill and one mirror
+  per skill into `.cursor/skills/`. Rules travel as `.mdc` files with globs or `alwaysApply`, not by
+  import — so the mirrored skills are the ones a rule reference cannot replace (§6.2).
+- **`emit.cursor-skills` chooses `symlink` (default) or `copy`**, under the same rules and for the
+  same reasons as `emit.claude-skills`.
 
 **Config and git**
 
