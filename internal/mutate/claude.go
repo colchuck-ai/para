@@ -35,9 +35,13 @@ import (
 // `measure` is the one verb not wired in, and it does not need to be: a
 // measurement is a key-result's event (§4.4) and a skill is not a key-result.
 
-// syncSurface refreshes the Claude Code compatibility surface when the mutation
-// that just landed changed what it holds, and folds what it did into the
-// result.
+// syncSurface refreshes both IDE compatibility surfaces — Claude Code's
+// (§6.1) and Cursor's (§6.2) — when the mutation that just landed changed
+// what either holds, and folds what it did into the result. The two are
+// independent surfaces with their own on/off keys, so both refresh on every
+// skill mutation regardless of which, if either, is currently on; each
+// surface's own render decides whether that means a write or a residue
+// removal.
 //
 // It takes and returns the (Result, error) pair so that a verb ends with
 // `return e.syncSurface(...)` around whatever it already returned — one
@@ -57,7 +61,11 @@ func (e *Env) syncSurface(res Result, err error, dryRun bool, adding, removing [
 	if err != nil || res.Kind != kindmeta.KindSkill {
 		return res, err
 	}
-	return e.refreshSurface(res, dryRun, adding, removing, nil)
+	res, err = e.refreshSurface(res, dryRun, adding, removing, nil)
+	if err != nil {
+		return res, err
+	}
+	return e.refreshCursorSurface(res, dryRun, adding, removing, nil)
 }
 
 // refreshSurface re-derives both halves of the surface and folds the writes,

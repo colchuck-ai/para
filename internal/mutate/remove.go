@@ -66,8 +66,18 @@ func (e *Env) PlanRemove(loc locator.Locator, keepFiles bool) (*Removal, error) 
 	// is how a skill stops applying, and it takes its derived rule with it" — and
 	// §5.3 makes the ownership checkable: the rule carries `generated_from`, so
 	// para knows the file is its own. A rule left behind is `doctor`'s orphan-rule.
+	//
+	// Its Cursor rule (§6.2) is the same fact about a second, independent file:
+	// cursorRuleRenderer stamps the identical `generated_from` provenance, so a
+	// removed skill's .cursor/rules/para-X.mdc is exactly as much doctor's
+	// orphan-rule to catch if left behind, and pruning it here rather than
+	// leaving it to WriteCursorRules is why — that function derives one artifact
+	// per id in tree.SkillIDs, which by the time it runs no longer names this
+	// skill, so nothing would otherwise remove a rule file for an id that is no
+	// longer there to ask about.
 	if kind == kindmeta.KindSkill {
 		r.prune(filepath.Join(e.Root, filepath.FromSlash(render.RulesDir), render.RuleFilename(loc[1])))
+		r.prune(filepath.Join(e.Root, filepath.FromSlash(render.CursorRulesDir), render.CursorRuleFilename(loc[1])))
 	}
 
 	if !keepFiles {

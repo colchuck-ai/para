@@ -1,0 +1,255 @@
+# §6.2, the Cursor IDE compatibility surface, end to end: `emit.cursor`'s
+# generated `.cursor/rules/para-X.mdc` rule files, `emit.cursor-skills`' two
+# mirror modes, switching between them, pruning on removal, and the hostile
+# checkout §10 gives its own finding — the same shape claude.txtar covers for
+# §6.1, with the one real difference between the two surfaces: Cursor has no
+# shared pointer file, so there is no import list to keep current and no
+# eight-location write to enumerate. It closes with both surfaces on at once,
+# since §6.2 says `emit.cursor` is independent of `emit.claude`.
+#
+# The tree is planted as truth and rebuilt once, so everything asserted below
+# is the surface reacting to a command rather than to the fixture.
+
+env PARA_NOW=2026-03-05T17:00:00Z
+env PARA_TZ=America/Los_Angeles
+cd brain
+exec para rebuild
+exec para add skill signups-report --name 'Signups report' --description 'when asked for the weekly signups number'
+exec para doctor
+stdout '^clean$'
+
+# Off by default.
+! exists .cursor
+
+# --- turning it on -----------------------------------------------------------
+#
+# One command writes the config file, the one skill's rule file, and a mirror
+# link. Unlike §6.1's eight fixed CLAUDE.md locations, §6.2 has exactly one
+# rule file per skill — one skill on the tree, one rule file written.
+exec para config set emit.cursor true
+stdout '^ +\.para/config\.toml$'
+stdout '^ +\.cursor/rules/para-signups-report\.mdc$'
+stdout '^linked  \.cursor/skills/para-signups-report → \.\./\.\./\.agents/skills/para-signups-report$'
+
+# The rule file is wholly generated, unlike CLAUDE.md's `@`-import pointer: no
+# scope on the skill means `alwaysApply: true`, and the body points straight at
+# the mirrored skill rather than at an import chain.
+cmp .cursor/rules/para-signups-report.mdc $WORK/want-signups-report.mdc
+
+# Nothing is left for a rebuild to do (§2.3, §2.4).
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
+
+# §6.2's two keys are root-only, the same rule §6.1's pair is under (§7).
+! exec para config set --at project emit.cursor false
+stderr 'read at the root only'
+! exec para config unset --at project emit.cursor-skills
+stderr 'read at the root only'
+exists .cursor/rules/para-signups-report.mdc
+
+# --- a skill mutation keeps the rule set correct ------------------------------
+#
+# Adding a skill gives it its own rule file and mirror entry immediately —
+# there is no shared file to regenerate, so §6.1's "every import list"
+# refresh has no counterpart here.
+exec para add skill commit-style --name 'Commit style' --description 'when writing a commit message'
+stdout '^ +\.cursor/rules/para-commit-style\.mdc$'
+stdout '^linked  \.cursor/skills/para-commit-style → \.\./\.\./\.agents/skills/para-commit-style$'
+grep '^generated_from: "para-commit-style"$' .cursor/rules/para-commit-style.mdc
+exec para doctor
+stdout '^clean$'
+
+# And removing one takes its rule and its mirror with it (§18.2, §6.2).
+exec para remove skill commit-style --force
+! exists .cursor/rules/para-commit-style.mdc
+! exists .cursor/skills/para-commit-style
+exec para doctor
+stdout '^clean$'
+
+# --- copy mode ---------------------------------------------------------------
+#
+# Switching modes removes the old shape and writes the new one, leaving no
+# residue (§6.2).
+exec para config set emit.cursor-skills copy
+stdout '^copied  \.cursor/skills/para-signups-report$'
+exists .cursor/skills/para-signups-report/SKILL.md
+exists .cursor/skills/para-signups-report/ACTIVITY.md
+
+# .para/ is never mirrored, in either mode (§6.2, same reasoning as §6.1).
+! exists .cursor/skills/para-signups-report/.para
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
+
+# A copy is a projection: doctor reports the divergence, rebuild overwrites it.
+cp $WORK/hand-edited.md .cursor/skills/para-signups-report/SKILL.md
+! exec para doctor
+stdout '^error +stale-projection +\.cursor/skills/para-signups-report differs from the skill it mirrors$'
+exec para rebuild
+stdout '^copied  \.cursor/skills/para-signups-report$'
+! grep 'hand-edited' .cursor/skills/para-signups-report/SKILL.md
+
+# An edit to the skill itself reaches the copy in the same command.
+exec para set skill signups-report --description 'when asked for the weekly number'
+grep 'weekly number' .cursor/skills/para-signups-report/SKILL.md
+exec para doctor
+stdout '^clean$'
+
+# --- back to symlink, and the hostile checkout --------------------------------
+
+exec para config set emit.cursor-skills symlink
+stdout '^linked  \.cursor/skills/para-signups-report → \.\./\.\./\.agents/skills/para-signups-report$'
+exec para doctor
+stdout '^clean$'
+
+# A core.symlinks=false checkout materialises the link as a plain file (§6.2,
+# §10) — the same loud failure §6.1 gives, named against `.cursor/skills/`.
+rm .cursor/skills/para-signups-report
+cp $WORK/materialised-link .cursor/skills/para-signups-report
+! exec para doctor
+stdout '^error +broken-link +\.cursor/skills/para-signups-report is a plain file where a mirror belongs — a checkout with core\.symlinks=false$'
+exec para rebuild
+stdout '^linked  \.cursor/skills/para-signups-report'
+exec para doctor
+stdout '^clean$'
+
+# orphan-mirror: a para- prefixed entry whose skill is gone.
+mkdir .cursor/skills/para-gone
+! exec para doctor
+stdout '^error +orphan-mirror +\.cursor/skills/para-gone mirrors skill\.gone, which is gone$'
+exec para rebuild
+stdout '^removed  \.cursor/skills/para-gone$'
+exec para doctor
+stdout '^clean$'
+
+# orphan-rule: the same fact told about a rule file left behind rather than a
+# mirror entry — §6.2's own counterpart to §5.3's `.agents/rules/` finding.
+# rebuild derives one rule file per id still in the tree, so a file naming an
+# id that is not there any more is untouched rather than swept — the same
+# property repair.txtar holds for `.agents/rules/`.
+cp $WORK/orphan-rule.mdc .cursor/rules/para-gone.mdc
+! exec para doctor
+stdout '^error +orphan-rule +\.cursor/rules/para-gone\.mdc is generated from skill\.gone, which is gone$'
+exec para rebuild
+stdout '^nothing to rewrite'
+exists .cursor/rules/para-gone.mdc
+rm .cursor/rules/para-gone.mdc
+exec para doctor
+stdout '^clean$'
+
+# Something without the para- prefix is not para's, and para neither reads nor
+# removes it (§6.2) — the same third-party-entry guarantee §6.1 makes.
+mkdir .cursor/skills/my-own
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
+exists .cursor/skills/my-own
+
+# --- turning it off ----------------------------------------------------------
+#
+# The mirror image of turning it on: the rule file and the mirror entry go,
+# and `.cursor/skills/` goes with them once it holds nothing of para's. The
+# directory somebody else made stays, and its presence is what keeps
+# `.cursor/` itself — but `.cursor/rules/` is wholly para's, so it is swept
+# outright rather than left behind empty.
+exec para config set emit.cursor false
+stdout '^removed  \.cursor/rules/para-signups-report\.mdc$'
+stdout '^removed  \.cursor/skills/para-signups-report$'
+! exists .cursor/rules
+! exists .cursor/skills/para-signups-report
+exists .cursor/skills/my-own
+exec para doctor
+stdout '^clean$'
+exec para rebuild
+stdout '^nothing to rewrite'
+
+# With nothing of anybody's left, the sweep takes `.cursor/` itself too.
+rm .cursor/skills/my-own
+exec para config set emit.cursor true
+exec para config set emit.cursor false
+! exists .cursor
+exec para doctor
+stdout '^clean$'
+
+# --- coexistence with emit.claude ---------------------------------------------
+#
+# §6.2 says the two surfaces are independent and either or both may be on.
+# Turning both on writes both trees from one command; turning one back off
+# leaves the other exactly as it was.
+exec para config set emit.claude true
+exec para config set emit.cursor true
+stdout '^linked  \.cursor/skills/para-signups-report → \.\./\.\./\.agents/skills/para-signups-report$'
+exists CLAUDE.md
+exists .cursor/rules/para-signups-report.mdc
+exec para doctor
+stdout '^clean$'
+
+exec para config set emit.claude false
+! exists CLAUDE.md
+exists .cursor/rules/para-signups-report.mdc
+exists .cursor/skills/para-signups-report
+exec para doctor
+stdout '^clean$'
+
+-- brain/.para/tree.toml --
+schema = 1
+name = "brain"
+description = "Everything I am carrying."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/projects/.para/state.toml --
+name = "Projects"
+description = "What I am working on now."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/areas/.para/state.toml --
+name = "Areas"
+description = "What I keep going."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/resources/.para/state.toml --
+name = "Resources"
+description = "What I keep to hand."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/.para/state.toml --
+name = "Archive"
+description = "What is over."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/projects/.para/state.toml --
+name = "Archived projects"
+description = "Projects that are over."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/areas/.para/state.toml --
+name = "Archived areas"
+description = "Areas no longer kept."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/archive/resources/.para/state.toml --
+name = "Archived resources"
+description = "Resources no longer kept."
+created = "2026-01-01T00:00:00Z"
+
+-- brain/.agents/skills/.keep --
+-- want-signups-report.mdc --
+---
+alwaysApply: true
+generated_from: "para-signups-report"
+---
+Use the **Signups report** skill (`.cursor/skills/para-signups-report/SKILL.md`) when asked for the weekly signups number.
+-- hand-edited.md --
+hand-edited
+-- materialised-link --
+../../.agents/skills/para-signups-report
+-- orphan-rule.mdc --
+---
+alwaysApply: true
+generated_from: "para-gone"
+---
+Use the **Gone** skill (`.cursor/skills/para-gone/SKILL.md`).

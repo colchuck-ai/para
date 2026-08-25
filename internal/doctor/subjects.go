@@ -435,6 +435,14 @@ func staleDetail(a rebuild.Artifact) string {
 		if baseName(a.Path) == ".gitattributes" {
 			return residueDetail("gitattributes")
 		}
+		// A Cursor rule file (§6.2) is wholly para's, so its own residue is the
+		// whole file rather than a block — but it is still the same "this
+		// surface's own key is off" cause the mirror says about itself, so the
+		// sentence uses the same key-parameterised form rather than borrowing
+		// CLAUDE.md's constant, which names the wrong key.
+		if strings.HasPrefix(a.Path, tree.CursorRulesDir()+"/") {
+			return residueDetail("cursor")
+		}
 		// CLAUDE.md: the sentence is mirror's, because the mirror says it about
 		// itself in the same report and about the same cause (R13, unchanged).
 		return mirror.ResidueDetail
@@ -473,7 +481,7 @@ func staleDetail(a rebuild.Artifact) string {
 		}
 		return "differs from what para would write"
 	default:
-		if strings.HasPrefix(a.Path, tree.RulesDir()+"/") {
+		if strings.HasPrefix(a.Path, tree.RulesDir()+"/") || strings.HasPrefix(a.Path, tree.CursorRulesDir()+"/") {
 			return "differs from the skill it is generated from"
 		}
 		return "differs from what para would write"
