@@ -55,6 +55,35 @@ func TestParseLegalShapes(t *testing.T) {
 			"container.acme.q1-growth.key-results",
 			Address{Noun: Container, Chain: []string{"acme", "q1-growth", "key-results"}},
 		},
+		{
+			"link under a project", Link, "project.acme.jira-epic", "link.project.acme.jira-epic",
+			Address{Noun: Link, Chain: []string{"project", "acme", "jira-epic"}},
+		},
+		{
+			"link under an area", Link, "area.health.blog", "link.area.health.blog",
+			Address{Noun: Link, Chain: []string{"area", "health", "blog"}},
+		},
+		{
+			"link under a nested area", Link, "area.health.training.blog", "link.area.health.training.blog",
+			Address{Noun: Link, Chain: []string{"area", "health", "training", "blog"}},
+		},
+		{
+			"link under a resource", Link, "resource.papers.feed", "link.resource.papers.feed",
+			Address{Noun: Link, Chain: []string{"resource", "papers", "feed"}},
+		},
+		{
+			"links container under a project", Container, "project.acme.links", "container.project.acme.links",
+			Address{Noun: Container, Chain: []string{"project", "acme", "links"}},
+		},
+		{
+			"links container under an area", Container, "area.health.links", "container.area.health.links",
+			Address{Noun: Container, Chain: []string{"area", "health", "links"}},
+		},
+		{
+			"links container under a nested area", Container, "area.health.training.links",
+			"container.area.health.training.links",
+			Address{Noun: Container, Chain: []string{"area", "health", "training", "links"}},
+		},
 	}
 
 	for _, c := range cases {
@@ -99,6 +128,13 @@ func TestArityRefusals(t *testing.T) {
 		{"container two segments wrong tail", Container, "acme.key-results"},
 		{"container three segments wrong tail", Container, "acme.q1.objectives"},
 		{"container four segments", Container, "acme.q1.extra.key-results"},
+		{"link no chain", Link, ""},
+		{"link one segment", Link, "project"},
+		{"link project missing its own id", Link, "project.acme"},
+		{"link project two parent ids", Link, "project.acme.extra.jira-epic"},
+		{"link area no ids before slug", Link, "area.jira-epic"},
+		{"link unknown parent word", Link, "foo.acme.jira-epic"},
+		{"container links with no parent id", Container, "project.links"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -138,6 +174,10 @@ func TestReservedWordRefusals(t *testing.T) {
 		// arity refusal.
 		{"container reserved id and wrong tail (arity 2)", Container, "archive.wrongtail"},
 		{"container reserved id and wrong tail (arity 3)", Container, "acme.skills.wrongtail"},
+		{"link project id reserved", Link, "project.objectives.jira-epic"},
+		{"link own id reserved", Link, "project.acme.objectives"},
+		{"link area id reserved", Link, "area.skills.blog"},
+		{"container links project id reserved", Container, "project.objectives.links"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

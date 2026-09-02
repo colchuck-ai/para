@@ -117,7 +117,7 @@ func TestAddDispatchesOnNoun(t *testing.T) {
 	for _, sub := range cmd.Commands() {
 		names[sub.Name()] = true
 	}
-	for _, want := range []string{"project", "area", "resource", "objective", "key-result", "skill"} {
+	for _, want := range []string{"project", "area", "resource", "objective", "key-result", "link", "skill"} {
 		if !names[want] {
 			t.Errorf("add has no %q subcommand", want)
 		}
@@ -125,8 +125,8 @@ func TestAddDispatchesOnNoun(t *testing.T) {
 	if names["container"] {
 		t.Error(`add has a "container" subcommand; R15 refuses it`)
 	}
-	if len(names) != 6 {
-		t.Errorf("add has %d subcommands, want exactly 6: %v", len(names), names)
+	if len(names) != 7 {
+		t.Errorf("add has %d subcommands, want exactly 7: %v", len(names), names)
 	}
 }
 

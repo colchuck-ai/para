@@ -44,7 +44,7 @@ func TestSetDispatchesOnNoun(t *testing.T) {
 	for _, sub := range newSetCmd().Commands() {
 		names[sub.Name()] = true
 	}
-	for _, want := range []string{"project", "area", "resource", "objective", "key-result", "skill"} {
+	for _, want := range []string{"project", "area", "resource", "objective", "key-result", "link", "skill"} {
 		if !names[want] {
 			t.Errorf("set has no %q subcommand", want)
 		}
@@ -52,8 +52,8 @@ func TestSetDispatchesOnNoun(t *testing.T) {
 	if names["container"] {
 		t.Error(`set has a "container" subcommand; a container has nothing you would want to set`)
 	}
-	if len(names) != 6 {
-		t.Errorf("set has %d subcommands, want exactly 6: %v", len(names), names)
+	if len(names) != 7 {
+		t.Errorf("set has %d subcommands, want exactly 7: %v", len(names), names)
 	}
 }
 
@@ -62,7 +62,7 @@ func TestUnsetDispatchesOnNoun(t *testing.T) {
 	for _, sub := range newUnsetCmd().Commands() {
 		names[sub.Name()] = true
 	}
-	for _, want := range []string{"project", "area", "resource", "objective", "key-result", "skill"} {
+	for _, want := range []string{"project", "area", "resource", "objective", "key-result", "link", "skill"} {
 		if !names[want] {
 			t.Errorf("unset has no %q subcommand", want)
 		}

@@ -16,6 +16,11 @@ const (
 	FieldStart       Field = "start"
 	FieldTarget      Field = "target"
 	FieldScope       Field = "scope"
+	// FieldRef and FieldDirection belong to link alone (para-6g7): the
+	// opaque locator a link points at, and its §1.7-style closed
+	// input/output/both vocabulary (kindmeta/values.go's LinkDirections).
+	FieldRef       Field = "ref"
+	FieldDirection Field = "direction"
 )
 
 // allFields is every field in the §15 table, in the table's own row order.
@@ -24,6 +29,7 @@ const (
 var allFields = []Field{
 	FieldName, FieldDescription, FieldStatus, FieldPriority, FieldDue,
 	FieldTags, FieldCreated, FieldType, FieldStart, FieldTarget, FieldScope,
+	FieldRef, FieldDirection,
 }
 
 // Requiredness is what the §15 table cell for a (kind, field) pair says.
@@ -66,6 +72,21 @@ var matrix = map[Kind]map[Field]Requiredness{
 		FieldName: Required, FieldDescription: Optional, FieldStatus: Derived,
 		FieldDue: Optional, FieldTags: Optional, FieldCreated: Optional,
 		FieldType: RequiredFixed, FieldStart: Optional, FieldTarget: Required,
+	},
+	// KindLink (para-6g7): unlike every other kind, name is Optional — it
+	// defaults to the link's own id at creation (mutate.newState) rather
+	// than being asked for, since the bead's own CLI shape never types
+	// --name. type is reused from key-result's row (RequiredFixed, an
+	// opaque tag rather than a measurement grammar — internal/cli/write.go's
+	// typeHelpForKind and internal/truth/check.go's checkValue both branch
+	// on kind for it, the same way FieldStatus's help already does). No
+	// status, priority, due, start, target, or scope: a link has no
+	// staleness/attention concept and nothing to measure (§28's suppression
+	// primitives, key-result's krvalue, both inapplicable by design).
+	KindLink: {
+		FieldName: Optional, FieldDescription: Optional, FieldTags: Optional,
+		FieldCreated: Optional, FieldType: RequiredFixed, FieldRef: Required,
+		FieldDirection: Required,
 	},
 	KindSkill: {
 		FieldName: Required, FieldDescription: Required, FieldTags: Optional,

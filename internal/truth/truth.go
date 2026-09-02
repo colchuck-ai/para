@@ -62,6 +62,8 @@ type State struct {
 	Start       string
 	Target      string
 	Scope       []string
+	Ref         string
+	Direction   string
 	Attention   string
 	Suppression Suppression
 }
@@ -103,6 +105,10 @@ func (s State) Field(f kindmeta.Field) string {
 		return s.Start
 	case kindmeta.FieldTarget:
 		return s.Target
+	case kindmeta.FieldRef:
+		return s.Ref
+	case kindmeta.FieldDirection:
+		return s.Direction
 	default:
 		return ""
 	}
@@ -131,6 +137,10 @@ func (s *State) SetField(f kindmeta.Field, v string) {
 		s.Start = v
 	case kindmeta.FieldTarget:
 		s.Target = v
+	case kindmeta.FieldRef:
+		s.Ref = v
+	case kindmeta.FieldDirection:
+		s.Direction = v
 	}
 }
 

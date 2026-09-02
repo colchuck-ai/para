@@ -21,6 +21,7 @@ func TestNounRoundTrip(t *testing.T) {
 		{Resource, "resource"},
 		{Objective, "objective"},
 		{KeyResult, "key-result"},
+		{Link, "link"},
 		{Skill, "skill"},
 		{Container, "container"},
 	}
@@ -45,7 +46,7 @@ func TestNounRoundTrip(t *testing.T) {
 // internally and the empty string.
 func TestParseNounRefusals(t *testing.T) {
 	for _, s := range []string{
-		"", "projects", "areas", "resources", "objectives", "key-results",
+		"", "projects", "areas", "resources", "objectives", "key-results", "links",
 		"skills", "Project", "PROJECT", "kr", "task", "unknown",
 	} {
 		t.Run(s, func(t *testing.T) {
@@ -62,10 +63,10 @@ func TestParseNounRefusals(t *testing.T) {
 }
 
 // TestAllNounsOrder pins R2's fixed order — the order help and completion
-// output list the nouns in — and that it holds exactly the seven words, no
+// output list the nouns in — and that it holds exactly the eight words, no
 // more and no fewer.
 func TestAllNounsOrder(t *testing.T) {
-	want := []Noun{Project, Area, Resource, Objective, KeyResult, Skill, Container}
+	want := []Noun{Project, Area, Resource, Objective, KeyResult, Link, Skill, Container}
 	got := AllNouns()
 	if len(got) != len(want) {
 		t.Fatalf("AllNouns() = %v, want %v", got, want)

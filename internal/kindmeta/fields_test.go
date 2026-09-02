@@ -12,58 +12,68 @@ func TestFieldMatrix(t *testing.T) {
 	}{
 		{FieldName, map[Kind]Requiredness{
 			KindProject: Required, KindArea: Required, KindResource: Required,
-			KindObjective: Required, KindKeyResult: Required, KindSkill: Required,
-			KindContainer: Required,
+			KindObjective: Required, KindKeyResult: Required, KindLink: Optional,
+			KindSkill: Required, KindContainer: Required,
 		}},
 		{FieldDescription, map[Kind]Requiredness{
 			KindProject: Required, KindArea: Required, KindResource: Required,
-			KindObjective: Required, KindKeyResult: Optional, KindSkill: Required,
-			KindContainer: Required,
+			KindObjective: Required, KindKeyResult: Optional, KindLink: Optional,
+			KindSkill: Required, KindContainer: Required,
 		}},
 		{FieldStatus, map[Kind]Requiredness{
 			KindProject: Optional, KindArea: na, KindResource: na,
-			KindObjective: Optional, KindKeyResult: Derived, KindSkill: na,
-			KindContainer: na,
+			KindObjective: Optional, KindKeyResult: Derived, KindLink: na,
+			KindSkill: na, KindContainer: na,
 		}},
 		{FieldPriority, map[Kind]Requiredness{
 			KindProject: Optional, KindArea: Optional, KindResource: na,
-			KindObjective: Optional, KindKeyResult: na, KindSkill: na,
-			KindContainer: na,
+			KindObjective: Optional, KindKeyResult: na, KindLink: na,
+			KindSkill: na, KindContainer: na,
 		}},
 		{FieldDue, map[Kind]Requiredness{
 			KindProject: Optional, KindArea: na, KindResource: na,
-			KindObjective: Optional, KindKeyResult: Optional, KindSkill: na,
-			KindContainer: na,
+			KindObjective: Optional, KindKeyResult: Optional, KindLink: na,
+			KindSkill: na, KindContainer: na,
 		}},
 		{FieldTags, map[Kind]Requiredness{
 			KindProject: Optional, KindArea: Optional, KindResource: Optional,
-			KindObjective: Optional, KindKeyResult: Optional, KindSkill: Optional,
-			KindContainer: na,
+			KindObjective: Optional, KindKeyResult: Optional, KindLink: Optional,
+			KindSkill: Optional, KindContainer: na,
 		}},
 		{FieldCreated, map[Kind]Requiredness{
 			KindProject: Optional, KindArea: Optional, KindResource: Optional,
-			KindObjective: Optional, KindKeyResult: Optional, KindSkill: Optional,
-			KindContainer: Optional,
+			KindObjective: Optional, KindKeyResult: Optional, KindLink: Optional,
+			KindSkill: Optional, KindContainer: Optional,
 		}},
 		{FieldType, map[Kind]Requiredness{
 			KindProject: na, KindArea: na, KindResource: na,
-			KindObjective: na, KindKeyResult: RequiredFixed, KindSkill: na,
-			KindContainer: na,
+			KindObjective: na, KindKeyResult: RequiredFixed, KindLink: RequiredFixed,
+			KindSkill: na, KindContainer: na,
 		}},
 		{FieldStart, map[Kind]Requiredness{
 			KindProject: na, KindArea: na, KindResource: na,
-			KindObjective: na, KindKeyResult: Optional, KindSkill: na,
-			KindContainer: na,
+			KindObjective: na, KindKeyResult: Optional, KindLink: na,
+			KindSkill: na, KindContainer: na,
 		}},
 		{FieldTarget, map[Kind]Requiredness{
 			KindProject: na, KindArea: na, KindResource: na,
-			KindObjective: na, KindKeyResult: Required, KindSkill: na,
-			KindContainer: na,
+			KindObjective: na, KindKeyResult: Required, KindLink: na,
+			KindSkill: na, KindContainer: na,
 		}},
 		{FieldScope, map[Kind]Requiredness{
 			KindProject: na, KindArea: na, KindResource: na,
-			KindObjective: na, KindKeyResult: na, KindSkill: Optional,
-			KindContainer: na,
+			KindObjective: na, KindKeyResult: na, KindLink: na,
+			KindSkill: Optional, KindContainer: na,
+		}},
+		{FieldRef, map[Kind]Requiredness{
+			KindProject: na, KindArea: na, KindResource: na,
+			KindObjective: na, KindKeyResult: na, KindLink: Required,
+			KindSkill: na, KindContainer: na,
+		}},
+		{FieldDirection, map[Kind]Requiredness{
+			KindProject: na, KindArea: na, KindResource: na,
+			KindObjective: na, KindKeyResult: na, KindLink: Required,
+			KindSkill: na, KindContainer: na,
 		}},
 	}
 
@@ -85,6 +95,7 @@ func TestAllFieldsOrderIsFixed(t *testing.T) {
 	want := []Field{
 		FieldName, FieldDescription, FieldStatus, FieldPriority, FieldDue,
 		FieldTags, FieldCreated, FieldType, FieldStart, FieldTarget, FieldScope,
+		FieldRef, FieldDirection,
 	}
 	for i := 0; i < 5; i++ {
 		got := AllFields()
@@ -109,6 +120,7 @@ func TestSortableFields(t *testing.T) {
 		{KindResource, []Field{FieldName, FieldDescription, FieldTags, FieldCreated}},
 		{KindObjective, []Field{FieldName, FieldDescription, FieldStatus, FieldPriority, FieldDue, FieldTags, FieldCreated}},
 		{KindKeyResult, []Field{FieldName, FieldDescription, FieldStatus, FieldDue, FieldTags, FieldCreated, FieldType, FieldStart, FieldTarget}},
+		{KindLink, []Field{FieldName, FieldDescription, FieldTags, FieldCreated, FieldType, FieldRef, FieldDirection}},
 		{KindSkill, []Field{FieldName, FieldDescription, FieldTags, FieldCreated, FieldScope}},
 		{KindContainer, []Field{FieldName, FieldDescription, FieldCreated}},
 	}
@@ -163,7 +175,11 @@ func TestUnsettable(t *testing.T) {
 		{KindKeyResult, FieldStatus, true},      // derived, and derived is not required
 		{KindSkill, FieldScope, true},           // absence is what widens a skill (§5.2)
 		{KindSkill, FieldName, false},
-		{KindArea, FieldStatus, false}, // an area has no status
+		{KindArea, FieldStatus, false},    // an area has no status
+		{KindLink, FieldType, false},      // fixed at creation, like a key-result's
+		{KindLink, FieldRef, false},       // required
+		{KindLink, FieldDirection, false}, // required
+		{KindLink, FieldName, true},       // optional here, unlike every other kind
 		{KindUnknown, FieldName, false},
 	}
 	for _, c := range cases {
@@ -185,6 +201,7 @@ func TestUnsettableFields(t *testing.T) {
 		{KindResource, []Field{FieldTags}},
 		{KindObjective, []Field{FieldStatus, FieldPriority, FieldDue, FieldTags}},
 		{KindKeyResult, []Field{FieldDescription, FieldStatus, FieldDue, FieldTags, FieldStart}},
+		{KindLink, []Field{FieldName, FieldDescription, FieldTags}},
 		{KindSkill, []Field{FieldTags, FieldScope}},
 		{KindContainer, nil},
 		{KindUnknown, nil},
@@ -202,7 +219,7 @@ func TestUnsettableFields(t *testing.T) {
 	}
 	// Every field it offers, Unsettable agrees to — the two must not be able to
 	// disagree, since one is the list and the other is the gate.
-	for _, kind := range []Kind{KindProject, KindArea, KindResource, KindObjective, KindKeyResult, KindSkill, KindContainer} {
+	for _, kind := range []Kind{KindProject, KindArea, KindResource, KindObjective, KindKeyResult, KindLink, KindSkill, KindContainer} {
 		for _, f := range UnsettableFields(kind) {
 			if !Unsettable(kind, f) {
 				t.Errorf("UnsettableFields(%v) offers %q, which Unsettable refuses", kind, f)

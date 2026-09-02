@@ -57,14 +57,29 @@ var fieldHelp = map[kindmeta.Field]string{
 	kindmeta.FieldDue:         "a deadline, in progressive precision (year, year-month, or finer)",
 	kindmeta.FieldTags:        "a comma-separated list, replacing whatever is there",
 	kindmeta.FieldCreated:     "the creation time; defaults to now, never in the future",
-	// type, start, target, and scope each belong to exactly one kind, so
-	// naming it here was never disambiguating anything — it only read as an
-	// apology for the flag being offered everywhere. The one subcommand that
-	// registers each of these already says which kind it is.
-	kindmeta.FieldType:   "the measurement grammar: " + strings.Join(krvalue.TypeNames(), ", "),
-	kindmeta.FieldStart:  "the baseline; defaults to the first measurement",
-	kindmeta.FieldTarget: "the target",
-	kindmeta.FieldScope:  "a comma-separated locator list, or omit for the whole tree",
+	// start, target, and scope each belong to exactly one kind, so naming it
+	// here was never disambiguating anything — it only read as an apology
+	// for the flag being offered everywhere. The one subcommand that
+	// registers each of these already says which kind it is. type carries no
+	// entry for the same reason status does not: registerForKind always
+	// builds its help from typeHelpForKind instead, since para-6g7 made it a
+	// second field whose meaning genuinely varies by kind.
+	kindmeta.FieldStart:     "the baseline; defaults to the first measurement",
+	kindmeta.FieldTarget:    "the target",
+	kindmeta.FieldScope:     "a comma-separated locator list, or omit for the whole tree",
+	kindmeta.FieldRef:       "an opaque locator the type interprets (an issue key, a channel id, a URL, ...)",
+	kindmeta.FieldDirection: "one of " + strings.Join(kindmeta.LinkDirections(), ", "),
+}
+
+// typeHelpForKind is registerForKind's `type` text (para-6g7): a
+// key-result's is §4.1's closed measurement grammar, a link's is an opaque
+// tag para never interprets — the same "the vocabulary genuinely varies by
+// kind" split statusHelpForKind already exists for.
+func typeHelpForKind(kind kindmeta.Kind) string {
+	if kindmeta.TypeIsMeasurement(kind) {
+		return "the measurement grammar: " + strings.Join(krvalue.TypeNames(), ", ")
+	}
+	return "an opaque tag your tooling interprets (jira-epic, slack-channel, blog, rss-feed, ...)"
 }
 
 // statusHelpForKind is registerForKind's status text: the settable
@@ -93,8 +108,11 @@ func (f *fieldFlags) registerForKind(cmd *cobra.Command, kind kindmeta.Kind, atC
 			continue
 		}
 		help := fieldHelp[field]
-		if field == kindmeta.FieldStatus {
+		switch field {
+		case kindmeta.FieldStatus:
 			help = statusHelpForKind(kind)
+		case kindmeta.FieldType:
+			help = typeHelpForKind(kind)
 		}
 		var v string
 		f.values[field] = &v
@@ -206,6 +224,17 @@ func newAddCmd() *cobra.Command {
 // chainToLocator, P19.1), its own field flags (via fieldFlags.registerForKind,
 // this task), and its own --archived refusal (R8, carried over from the
 // single command P19.2 registered it on).
+// addNameUsage is add's Use-string hint for --name: required for every kind
+// but link (para-6g7's one Optional-name row, defaulted to the id by
+// mutate.withDefaultLinkName), where showing it as a bare required flag
+// would misstate what add actually demands.
+func addNameUsage(kind kindmeta.Kind) string {
+	if kindmeta.Requirement(kind, kindmeta.FieldName) != kindmeta.Optional {
+		return "--name … "
+	}
+	return "[--name …] "
+}
+
 func newAddNounCmd(kind kindmeta.Kind) *cobra.Command {
 	var f fieldFlags
 	var archived archivedFlag
@@ -213,7 +242,7 @@ func newAddNounCmd(kind kindmeta.Kind) *cobra.Command {
 	const archivedWhy = "nothing is created under archive/"
 
 	cmd := &cobra.Command{
-		Use:   kind.String() + " <chain> --name … [--field …]",
+		Use:   kind.String() + " <chain> " + addNameUsage(kind) + "[--field …]",
 		Short: "create " + withArticle(kind.String()),
 		Long: "Create the " + kind.String() + " the chain names.\n\n" +
 			"\".\" is deliberately not accepted: it resolves to something that\n" +

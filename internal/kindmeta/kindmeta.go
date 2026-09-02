@@ -24,15 +24,16 @@ const (
 	KindResource
 	KindObjective
 	KindKeyResult
+	KindLink
 	KindSkill
 	KindContainer
 )
 
-// addressableKinds is the six kinds a locator can name, in the order §1.3
+// addressableKinds is the seven kinds a locator can name, in the order §1.3
 // derives them. KindContainer is not here — it is a row in the field matrix
 // (§8.2) but no locator addresses one — and neither is KindUnknown.
 var addressableKinds = []Kind{
-	KindProject, KindArea, KindResource, KindObjective, KindKeyResult, KindSkill,
+	KindProject, KindArea, KindResource, KindObjective, KindKeyResult, KindLink, KindSkill,
 }
 
 // AllKinds returns the kinds a locator can name, in §1.3's order.
@@ -55,6 +56,8 @@ func (k Kind) String() string {
 		return "objective"
 	case KindKeyResult:
 		return "key-result"
+	case KindLink:
+		return "link"
 	case KindSkill:
 		return "skill"
 	case KindContainer:
@@ -122,8 +125,11 @@ func projectChain(loc locator.Locator, rest []string, archived bool) (Info, erro
 	if len(rest) == 1 {
 		return Info{Kind: KindProject, Archived: archived}, nil
 	}
+	if rest[1] == "links" {
+		return linkLeaf(loc, rest[2:], archived)
+	}
 	if rest[1] != "objectives" {
-		return Info{}, misplaced(loc, "a project cannot nest — only objectives/ may follow a project id")
+		return Info{}, misplaced(loc, "a project cannot nest — only objectives/ or links/ may follow a project id")
 	}
 	rest = rest[2:]
 	if len(rest) == 0 {
@@ -152,10 +158,24 @@ func projectChain(loc locator.Locator, rest []string, archived bool) (Info, erro
 }
 
 // nestingChain handles areas/ and resources/, which nest to arbitrary depth
-// (§1.3): every remaining segment is an id.
+// (§1.3): every remaining segment is an id, unless the second-to-last
+// segment is the reserved word "links" (para-6g7) — an area or resource may
+// have a links/ container attached at any depth, exactly the way a project's
+// fixed-depth chain gains one (projectChain above). "links" appearing
+// anywhere else is left to checkID, which already refuses it as an ordinary
+// id — the same way it always has.
 func nestingChain(loc locator.Locator, rest []string, kind Kind, archived bool) (Info, error) {
 	if len(rest) == 0 {
 		return Info{}, misplaced(loc, "names no entity — at least one id is required")
+	}
+	if len(rest) >= 3 && rest[len(rest)-2] == "links" {
+		nesting := rest[:len(rest)-2]
+		for _, id := range nesting {
+			if err := checkID(loc, id); err != nil {
+				return Info{}, err
+			}
+		}
+		return linkLeaf(loc, rest[len(rest)-1:], archived)
 	}
 	for _, id := range rest {
 		if err := checkID(loc, id); err != nil {
@@ -163,6 +183,23 @@ func nestingChain(loc locator.Locator, rest []string, kind Kind, archived bool) 
 		}
 	}
 	return Info{Kind: kind, Archived: archived}, nil
+}
+
+// linkLeaf consumes the one id segment after a "links" structural word and
+// derives KindLink (para-6g7) — the leaf every link-capable parent's chain
+// bottoms out at, the same way key-results/<id> bottoms out at KindKeyResult
+// in projectChain.
+func linkLeaf(loc locator.Locator, rest []string, archived bool) (Info, error) {
+	if len(rest) == 0 {
+		return Info{}, misplaced(loc, "links with no id names no entity")
+	}
+	if err := checkID(loc, rest[0]); err != nil {
+		return Info{}, err
+	}
+	if len(rest) > 1 {
+		return Info{}, misplaced(loc, "a link is a leaf — nothing may follow its id")
+	}
+	return Info{Kind: KindLink, Archived: archived}, nil
 }
 
 func skillChain(loc locator.Locator, rest []string) (Info, error) {

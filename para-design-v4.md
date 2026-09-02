@@ -141,7 +141,7 @@ brain/
 | **root** | holds `.para/tree.toml` | `brain/` |
 | **bucket** | a container at depth 1 under the root | `projects/`, `areas/`, `resources/`, `archive/` |
 | **container** | holds `.para/state.toml` **and** has a reserved name | `objectives/`, `key-results/`, `archive/areas/` |
-| **entity** | holds `.para/state.toml` and has an id for a name | a project, area, resource, objective, key-result, skill |
+| **entity** | holds `.para/state.toml` and has an id for a name | a project, area, resource, objective, key-result, link, skill |
 | **stub** | in `archive/`, holds no `.para/` at all | `archive/areas/health/` above |
 | **content** | anything else inside an entity or a bucket | `design.md`, `scans/` |
 
@@ -159,6 +159,7 @@ place it is written down.
 | `projects/X/objectives/Y/key-results/Z` | **key-result** | no — leaf |
 | `areas/X`, `areas/X/Y/…` | **area** | yes, no depth limit |
 | `resources/X`, `resources/X/…` | **resource** | yes, no depth limit |
+| `projects/X/links/Z`, `areas/X/…/links/Z`, `resources/X/…/links/Z` | **link** (§29) | no — leaf |
 | `archive/{projects,areas,resources}/…` | the same kinds, dormant (§1.6) | as above |
 | `.agents/skills/para-X` | **skill** — an entity | one level |
 | `.agents/rules/para-X.md` | **derived rule** — a projection, not an entity (§5.3) | — |
@@ -182,15 +183,17 @@ tokens. Wherever it must be a single token — in TOML, in frontmatter, in a jou
 value, in a `doctor` finding — it is written `<noun>.<id-chain>`, dots separating id-chain segments,
 hyphens separating words within a segment, charset `[a-z0-9-]`.
 
-The noun vocabulary is exactly seven words, the singular of each kind above:
+The noun vocabulary is exactly eight words, the singular of each kind above:
 
-    project  area  resource  objective  key-result  skill  container
+    project  area  resource  objective  key-result  link  skill  container
 
-Reserved and unusable as an id: the ten places and structural names —
-`projects`, `areas`, `resources`, `archive`, `objectives`, `key-results`, `skills`, `logs`, `.para`,
-`.agents` — plus the seven nouns above. Seventeen words in total.
+Reserved and unusable as an id: the eleven places and structural names —
+`projects`, `areas`, `resources`, `archive`, `objectives`, `key-results`, `links`, `skills`, `logs`,
+`.para`, `.agents` — plus the eight nouns above. Nineteen words in total. `links` joins the structural
+names for the reason `key-results` did: it is a container word, not an id, and §29.3 is where its own
+chain shape is defined.
 
-Without reserving the seven nouns, an entity legitimately named `project` would make `para list
+Without reserving the eight nouns, an entity legitimately named `project` would make `para list
 project project` unparseable: `list`'s grammar (§16.2) tells a kind filter from a scope by lookahead,
 and that only works if a bare noun can never also be a live id. Reserving the nouns is what keeps "is
 this token a noun or an id" a lexical question instead of a contextual one.
@@ -217,6 +220,9 @@ badly-shaped chain never reaches a path at all, leaving one legal chain shape pe
 | `skill signups-report` | `skill.signups-report` | `.agents/skills/para-signups-report` |
 | `container acme.objectives` | `container.acme.objectives` | `projects/acme/objectives` |
 | `container acme.q1-growth.key-results` | `container.acme.q1-growth.key-results` | `projects/acme/objectives/q1-growth/key-results` |
+| `link project.acme.jira-epic` (§29.3) | `link.project.acme.jira-epic` | `projects/acme/links/jira-epic` |
+| `link area.health.training.blog` (§29.3) | `link.area.health.training.blog` | `areas/health/training/links/blog` |
+| `container area.health.training.links` (§29.3) | `container.area.health.training.links` | `areas/health/training/links` |
 | `project` *(no chain)* | `project` | `projects/` — the bucket |
 | `area` *(no chain)* | `area` | `areas/` |
 | `resource` *(no chain)* | `resource` | `resources/` |
@@ -225,10 +231,12 @@ badly-shaped chain never reaches a path at all, leaving one legal chain shape pe
 **Arity is fixed per noun, and arity is the validation.** `project` and `skill` take exactly one
 id-chain segment; `objective` two; `key-result` three; `area` and `resource` one or more; `container`
 two or three, whose last segment must be `objectives` (under a project id) or `key-results` (under an
-objective id). A chain of the wrong arity for its noun is refused by naming the noun and the arity it
-expects — the same kind of refusal §10's `misplaced` finding describes today for a `state.toml` already
-sitting at a bad location, now caught before any path is built rather than discovered on disk
-afterward.
+objective id) — or, per §29.3, a parent kind (`project`/`area`/`resource`) followed by that kind's own
+id-chain and a trailing `links`. `link`'s own arity is the same parent-chain rule plus one more
+segment, its own id: three segments under `project` exactly, three or more under `area`/`resource`. A
+chain of the wrong arity for its noun is refused by naming the noun and the arity it expects — the same
+kind of refusal §10's `misplaced` finding describes today for a `state.toml` already sitting at a bad
+location, now caught before any path is built rather than discovered on disk afterward.
 
 **The noun replaces the container segments, it does not repeat them.** `key-result acme.q1-growth.signups`
 is three segments, not the five you would get by spelling `objectives` and `key-results` into the
@@ -1572,19 +1580,21 @@ chain (§13), so any of them run with nothing after the verb and mean the whole 
 
 One spelling per field, shared by `add` and `set`. `unset` takes bare names.
 
-| Field | project | area | resource | objective | key-result | skill | container |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `name` | req | req | req | req | req | req | req |
-| `description` | req | req | req | req | opt | req | req |
-| `status` | opt | — | — | opt | derived (`dropped` settable) | — | — |
-| `priority` | opt | opt | — | opt | — | — | — |
-| `due` | opt | — | — | opt | opt | — | — |
-| `tags` | opt | opt | opt | opt | opt | opt | — |
-| `created` | opt (now) | opt (now) | opt (now) | opt (now) | opt (now) | opt (now) | opt (now) |
-| `type` | — | — | — | — | **req, fixed** | — | — |
-| `start` | — | — | — | — | opt | — | — |
-| `target` | — | — | — | — | req | — | — |
-| `scope` | — | — | — | — | — | opt (all) | — |
+| Field | project | area | resource | objective | key-result | link | skill | container |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `name` | req | req | req | req | req | opt (id) | req | req |
+| `description` | req | req | req | req | opt | opt | req | req |
+| `status` | opt | — | — | opt | derived (`dropped` settable) | — | — | — |
+| `priority` | opt | opt | — | opt | — | — | — | — |
+| `due` | opt | — | — | opt | opt | — | — | — |
+| `tags` | opt | opt | opt | opt | opt | opt | opt | — |
+| `created` | opt (now) | opt (now) | opt (now) | opt (now) | opt (now) | opt (now) | opt (now) | opt (now) |
+| `type` | — | — | — | — | **req, fixed** | **req, fixed** | — | — |
+| `start` | — | — | — | — | opt | — | — | — |
+| `target` | — | — | — | — | req | — | — | — |
+| `scope` | — | — | — | — | — | — | opt (all) | — |
+| `ref` | — | — | — | — | — | req | — | — |
+| `direction` | — | — | — | — | — | req | — | — |
 
 - **`description` replaces v2's `summary`**, and it is a field rather than the body because it has to
   reach README frontmatter, `list` output, `--match`, and a derived rule's routing sentence. The
@@ -1598,7 +1608,13 @@ One spelling per field, shared by `add` and `set`. `unset` takes bare names.
   bounds and no others: not in the future, and not after `due`. `unset created` is an error —
   everything has a creation time.
 - **`type` is fixed at creation** and never settable; changing it would invalidate every measurement
-  already logged (§4.1). Delete and recreate.
+  already logged (§4.1). Delete and recreate. A link's `type` is fixed for the same reason in spirit
+  but a different one in fact (§29.2): nothing measures it, but it is the tag tooling built on `para`
+  keys its own interpretation off of, and letting it change out from under that tooling silently would
+  be the same "the label lied about what's underneath" failure with a different reader.
+- **`name` is Optional on `link` alone** (§29.2) — it defaults to the link's own id, because a link's
+  slug is usually name enough and requiring one besides would be a second required flag for a fact
+  the chain already states.
 - **`scope` replaces wholly on `set`**, and `para unset skill x scope` widens it back to the whole
   tree (§5.2). `para set skill x --scope a,b` is the full new list.
   `--scope-add` / `--scope-remove` are deliberately absent: every other field replaces, and a list
@@ -2637,3 +2653,101 @@ specific class of signal fires.
 The record it produces is `suppression`, a noun, not `suppressed`, an adjective: `[suppression]` holds
 two attributes (`until`, `note`), which reads as a small record rather than a flag — the same
 relationship `note`-the-verb has to `note`-the-thing it produces.
+
+## 29. Links
+
+Added after v4 was declared structurally settled (§11, §27, §28), the same way suppression was:
+recorded as its own section, touching §1.2, §1.3, §1.4, and §15 by reference rather than folded into
+them silently, because it adds an eighth noun and that is worth being able to find later.
+
+### 29.1 The problem
+
+A project, area, or resource has no first-class way to declare where it touches the outside world — a
+project's Jira epic, a Slack channel it should watch or update, an area's output blog, an RSS feed
+worth monitoring as input. Tooling built on top of `para` has had to invent ad hoc conventions per
+case, which do not compose and are not visible via `show`. `link` closes that gap: a typed,
+directional, labeled external touchpoint, stored the same way everything else in this tree is and
+surfaced the same way everything else is read.
+
+### 29.2 The `link` noun and its fields
+
+A link is an entity (§1.2) — its own directory, `.para/state.toml`, README.md, ACTIVITY.md — attached
+to a project, an area, or a resource. Fields (§15): `type` (an opaque string para never interprets —
+`jira-epic`, `slack-channel`, `blog`, `rss-feed`, ...; same posture as `--tags`, fixed at creation the
+way a key-result's `type` is, for a different reason — nothing measures it, but tooling keys its own
+interpretation off it, and letting it change silently would be the same "the label lied" failure with
+a different reader); `ref` (an opaque locator the type interprets — an issue key, a channel id, a
+URL); `direction` — a real three-value enum, validated like `status` already is: `input` (monitor this
+for relevant activity), `output` (this needs to be kept updated), or `both` (a two-way channel, which
+is what turns a single Slack channel into a feedback loop rather than needing two entries); and
+`description`, the same field and meaning as everywhere else, optional. `name` is Optional and defaults
+to the link's own id — the one field row where a link departs from every other kind, because a link's
+slug is usually name enough and a link's own CLI shape never needs to type one.
+
+A project, an area, or a resource may have zero, one, or many links, of the same type or mixed types —
+the same cardinality relationship key-results already have to an objective.
+
+### 29.3 Addressing: a link answers to three parents, so its chain names one
+
+Every other noun with a fixed nesting shape needs no help disambiguating its own address: `key-result`
+always nests under exactly one parent kind (`objective`), so its three-segment chain is unambiguous by
+construction (§1.4). `link` cannot borrow that trick — it nests under *three* different parent kinds
+with different arities (`project` takes exactly one id; `area`/`resource` take one or more, at any
+depth), and a bare id-chain like `acme.jira-epic` cannot say on its own whether `acme` names a project
+or an area, since nothing stops the two ids from coinciding as plain strings, and §1.4's own invariant
+— "the arity and shape of the id-chain determine the path completely" — means resolution may not fall
+back to checking which one actually exists on disk.
+
+The resolution reuses a device §1.4 already has, at the other end of a chain: `container acme.objectives`
+and `container acme.q1-growth.key-results` are disambiguated by spelling the reserved structural word
+literally, because the chain's own shape has more than one legal reading otherwise. A link's chain
+applies the same device at the front instead of the back — its first segment is always the parent's own
+noun word, `project`, `area`, or `resource`, followed by that noun's own id-chain, followed by the
+link's own id: `link project.acme.jira-epic`, `link area.health.training.blog`,
+`link resource.papers.kafka.feed`. Reading it the other way: a link's chain is exactly a links
+container's own chain (below) with its trailing `links` word replaced by the link's own id — the same
+length, not one segment longer, the same relationship a key-result's chain has to its key-results
+container's.
+
+The `links` structural word joins `objectives`/`key-results` in §1.4's reserved list, and a `links`
+container's own address takes the identical parent-selector prefix, since it faces the identical
+disambiguation: `container project.acme.links`, `container area.health.training.links`.
+
+Links are otherwise ordinary addressable entities: `--archived` reaches them exactly as it reaches
+every other kind (§1.6) — archiving a project, area, or resource drags its `links/` subtree with it,
+the same whole-subtree cascade every other archive already is — and a skill's `scope` (§5.2) may name
+one directly, the same way it names any other address, since scope entries are addresses and nothing
+about being a link excludes it from that list.
+
+No disk lookup is introduced anywhere in this resolution — chain to path and path to chain both stay
+pure functions of the address's own text, exactly as §1.4 requires everywhere else.
+
+### 29.4 The `links/` container is lazy, not eager
+
+`objectives/` and `key-results/` are eager (§18.1): a project is born with an `objectives/` container,
+empty or not, because an agent or a human looking for one should not have to know that absence means
+"none" rather than "elsewhere." `links/` breaks that pattern deliberately. Making it eager would mean
+every project, and every area and resource *at every nesting depth*, is born with an unused `links/`
+folder on the (overwhelmingly common) case that it never gets one — clutter with no offsetting benefit,
+since unlike `objectives/key-results` a link-capable parent's own §1.3 nesting shape does not otherwise
+require a fixed child.
+
+Instead, `links/` is created the first time a link is actually added beneath a parent, whichever parent
+that is and at whatever depth — the same "para's own, made on the way past rather than required in
+advance" posture `.agents/skills/` already has (§1.4), generalized from a bare directory to a real
+container with its own `state.toml`. A parent that never gets a link never grows a `links/` folder; one
+that does gets it exactly once, on the first add.
+
+### 29.5 What deliberately stays out of `para`
+
+- **No notion of a link being "stale" or "needing attention."** `para` already has the primitives for
+  that at the parent level (`project.stale-after`, `review --stale`, `suppress`/`unsuppress`, §28).
+  Whether a *specific* Jira epic or Slack channel needs action requires knowing what Jira or Slack
+  actually are, which is system-specific interpretation that belongs in tooling built on `para`, not in
+  `para` itself. Consequently a link has no `status` field at all (§15) and never appears in `review`'s
+  stale/skills groups (§20) — the same "no status, no off switch" posture `container` already has,
+  for the same reason: nothing here has a lifecycle of its own to report on.
+- **Nothing that actually talks to Jira, Slack, a blog, or any other system.** That is purely a
+  skill/agent-layer concern. `para`'s job stops at storing a typed, directional, labeled list of
+  external touchpoints per entity, and surfacing it — `show <noun> <chain>` renders a parent's links
+  grouped by direction, alongside what it already shows.

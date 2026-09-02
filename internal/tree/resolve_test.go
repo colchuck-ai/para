@@ -150,6 +150,80 @@ func TestParentExistsForSkill(t *testing.T) {
 	}
 }
 
+// TestParentExistsForLink mirrors TestParentExistsForSkill's "on the way
+// past" reasoning for para-6g7's links/ container: it is para's own, created
+// lazily by the first `add link` under a parent, so its own absence must not
+// block that add the way an ordinary missing container does. Only the
+// *parent* (project/area/resource) is a real precondition — links/ itself
+// never is.
+func TestParentExistsForLink(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{
+		".para/tree.toml":                "schema = 1\n",
+		"projects/.para/state.toml":      "name = \"Projects\"\n",
+		"projects/acme/.para/state.toml": "name = \"Acme\"\n",
+	})
+
+	got, err := tree.ParentExists(root, mustParse(t, "projects.acme.links.jira-epic"))
+	if err != nil {
+		t.Fatalf("ParentExists: %v", err)
+	}
+	if !got {
+		t.Error("ParentExists(projects.acme.links.jira-epic) = false before links/ exists, want true — para creates it on the way past")
+	}
+
+	writeFixture(t, root, map[string]string{
+		"projects/acme/links/.para/state.toml": "name = \"Links\"\n",
+	})
+	got, err = tree.ParentExists(root, mustParse(t, "projects.acme.links.jira-epic"))
+	if err != nil {
+		t.Fatalf("ParentExists: %v", err)
+	}
+	if !got {
+		t.Error("ParentExists(projects.acme.links.jira-epic) = false once links/ exists, want true")
+	}
+}
+
+// TestParentExistsForLinkRefusesMissingGrandparent is the boundary
+// TestParentExistsForLink's forgiveness stops at: the links/ container is
+// forgiven, but the project/area/resource it would live under is a real
+// precondition, exactly like any other missing ancestor.
+func TestParentExistsForLinkRefusesMissingGrandparent(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{
+		".para/tree.toml":           "schema = 1\n",
+		"projects/.para/state.toml": "name = \"Projects\"\n",
+	})
+
+	got, err := tree.ParentExists(root, mustParse(t, "projects.missing.links.jira-epic"))
+	if err != nil {
+		t.Fatalf("ParentExists: %v", err)
+	}
+	if got {
+		t.Error("ParentExists(projects.missing.links.jira-epic) = true, want false — the project itself does not exist")
+	}
+}
+
+// TestParentExistsForLinkUnderNestedArea confirms the forgiveness reaches
+// links/ at any area/resource nesting depth, not just the shallowest one.
+func TestParentExistsForLinkUnderNestedArea(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{
+		".para/tree.toml":                        "schema = 1\n",
+		"areas/.para/state.toml":                 "name = \"Areas\"\n",
+		"areas/health/.para/state.toml":          "name = \"Health\"\n",
+		"areas/health/training/.para/state.toml": "name = \"Training\"\n",
+	})
+
+	got, err := tree.ParentExists(root, mustParse(t, "areas.health.training.links.blog"))
+	if err != nil {
+		t.Fatalf("ParentExists: %v", err)
+	}
+	if !got {
+		t.Error("ParentExists(areas.health.training.links.blog) = false, want true — areas.health.training exists")
+	}
+}
+
 // TestKindAt covers the classification the walk and every mutation share: a
 // reserved last segment is a container, an id position derives its kind from
 // §1.3, and the root has no kind of its own (§8.1).
@@ -172,6 +246,15 @@ func TestKindAt(t *testing.T) {
 		{"skills.signups-report", kindmeta.KindSkill, false},
 		// A project cannot nest, so no position derives a kind (§1.3).
 		{"projects.acme.nested", kindmeta.KindUnknown, true},
+		// links/ (para-6g7): a container under any of the three link-capable
+		// parents, and a link entity inside one, at any area/resource depth.
+		{"projects.acme.links", kindmeta.KindContainer, false},
+		{"projects.acme.links.jira-epic", kindmeta.KindLink, false},
+		{"areas.health.links", kindmeta.KindContainer, false},
+		{"areas.health.links.blog", kindmeta.KindLink, false},
+		{"areas.health.training.links.blog", kindmeta.KindLink, false},
+		{"resources.templates.links", kindmeta.KindContainer, false},
+		{"resources.templates.links.feed", kindmeta.KindLink, false},
 	}
 	for _, tt := range tests {
 		var loc locator.Locator
