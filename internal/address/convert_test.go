@@ -250,12 +250,45 @@ func randomAddress(rng *rand.Rand, randID func() string) Address {
 		return Address{Noun: noun, Chain: []string{randID(), randID()}, Archived: archived}
 	case KeyResult:
 		return Address{Noun: noun, Chain: []string{randID(), randID(), randID()}, Archived: archived}
+	case Link:
+		parent, ids := randomLinkParent(rng, randID)
+		return Address{Noun: noun, Chain: append(append([]string{parent}, ids...), randID()), Archived: archived}
 	case Container:
-		if rng.IntN(2) == 0 {
+		switch rng.IntN(3) {
+		case 0:
 			return Address{Noun: noun, Chain: []string{randID(), "objectives"}, Archived: archived}
+		case 1:
+			return Address{Noun: noun, Chain: []string{randID(), randID(), "key-results"}, Archived: archived}
+		default:
+			parent, ids := randomLinkParent(rng, randID)
+			return Address{Noun: noun, Chain: append(append([]string{parent}, ids...), "links"), Archived: archived}
 		}
-		return Address{Noun: noun, Chain: []string{randID(), randID(), "key-results"}, Archived: archived}
 	default:
 		panic("randomAddress: unreachable noun")
+	}
+}
+
+// randomLinkParent generates a random legal parent portion for a link (or a
+// links container): the selector word, and the id-chain that noun's own
+// arity allows — exactly one id for "project", one or more for "area"/
+// "resource".
+func randomLinkParent(rng *rand.Rand, randID func() string) (string, []string) {
+	switch rng.IntN(3) {
+	case 0:
+		return Project.String(), []string{randID()}
+	case 1:
+		depth := 1 + rng.IntN(3)
+		ids := make([]string, depth)
+		for i := range ids {
+			ids[i] = randID()
+		}
+		return Area.String(), ids
+	default:
+		depth := 1 + rng.IntN(3)
+		ids := make([]string, depth)
+		for i := range ids {
+			ids[i] = randID()
+		}
+		return Resource.String(), ids
 	}
 }

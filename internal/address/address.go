@@ -1,6 +1,8 @@
 package address
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/colchuck-ai/para/internal/locator"
@@ -117,6 +119,8 @@ func (a Address) Validate() error {
 		return validateFixed(a.Noun, a.Chain, 2)
 	case KeyResult:
 		return validateFixed(a.Noun, a.Chain, 3)
+	case Link:
+		return validateLink(a.Chain)
 	case Container:
 		return validateContainer(a.Chain)
 	default:
@@ -158,12 +162,16 @@ func validateFixed(n Noun, chain []string, want int) error {
 }
 
 // validateContainer is container's arity (R4): two segments ending in
-// "objectives" (under a project id) or three ending in "key-results" (under
-// an objective id). The last segment is the reserved structural word
-// itself, not an id, so it is checked for equality rather than passed to
-// checkIDs.
+// "objectives" (under a project id), three ending in "key-results" (under
+// an objective id), or — para-6g7 — a parent selector word (project/area/
+// resource) followed by that noun's own id-chain and a trailing "links". The
+// last two forms' final segment is the reserved structural word itself, not
+// an id, so it is checked for equality rather than passed to checkIDs.
 func validateContainer(chain []string) error {
-	const want = `two segments ending in "objectives", or three ending in "key-results"`
+	const want = `two segments ending in "objectives", three ending in "key-results", or a parent kind (project/area/resource) followed by its id chain and "links"`
+	if len(chain) >= 1 && chain[len(chain)-1] == "links" {
+		return validateLinkParent(Container, chain[:len(chain)-1])
+	}
 	switch len(chain) {
 	case 2:
 		if err := checkIDs(chain[:1]); err != nil {
@@ -184,6 +192,52 @@ func validateContainer(chain []string) error {
 	default:
 		return arityErr(Container, len(chain), want)
 	}
+}
+
+// linkParentWords are the three parent nouns a link, or a links container,
+// may name as the disambiguating first chain segment (para-6g7) — the same
+// "spell the reserved word literally when a chain's shape alone cannot say
+// which noun it belongs to" device validateContainer already uses at the
+// *other* end of its own chain, for "objectives" vs "key-results".
+var linkParentWords = []string{"project", "area", "resource"}
+
+// validateLinkParent checks a link's (or a links container's) parent
+// portion: chain[0] must be one of linkParentWords, and chain[1:] must be a
+// legal id-chain for that noun's own arity — project takes exactly one id,
+// area and resource take one or more, and neither takes the bucket (empty)
+// form here, because a link always names a specific parent entity, never an
+// entire bucket. It is shared between validateLink (which strips the link's
+// own trailing id first) and validateContainer's "links" branch (which
+// strips the trailing "links" word instead), so the parent-chain rule is
+// asked once rather than twice. blame is the noun an arity error should
+// name — the caller's own noun, not always Link, so a bad `container
+// project.links` refusal reads as container's arity rather than link's.
+func validateLinkParent(blame Noun, chain []string) error {
+	if len(chain) == 0 || !slices.Contains(linkParentWords, chain[0]) {
+		return paraerr.Newf(paraerr.KindValidation,
+			"%s's chain must begin with its parent kind (%s)", blame, strings.Join(linkParentWords, ", "))
+	}
+	ids := chain[1:]
+	if chain[0] == Project.String() {
+		if len(ids) != 1 {
+			return arityErr(blame, len(chain), `"project" followed by exactly one id`)
+		}
+	} else if len(ids) < 1 {
+		return arityErr(blame, len(chain), fmt.Sprintf("%q followed by one or more ids", chain[0]))
+	}
+	return checkIDs(ids)
+}
+
+// validateLink is link's arity (R4): validateLinkParent's parent-chain rule,
+// plus the link's own trailing id.
+func validateLink(chain []string) error {
+	if len(chain) < 2 {
+		return arityErr(Link, len(chain), "a parent kind, its id chain, and the link's own id")
+	}
+	if err := validateLinkParent(Link, chain[:len(chain)-1]); err != nil {
+		return err
+	}
+	return checkID(chain[len(chain)-1])
 }
 
 // checkIDs is the two rules an id position must satisfy, over every segment

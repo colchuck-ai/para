@@ -26,6 +26,7 @@ const (
 	Resource  = kindmeta.KindResource
 	Objective = kindmeta.KindObjective
 	KeyResult = kindmeta.KindKeyResult
+	Link      = kindmeta.KindLink
 	Skill     = kindmeta.KindSkill
 	Container = kindmeta.KindContainer
 )

@@ -40,6 +40,20 @@ func TestCheck(t *testing.T) {
 			state: truth.State{Name: "Objectives", Description: "What acme is trying to move."},
 		},
 		{
+			// para-6g7: a link's type is an opaque tag, not key-result's
+			// closed measurement grammar — "jira-epic" must not be refused
+			// the way it would be as a key-result's type.
+			name:  "a complete link passes",
+			kind:  kindmeta.KindLink,
+			state: truth.State{Type: "jira-epic", Ref: "PROJ-123", Direction: "output"},
+		},
+		{
+			name:  "a link direction outside the closed set",
+			kind:  kindmeta.KindLink,
+			state: truth.State{Type: "jira-epic", Ref: "PROJ-123", Direction: "sideways"},
+			want:  []kindmeta.Field{kindmeta.FieldDirection},
+		},
+		{
 			name:  "a project with no name or description",
 			kind:  kindmeta.KindProject,
 			state: truth.State{Status: "planned"},

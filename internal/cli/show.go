@@ -111,6 +111,10 @@ func showEntity(cmd *cobra.Command, env *view.Env, loc locator.Locator, read rea
 	if err != nil {
 		return err
 	}
+	links, err := showLinks(env, ent)
+	if err != nil {
+		return err
+	}
 	skills, err := env.SkillsReaching(loc)
 	if err != nil {
 		return err
@@ -120,7 +124,7 @@ func showEntity(cmd *cobra.Command, env *view.Env, loc locator.Locator, read rea
 		return err
 	}
 
-	s := shown{ent: ent, children: children, skills: skills, stale: stale, isStale: isStale}
+	s := shown{ent: ent, children: children, links: links, skills: skills, stale: stale, isStale: isStale}
 	if read.json {
 		return writeJSON(cmd.OutOrStdout(), showOutputOf(env, s))
 	}
@@ -272,6 +276,7 @@ func rootOutputOf(env *view.Env, t truth.Tree, containers []view.Entity, configK
 type shown struct {
 	ent      view.Entity
 	children []view.Entity
+	links    []view.Entity
 	skills   []view.SkillReach
 	stale    view.Threshold
 	isStale  bool
@@ -286,7 +291,7 @@ type shown struct {
 // §16.1 already draws that line for siblings ("it does not print … its
 // siblings (`list`)"), and `list <noun> <chain>` is how you see the rest.
 func showChildren(env *view.Env, ent view.Entity) ([]view.Entity, error) {
-	if ent.Kind == kindmeta.KindKeyResult || ent.Kind == kindmeta.KindSkill {
+	if ent.Kind == kindmeta.KindKeyResult || ent.Kind == kindmeta.KindSkill || ent.Kind == kindmeta.KindLink {
 		return nil, nil
 	}
 	opts := query.Options{
@@ -300,7 +305,69 @@ func showChildren(env *view.Env, ent view.Entity) ([]view.Entity, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Links (para-6g7) are their own summary, grouped by direction rather
+	// than folded into this one — childrenHeading's "every kind has exactly
+	// one kind of child" would otherwise stop holding for a project, which
+	// already has objectives.
+	out := res.Entities[:0]
+	for _, e := range res.Entities {
+		if e.Kind != kindmeta.KindLink {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+// showLinks is the links a project, area, or resource itself has attached —
+// deliberately not the recursive descent showChildren gives a project's
+// objectives, since a link never nests and every link-capable parent may
+// have its own regardless of depth (para-6g7).
+func showLinks(env *view.Env, ent view.Entity) ([]view.Entity, error) {
+	switch ent.Kind {
+	case kindmeta.KindProject, kindmeta.KindArea, kindmeta.KindResource:
+	default:
+		return nil, nil
+	}
+	// Direct: true — ReaderDepth counts depth after container transparency
+	// (query.ReaderDepth), so a link is depth 1 relative to its own parent
+	// regardless of the links/ container hop between them, the same way an
+	// objective is depth 1 relative to its project through objectives/. This
+	// is what keeps a nested area's own links (depth 2+ relative to an
+	// ancestor area) out of the ancestor's summary.
+	res, err := query.List(env, query.Options{
+		Scope:  ent.Locator,
+		Kind:   kindmeta.KindLink,
+		Filter: query.Filter{All: true, Direct: true},
+	})
+	if err != nil {
+		return nil, err
+	}
 	return res.Entities, nil
+}
+
+// printLinks is show's links summary (para-6g7): grouped by direction, in
+// the bead's own declaration order (kindmeta.LinkDirections — input, output,
+// both), one table so the id/name/type/ref columns line up across groups the
+// way printReview's grouped sections already do.
+func printLinks(out io.Writer, links []view.Entity) {
+	fmt.Fprintln(out, "links")
+	t := table{indent: "  "}
+	for _, direction := range kindmeta.LinkDirections() {
+		var group []view.Entity
+		for _, l := range links {
+			if l.State.Direction == direction {
+				group = append(group, l)
+			}
+		}
+		if len(group) == 0 {
+			continue
+		}
+		t.head(direction)
+		for _, l := range group {
+			t.add(l.ID(), l.Name(), l.State.Type, l.State.Ref)
+		}
+	}
+	t.write(out)
 }
 
 // deepSummary reports whether a kind's children summary reaches past the
@@ -344,6 +411,11 @@ func printShow(out io.Writer, env *view.Env, s shown, read readFlags) {
 		printChildren(out, ent.Locator, s.children)
 	}
 
+	if len(s.links) > 0 {
+		fmt.Fprintln(out)
+		printLinks(out, s.links)
+	}
+
 	if len(s.skills) > 0 {
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, strings.TrimRight(labelled("skills", skillsCell(s.skills)), " "))
@@ -382,6 +454,8 @@ func fieldBlock(env *view.Env, s shown, zone *time.Location) []string {
 		add("scope", "the whole tree")
 	}
 	add("type", ent.State.Type)
+	add("ref", ent.State.Ref)
+	add("direction", ent.State.Direction)
 	add("created", day(ent.Created, zone))
 	attentionComputed := ago(env.DaysSinceIn(ent.Attention, zone))
 	if src := attentionSource(ent); src != "" {

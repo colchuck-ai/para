@@ -80,6 +80,29 @@ func DefaultStatus(kind Kind) string {
 	}
 }
 
+// TypeIsMeasurement reports whether kind's `type` field means §4.1's closed
+// measurement grammar (number/ratio/boolean, interpreted by krvalue) rather
+// than an opaque tag para never interprets (para-6g7's link). It is the
+// `type` row's counterpart to SettableStatuses/IsStatus above — the same
+// "the vocabulary genuinely varies by kind" fact, asked once here rather
+// than as an inline `kind == KindKeyResult` at each of type's four callers
+// (write.go's typeHelpForKind, complete.go's fieldVocabulary, mutate's
+// normalise, truth's checkValue).
+func TypeIsMeasurement(kind Kind) bool { return kind == KindKeyResult }
+
+// linkDirections is a link's closed, ordered vocabulary (para-6g7): whether
+// para should treat the touchpoint as something to monitor, something to
+// keep updated, or both — the bead's own declaration order, which is also
+// the order `--help` and a validation error list it in.
+var linkDirections = []string{"input", "output", "both"}
+
+// LinkDirections returns the legal link directions, in declaration order.
+func LinkDirections() []string { return slices.Clone(linkDirections) }
+
+// IsLinkDirection reports whether d is one of the three a link's `direction`
+// field accepts.
+func IsLinkDirection(d string) bool { return slices.Contains(linkDirections, d) }
+
 // priorities is the closed, ordered set `priority` admits, most urgent first.
 //
 // The design never enumerates it — §8.3's example writes `high` and §15 lists

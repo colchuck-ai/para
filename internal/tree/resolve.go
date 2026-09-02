@@ -84,6 +84,11 @@ func isContainerPosition(loc locator.Locator) bool {
 		return parent.Kind == kindmeta.KindProject
 	case "key-results":
 		return parent.Kind == kindmeta.KindObjective
+	case "links":
+		// para-6g7: unlike objectives/key-results, a links container can sit
+		// under any of three parent kinds — a project, or an area/resource at
+		// any nesting depth.
+		return parent.Kind == kindmeta.KindProject || parent.Kind == kindmeta.KindArea || parent.Kind == kindmeta.KindResource
 	default:
 		return false
 	}
@@ -124,6 +129,15 @@ func ParentExists(root string, loc locator.Locator) (bool, error) {
 	}
 	if loc.Bucket() == "skills" {
 		return true, nil
+	}
+	if len(loc) >= 2 && loc[len(loc)-2] == "links" {
+		// para-6g7: links/ is para's own, created lazily by the first `add
+		// link` under a parent (mutate.linksContainerPlan) — the same "make
+		// it on the way past" reasoning as .agents/skills/ above. What must
+		// actually pre-exist is the *parent* two segments up (the project,
+		// or the area/resource at whatever depth), not the links/ container
+		// itself.
+		return Exists(root, loc[:len(loc)-2])
 	}
 
 	parentRel, err := loc[:len(loc)-1].Path()

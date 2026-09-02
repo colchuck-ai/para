@@ -193,11 +193,25 @@ func (e *Env) normalise(kind kindmeta.Kind, field kindmeta.Field, raw string, st
 		return strings.TrimSpace(raw), nil
 
 	case kindmeta.FieldType:
+		// para-6g7: a key-result's type is §4.1's closed measurement
+		// grammar (kindmeta.TypeIsMeasurement); a link's is an opaque tag
+		// para never interprets — the same posture as tags, so any
+		// non-empty value (already guaranteed above) is accepted as-is.
+		if !kindmeta.TypeIsMeasurement(kind) {
+			return flatten(raw), nil
+		}
 		if krvalue.IsType(raw) {
 			return raw, nil
 		}
 		return "", paraerr.Newf(paraerr.KindValidation,
 			"%q is not a key-result type — one of %s", raw, strings.Join(krvalue.TypeNames(), ", "))
+
+	case kindmeta.FieldDirection:
+		if !kindmeta.IsLinkDirection(raw) {
+			return "", paraerr.Newf(paraerr.KindValidation,
+				"%q is not a link direction — one of %s", raw, strings.Join(kindmeta.LinkDirections(), ", "))
+		}
+		return raw, nil
 
 	case kindmeta.FieldStart, kindmeta.FieldTarget:
 		typ := krvalue.Type(st.Type)

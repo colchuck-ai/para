@@ -114,8 +114,20 @@ func checkValue(kind kindmeta.Kind, field kindmeta.Field, s State) string {
 			return fmt.Sprintf("%q is not a priority", s.Priority)
 		}
 	case kindmeta.FieldType:
-		if _, ok := legalType(s.Type); !ok {
-			return fmt.Sprintf("%q is not a key-result type", s.Type)
+		// para-6g7: type's meaning depends on the kind (kindmeta.
+		// TypeIsMeasurement), the same way status's vocabulary already
+		// does — a key-result's type is §4.1's closed measurement grammar, a
+		// link's is an opaque tag para never interprets, so it needs no
+		// shape check beyond the presence Check's own required-field loop
+		// already gives it.
+		if kindmeta.TypeIsMeasurement(kind) {
+			if _, ok := legalType(s.Type); !ok {
+				return fmt.Sprintf("%q is not a key-result type", s.Type)
+			}
+		}
+	case kindmeta.FieldDirection:
+		if !kindmeta.IsLinkDirection(s.Direction) {
+			return fmt.Sprintf("%q is not a link direction", s.Direction)
 		}
 	case kindmeta.FieldStart, kindmeta.FieldTarget:
 		// A value whose shape contradicts its key-result's type (§10). A type

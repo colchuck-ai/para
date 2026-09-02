@@ -35,6 +35,14 @@ func TestKindOf(t *testing.T) {
 		{"resources.templates.emails", KindResource, false},
 		{"skills.signups-report", KindSkill, false},
 
+		// links/ under any of the three link-capable parents (para-6g7).
+		{"projects.acme-migration.links.jira-epic", KindLink, false},
+		{"areas.health.links.blog", KindLink, false},
+		{"areas.health.training.links.blog", KindLink, false},
+		{"areas.health.training.deep.deeper.links.blog", KindLink, false},
+		{"resources.templates.links.feed", KindLink, false},
+		{"resources.templates.emails.links.feed", KindLink, false},
+
 		// archive/{projects,areas,resources}/… — same kinds, dormant.
 		{"archive.projects.acme-migration", KindProject, true},
 		{"archive.projects.acme-migration.objectives.q1-growth", KindObjective, true},
@@ -42,6 +50,8 @@ func TestKindOf(t *testing.T) {
 		{"archive.areas.health", KindArea, true},
 		{"archive.areas.health.training", KindArea, true},
 		{"archive.resources.templates", KindResource, true},
+		{"archive.projects.acme-migration.links.jira-epic", KindLink, true},
+		{"archive.areas.health.training.links.blog", KindLink, true},
 	}
 	for _, c := range cases {
 		t.Run(c.loc, func(t *testing.T) {
@@ -76,6 +86,12 @@ func TestKindOfIllegalPositions(t *testing.T) {
 		"archive.skills.foo", // skills cannot be archived
 		"logs.foo",           // logs is not a bucket
 		"foo.bar",            // unknown top-level segment
+
+		// links/ misplacement (para-6g7): a link is a leaf, and "links" must
+		// be the second-to-last segment, never buried or trailing alone.
+		"projects.acme.links",                    // links with no id names no entity
+		"projects.acme.links.jira-epic.extra",    // a link is a leaf
+		"projects.acme.objectives.q1.links.blog", // links never follows an objective
 	}
 	for _, loc := range cases {
 		t.Run(loc, func(t *testing.T) {
@@ -103,6 +119,14 @@ func TestKindOfReservedWordAsID(t *testing.T) {
 		"areas.health.archive",
 		"resources.areas",
 		"skills.logs",
+		"projects.links",
+		"projects.acme.links.links",
+		"areas.health.links.links",
+		"areas.links.blog",
+		"resources.links.feed",
+		"areas.health.links",
+		"areas.health.links.blog.extra",
+		"resources.templates.links",
 	}
 	for _, loc := range cases {
 		t.Run(loc, func(t *testing.T) {
@@ -125,6 +149,7 @@ func TestKindString(t *testing.T) {
 		KindResource:  "resource",
 		KindObjective: "objective",
 		KindKeyResult: "key-result",
+		KindLink:      "link",
 		KindSkill:     "skill",
 		KindContainer: "container",
 		KindUnknown:   "unknown",

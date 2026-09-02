@@ -54,6 +54,8 @@ type entityJSON struct {
 	Start       string   `json:"start,omitempty"`
 	Target      string   `json:"target,omitempty"`
 	Scope       []string `json:"scope,omitempty"`
+	Ref         string   `json:"ref,omitempty"`
+	Direction   string   `json:"direction,omitempty"`
 
 	// Everything below is derived and therefore never in a truth file (§2.5).
 	EffectiveStatus string `json:"effective-status,omitempty"`
@@ -109,6 +111,8 @@ func newEntityJSON(env *view.Env, e view.Entity) entityJSON {
 		Start:           e.State.Start,
 		Target:          e.State.Target,
 		Scope:           e.State.Scope,
+		Ref:             e.State.Ref,
+		Direction:       e.State.Direction,
 		EffectiveStatus: e.EffectiveStatus,
 		Terminal:        e.Terminal,
 		Archived:        e.Archived,
@@ -219,14 +223,16 @@ func optional(has bool, value float64) *float64 {
 	return &value
 }
 
-// showOutput is `show --json`: the entity, plus the three things `show` adds to
-// a bare row — its children, the skills that reach it, and the staleness
-// verdict with the level that supplied its threshold (§16.1).
+// showOutput is `show --json`: the entity, plus what `show` adds to a bare
+// row — its children, its own links grouped by direction (para-6g7, project/
+// area/resource only), the skills that reach it, and the staleness verdict
+// with the level that supplied its threshold (§16.1).
 type showOutput struct {
 	entityJSON
-	Stale    *staleJSON   `json:"stale"`
-	Children []entityJSON `json:"children"`
-	Skills   []skillJSON  `json:"skills"`
+	Stale    *staleJSON              `json:"stale"`
+	Children []entityJSON            `json:"children"`
+	Links    map[string][]entityJSON `json:"links,omitempty"`
+	Skills   []skillJSON             `json:"skills"`
 }
 
 type staleJSON struct {
@@ -258,6 +264,12 @@ func showOutputOf(env *view.Env, s shown) showOutput {
 	}
 	for _, c := range s.children {
 		out.Children = append(out.Children, newEntityJSON(env, c))
+	}
+	for _, l := range s.links {
+		if out.Links == nil {
+			out.Links = map[string][]entityJSON{}
+		}
+		out.Links[l.State.Direction] = append(out.Links[l.State.Direction], newEntityJSON(env, l))
 	}
 	for _, k := range s.skills {
 		out.Skills = append(out.Skills, skillJSON{

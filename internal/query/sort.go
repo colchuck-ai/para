@@ -86,6 +86,7 @@ var kindOrder = []kindmeta.Kind{
 	kindmeta.KindResource,
 	kindmeta.KindObjective,
 	kindmeta.KindKeyResult,
+	kindmeta.KindLink,
 	kindmeta.KindSkill,
 }
 

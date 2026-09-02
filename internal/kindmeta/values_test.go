@@ -132,3 +132,40 @@ func TestAllStatuses(t *testing.T) {
 		}
 	}
 }
+
+// TestLinkDirections pins the closed, ordered vocabulary a link's direction
+// takes (para-6g7): input, output, both — the order the bead itself states
+// them in, so an error message and `--help` list them the same way §1.7's
+// status tables already do for every other closed field.
+func TestLinkDirections(t *testing.T) {
+	want := []string{"input", "output", "both"}
+	got := kindmeta.LinkDirections()
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("LinkDirections() = %v, want %v", got, want)
+	}
+}
+
+// TestTypeIsMeasurement pins the one closed-grammar kind against every
+// other addressable kind, since the four callers this centralizes must all
+// see the same answer.
+func TestTypeIsMeasurement(t *testing.T) {
+	for _, kind := range kindmeta.AllKinds() {
+		want := kind == kindmeta.KindKeyResult
+		if got := kindmeta.TypeIsMeasurement(kind); got != want {
+			t.Errorf("TypeIsMeasurement(%s) = %v, want %v", kind, got, want)
+		}
+	}
+}
+
+func TestIsLinkDirection(t *testing.T) {
+	for _, d := range []string{"input", "output", "both"} {
+		if !kindmeta.IsLinkDirection(d) {
+			t.Errorf("IsLinkDirection(%q) = false, want true", d)
+		}
+	}
+	for _, d := range []string{"", "bidirectional", "INPUT", "in"} {
+		if kindmeta.IsLinkDirection(d) {
+			t.Errorf("IsLinkDirection(%q) = true, want false", d)
+		}
+	}
+}

@@ -82,6 +82,10 @@ func (e *Env) add(loc locator.Locator, f Fields, dryRun bool) (Result, error) {
 		return Result{}, paraerr.Newf(paraerr.KindNotFound, "%s does not exist — create it first", missing)
 	}
 
+	if info.Kind == kindmeta.KindLink {
+		f = withDefaultLinkName(loc, f)
+	}
+
 	subj, err := e.subjectAt(loc, info.Kind)
 	if err != nil {
 		return Result{}, err
@@ -115,6 +119,21 @@ func (e *Env) add(loc locator.Locator, f Fields, dryRun bool) (Result, error) {
 	}
 	if childPlan != nil {
 		plans = append(plans, childPlan)
+	}
+
+	if info.Kind == kindmeta.KindLink {
+		// links/ (para-6g7) is created lazily by the first link added
+		// beneath a parent, not eagerly by the parent itself — unlike
+		// eagerContainers below, this is the *grandchild's* add building a
+		// plan for its own immediate container, one level up rather than
+		// one level down.
+		linksPlan, err := e.linksContainerPlan(loc[:len(loc)-2])
+		if err != nil {
+			return Result{}, err
+		}
+		if linksPlan != nil {
+			plans = append([]*plan{linksPlan}, plans...)
+		}
 	}
 
 	parent, err := e.parentPlan(loc, []journal.Event{
@@ -219,6 +238,59 @@ func (e *Env) containerPlan(parentLoc locator.Locator, kind kindmeta.Kind, paren
 		Created:     stamp(e.Now),
 	}
 	return &plan{subj: subj, writeState: true, config: []byte{}, creating: true}, nil
+}
+
+// linksContainerPlan builds the links/ container beneath parentLoc if it
+// does not already exist, or nil if it does (para-6g7).
+//
+// Unlike containerPlan, this container is not eager: a project, area, or
+// resource is not born with one, because unlike objectives/key-results
+// every project/area/resource would otherwise gain an unused folder on the
+// (common) case that it never gets a link — including every area at every
+// nesting depth. Instead it is created lazily, on the way past, the first
+// time a link actually needs it — the same posture tree.ParentExists
+// already gives .agents/skills/, generalised to a container that (unlike
+// that bare directory) really does need its own state.toml.
+func (e *Env) linksContainerPlan(parentLoc locator.Locator) (*plan, error) {
+	containerLoc := append(slices.Clone(parentLoc), "links")
+	exists, err := tree.Exists(e.Root, containerLoc)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, nil
+	}
+	subj, err := e.subjectAt(containerLoc, kindmeta.KindContainer)
+	if err != nil {
+		return nil, err
+	}
+	parentDir, err := tree.ResolvePath(e.Root, parentLoc)
+	if err != nil {
+		return nil, err
+	}
+	parent, err := truth.ReadState(parentDir)
+	if err != nil {
+		return nil, err
+	}
+	subj.state = truth.State{
+		Name:        "Links",
+		Description: "External touchpoints for " + parent.Name + ".",
+		Created:     stamp(e.Now),
+	}
+	return &plan{subj: subj, writeState: true, config: []byte{}, creating: true}, nil
+}
+
+// withDefaultLinkName defaults a link's name to its own id when none was
+// given (para-6g7's one departure from every other kind, where name is
+// Required): the bead's own CLI shape never types --name, and render/view
+// code throughout assumes a non-empty name, so the default is applied here
+// rather than special-cased at every reader.
+func withDefaultLinkName(loc locator.Locator, f Fields) Fields {
+	if f.Has(kindmeta.FieldName) {
+		return f
+	}
+	f.Set(kindmeta.FieldName, loc[len(loc)-1])
+	return f
 }
 
 // dirHasFiles reports whether dir exists and already contains an entry.

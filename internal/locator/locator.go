@@ -20,11 +20,15 @@ type Locator []string
 // list grows from ten words to seventeen with R6: the seven singular nouns
 // join the ten structural words, because without them an entity legitimately
 // named e.g. "project" would make a grammar whose first token is a noun
-// unable to tell the noun from an id sharing its spelling.
+// unable to tell the noun from an id sharing its spelling. para-6g7 adds a
+// nineteenth and twentieth word, "links" and "link", the same pair
+// "key-results"/"key-result" already is: the structural container word and
+// its singular noun.
 var ReservedWords = []string{
 	"projects", "areas", "resources", "archive", "objectives",
 	"key-results", "skills", "logs", ".para", ".agents",
 	"project", "area", "resource", "objective", "key-result", "skill", "container",
+	"links", "link",
 }
 
 // IsReserved reports whether s is one of the words §1.4 reserves and so can

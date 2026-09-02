@@ -597,6 +597,7 @@ func TestKindFilterTreeWide(t *testing.T) {
 		{kindmeta.KindResource, []string{"resources.rust"}},
 		{kindmeta.KindObjective, []string{"projects.acme-migration.objectives.q1-growth"}},
 		{kindmeta.KindKeyResult, []string{"projects.acme-migration.objectives.q1-growth.key-results.signups"}},
+		{kindmeta.KindLink, nil},
 		{kindmeta.KindSkill, []string{"skills.signups-report"}},
 	}
 	for _, c := range cases {
@@ -624,6 +625,7 @@ func TestKindFilterWithinScope(t *testing.T) {
 		{kindmeta.KindKeyResult, []string{"projects.acme-migration.objectives.q1-growth.key-results.signups"}},
 		{kindmeta.KindArea, nil},
 		{kindmeta.KindResource, nil},
+		{kindmeta.KindLink, nil},
 		{kindmeta.KindSkill, nil},
 	}
 	for _, c := range cases {
@@ -631,6 +633,41 @@ func TestKindFilterWithinScope(t *testing.T) {
 			got := list(t, root, query.Options{Kind: c.kind, Scope: loc(t, "projects")})
 			assertLocators(t, locators(got), c.want...)
 		})
+	}
+}
+
+// TestKindFilterFindsLinks is para-6g7's own tree (kept separate from
+// fixture() so the many other tests reading that shared tree's exact
+// locator sets never have to widen for a kind they are not about): `list
+// link ...` reaches a link tree-wide, scoped to its parent, and mixed into a
+// universal --sort without dropping a row — the "kind missing from
+// kindOrder" safety net in sortEntities.
+func TestKindFilterFindsLinks(t *testing.T) {
+	root := plantTree(t)
+	w := writer(t, root)
+	add(t, w, "projects.acme", "name", "Acme", "description", "Rebuild.")
+	add(t, w, "projects.acme.links.jira-epic", "type", "jira-epic", "ref", "PROJ-123", "direction", "output")
+	add(t, w, "areas.health", "name", "Health", "description", "Staying alive.")
+	add(t, w, "areas.health.links.blog", "type", "blog", "ref", "https://example.com", "direction", "output")
+
+	got := list(t, root, query.Options{Kind: kindmeta.KindLink})
+	assertLocators(t, locators(got), "areas.health.links.blog", "projects.acme.links.jira-epic")
+
+	scoped := list(t, root, query.Options{Kind: kindmeta.KindLink, Scope: loc(t, "projects.acme")})
+	assertLocators(t, locators(scoped), "projects.acme.links.jira-epic")
+
+	sorted, err := query.List(reader(t, root), query.Options{Sort: query.SortName})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	found := false
+	for _, e := range sorted.Entities {
+		if e.Locator.String() == "projects.acme.links.jira-epic" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("sorting by name dropped the link row: %v", locators(sorted))
 	}
 }
 

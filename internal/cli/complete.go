@@ -224,12 +224,31 @@ func completeAddChain(kind kindmeta.Kind) completer {
 		if len(args) != 0 {
 			return nil, noFiles
 		}
+		if kind == kindmeta.KindLink {
+			return prefixDots(linkParentChainCandidates(), toComplete)
+		}
 		parent, ok := addParent[kind]
 		if !ok {
 			return nil, noFiles
 		}
 		return prefixDots(chainCandidates(parent, false), toComplete)
 	}
+}
+
+// linkParentChainCandidates is `add link`'s own chain completion (para-6g7):
+// existing project/area/resource chains, each prefixed with its own
+// selector word — the shape validateLinkParent expects — since a link may
+// attach to three different parent kinds and addParent's map can only name
+// one parent per child kind.
+func linkParentChainCandidates() []string {
+	var out []string
+	for _, kind := range []kindmeta.Kind{kindmeta.KindProject, kindmeta.KindArea, kindmeta.KindResource} {
+		prefix := kind.String() + "."
+		for _, c := range chainCandidates(kind, false) {
+			out = append(out, prefix+c)
+		}
+	}
+	return out
 }
 
 // prefixDots renders chains as the not-yet-typed-id prefixes add's and
@@ -425,7 +444,7 @@ func fieldApplies(kind kindmeta.Kind, field kindmeta.Field, atCreation bool) boo
 	return atCreation || kindmeta.Requirement(kind, field) != kindmeta.RequiredFixed
 }
 
-// fieldVocabulary is the set of values kind accepts for field, for the three
+// fieldVocabulary is the set of values kind accepts for field, for the
 // fields that have a closed one. Everything else in §15 is free text.
 func fieldVocabulary(kind kindmeta.Kind, field kindmeta.Field) []string {
 	switch field {
@@ -434,7 +453,15 @@ func fieldVocabulary(kind kindmeta.Kind, field kindmeta.Field) []string {
 	case kindmeta.FieldPriority:
 		return kindmeta.Priorities()
 	case kindmeta.FieldType:
-		return krvalue.TypeNames()
+		// para-6g7: only a key-result's type is a closed grammar
+		// (kindmeta.TypeIsMeasurement) — a link's is an opaque tag, the same
+		// posture as --tags, so it offers nothing to complete.
+		if kindmeta.TypeIsMeasurement(kind) {
+			return krvalue.TypeNames()
+		}
+		return nil
+	case kindmeta.FieldDirection:
+		return kindmeta.LinkDirections()
 	default:
 		return nil
 	}
