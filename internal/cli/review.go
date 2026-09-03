@@ -6,11 +6,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colchuck-ai/para/internal/kindmeta"
+	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/review"
 	"github.com/colchuck-ai/para/internal/view"
 )
 
-// newReviewCmd implements `para review [<noun> [<chain>]]` (R3, R17, R18).
+// newReviewCmd implements `para review [<kind>] [<noun> [<chain>]]` (R3,
+// R17, R18, and para-nd3's kind-filter lookahead below).
 func newReviewCmd() *cobra.Command {
 	var read readFlags
 	var archived archivedFlag
@@ -19,22 +22,26 @@ func newReviewCmd() *cobra.Command {
 	selected := map[review.Group]*bool{}
 
 	cmd := &cobra.Command{
-		Use:   "review [<noun> [<chain>]]",
+		Use:   "review [<kind>] [<noun> [<chain>]]",
 		Short: "list what is worth looking at, grouped by reason",
 		Long: "Group what needs attention by why it needs it: stale, blocked, overdue,\n" +
 			"behind, skills nobody has touched, and active suppressions. Naming no group\n" +
 			"runs all six.\n\n" +
+			"A leading noun with nothing after it is a kind filter over the whole tree,\n" +
+			"the same rule `list` already has — `review link` finds every link — and a\n" +
+			"noun in front of a second noun-and-chain pair is that filter combined with\n" +
+			"a scope, e.g. `review link project acme`.\n\n" +
 			"Ordering within a group is by distance past the threshold, which is why\n" +
 			"there is no --sort. Terminal items and archived things are excluded unless\n" +
 			"--all. It always exits 0: having work is not a failure, and a command that\n" +
 			"fails whenever you have work is a command you stop running.",
-		Args: cobra.MaximumNArgs(2),
+		Args: cobra.MaximumNArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env, cwd, err := openRead(cmd)
 			if err != nil {
 				return err
 			}
-			scope, _, err := parseAddressArgs(env.Root, cwd, args, scopeArity, archived.value)
+			kind, scope, err := parseReviewArgs(env.Root, cwd, args, archived.value)
 			if err != nil {
 				return err
 			}
@@ -50,7 +57,7 @@ func newReviewCmd() *cobra.Command {
 			}
 
 			res, err := review.Run(env, review.Options{
-				Scope: scope, Only: only, All: all, Limit: limit,
+				Scope: scope, Kind: kind, Only: only, All: all, Limit: limit,
 			})
 			if err != nil {
 				return err
@@ -82,6 +89,28 @@ func newReviewCmd() *cobra.Command {
 	archived.register(cmd)
 	cmd.Flags().Lookup("local").Usage = "accepted for consistency; review prints no timestamp to convert"
 	return cmd
+}
+
+// parseReviewArgs is review's own R19-style lookahead (para-nd3): args[0]
+// is a kind filter when nothing (or a noun-and-chain scope) follows it,
+// via kindFilterLookahead — the identical rule `list` already has
+// (list_args.go), since a fixed-arity noun (objective, key-result, link)
+// used to be refused here for the same reason it used to be refused by a
+// bare `list <that noun>` before R19 existed: it routed through
+// parseAddressArgs' strict per-noun address.Validate, which has no 0-chain
+// bucket form for any of the three. This fix is deliberately general rather
+// than link-scoped: `review objective` and `review key-result` were broken
+// identically, for the identical reason, and are fixed the same way.
+//
+// Zero arguments and "." are untouched — both still go through
+// parseAddressArgs exactly as before, since neither is a kind-filter
+// question.
+func parseReviewArgs(root, cwd string, args []string, archived bool) (kindmeta.Kind, locator.Locator, error) {
+	if len(args) == 0 || args[0] == "." {
+		scope, _, err := parseAddressArgs(root, cwd, args, scopeArity, archived)
+		return kindmeta.KindUnknown, scope, err
+	}
+	return kindFilterLookahead(args, archived)
 }
 
 // groupHelp is §20's table as help text, one row per flag.

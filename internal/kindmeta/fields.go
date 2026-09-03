@@ -18,7 +18,7 @@ const (
 	FieldScope       Field = "scope"
 	// FieldRef and FieldDirection belong to link alone (para-6g7): the
 	// opaque locator a link points at, and its §1.7-style closed
-	// input/output/both vocabulary (kindmeta/values.go's LinkDirections).
+	// input/output vocabulary (kindmeta/values.go's LinkDirections).
 	FieldRef       Field = "ref"
 	FieldDirection Field = "direction"
 )

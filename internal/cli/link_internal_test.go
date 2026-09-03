@@ -69,7 +69,7 @@ func TestShowParentGroupsLinksByDirection(t *testing.T) {
 	chdirToTestTree(t)
 	mustAddViaCLI(t, "project", "acme")
 	addLink(t, "project.acme.jira-epic", "--direction", "output")
-	addLink(t, "project.acme.slack-channel", "--type", "slack-channel", "--ref", "C123", "--direction", "both")
+	addLink(t, "project.acme.status-page", "--type", "rss-feed", "--ref", "https://example.com/status", "--direction", "input")
 
 	out, err := execRead(newShowCmd(), []string{"project", "acme"})
 	if err != nil {
@@ -78,10 +78,10 @@ func TestShowParentGroupsLinksByDirection(t *testing.T) {
 	if !strings.Contains(out, "links") {
 		t.Fatalf("show output = %q, want a links section", out)
 	}
-	if !strings.Contains(out, "output") || !strings.Contains(out, "both") {
+	if !strings.Contains(out, "output") || !strings.Contains(out, "input") {
 		t.Errorf("show output = %q, want both direction groups", out)
 	}
-	if !strings.Contains(out, "jira-epic") || !strings.Contains(out, "slack-channel") {
+	if !strings.Contains(out, "jira-epic") || !strings.Contains(out, "status-page") {
 		t.Errorf("show output = %q, want both links listed", out)
 	}
 }

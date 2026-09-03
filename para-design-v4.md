@@ -2677,10 +2677,10 @@ to a project, an area, or a resource. Fields (§15): `type` (an opaque string pa
 way a key-result's `type` is, for a different reason — nothing measures it, but tooling keys its own
 interpretation off it, and letting it change silently would be the same "the label lied" failure with
 a different reader); `ref` (an opaque locator the type interprets — an issue key, a channel id, a
-URL); `direction` — a real three-value enum, validated like `status` already is: `input` (monitor this
-for relevant activity), `output` (this needs to be kept updated), or `both` (a two-way channel, which
-is what turns a single Slack channel into a feedback loop rather than needing two entries); and
-`description`, the same field and meaning as everywhere else, optional. `name` is Optional and defaults
+URL); `direction` — a real two-value enum, validated like `status` already is: `input` (monitor this
+for relevant activity) or `output` (this needs to be kept updated) — a link is always one or the
+other, never both (§29.6 explains why); and `description`, the same field and meaning as everywhere
+else, optional. `name` is Optional and defaults
 to the link's own id — the one field row where a link departs from every other kind, because a link's
 slug is usually name enough and a link's own CLI shape never needs to type one.
 
@@ -2740,14 +2740,46 @@ that does gets it exactly once, on the first add.
 
 ### 29.5 What deliberately stays out of `para`
 
-- **No notion of a link being "stale" or "needing attention."** `para` already has the primitives for
-  that at the parent level (`project.stale-after`, `review --stale`, `suppress`/`unsuppress`, §28).
-  Whether a *specific* Jira epic or Slack channel needs action requires knowing what Jira or Slack
-  actually are, which is system-specific interpretation that belongs in tooling built on `para`, not in
-  `para` itself. Consequently a link has no `status` field at all (§15) and never appears in `review`'s
-  stale/skills groups (§20) — the same "no status, no off switch" posture `container` already has,
-  for the same reason: nothing here has a lifecycle of its own to report on.
 - **Nothing that actually talks to Jira, Slack, a blog, or any other system.** That is purely a
   skill/agent-layer concern. `para`'s job stops at storing a typed, directional, labeled list of
   external touchpoints per entity, and surfacing it — `show <noun> <chain>` renders a parent's links
   grouped by direction, alongside what it already shows.
+- **No status field, and no off switch beyond the same primitives every kind already has.** A link's
+  own state has no lifecycle to report on the way a project's `planned`/`done` does — the same "no
+  status" posture `area`/`resource`/`container` already have. Muting one is `suppress`/`unsuppress`
+  (§28), unchanged and unextended by anything below.
+
+### 29.6 Staleness: one clock, one key, because every link is single-direction
+
+`link`'s first release shipped a `both` direction — a single link modeling a genuinely two-way channel,
+watched for asks and posted to. Giving that link the staleness this section adds meant either two
+independent attention clocks (§3.6) on one entity, `attention-input`/`attention-output`, plus two
+config keys, `link.input-stale-after`/`link.output-stale-after`, so each stream could be judged
+against its own threshold — or removing `both` outright.
+
+**The two-clock design was reversed before it shipped**, in favor of removing `both` entirely:
+`direction` is `input` or `output`, full stop. The reasoning: every other entity in this model has
+exactly one attention clock and answers to exactly one `<kind>.stale-after` key, with zero
+exceptions — a `both` link would have been the only entity anywhere that needed two of either.
+Removing the value doesn't work around that, it removes the one shape where the problem could exist
+at all, which is the more complete fix, not a lesser one. Once every link is single-direction, `link`
+simply joins the `<kind>.stale-after` family (§15) like any other kind — **one key,
+`link.stale-after`**, resolved by the link's own kind exactly the way
+`project.stale-after`/`area.stale-after`/etc. already are. There is no per-direction key
+family: the direction disambiguates which *stream* a link represents, but the threshold itself needs
+naming only once, the same as everywhere else.
+
+The accepted cost: a genuinely bidirectional external channel — one Slack channel both watched and
+posted to — now costs two link entities sharing one duplicated `ref`, rather than one link carrying
+both facts. Each half gets its own `type`, its own description, and its own id to disambiguate it from
+its sibling, which is judged the better trade against the alternative: teaching one entity kind to
+carry two attention clocks, the one thing nothing else in this model ever does. A future reader wanting
+"input threshold different from output threshold" for links sharing one `links/` container already has
+it, at the per-entity or per-container level, the same limit every other single-key kind already has —
+not a gap this reversal opened.
+
+**This was a breaking change to already-shipped behavior.** `direction: both` was accepted and stored
+by the first release of `link`. A `state.toml` carried over from before this section is refused the
+same way any other value outside a closed field's vocabulary already is (§15, §10's `invalid`
+finding) — there is no migration path beyond hand-editing the value, which is the correct level of
+machinery for a value that was never valid to begin with once the vocabulary changed under it.

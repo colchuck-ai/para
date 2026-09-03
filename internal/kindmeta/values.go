@@ -90,16 +90,27 @@ func DefaultStatus(kind Kind) string {
 // normalise, truth's checkValue).
 func TypeIsMeasurement(kind Kind) bool { return kind == KindKeyResult }
 
-// linkDirections is a link's closed, ordered vocabulary (para-6g7): whether
-// para should treat the touchpoint as something to monitor, something to
-// keep updated, or both — the bead's own declaration order, which is also
-// the order `--help` and a validation error list it in.
-var linkDirections = []string{"input", "output", "both"}
+// linkDirections is a link's closed, ordered vocabulary: whether para should
+// treat the touchpoint as something to monitor or something to keep
+// updated — the order `--help` and a validation error list it in.
+//
+// para-6g7 shipped a third value, "both", for a channel that is genuinely
+// two-way. para-nd3 removed it: a link needs staleness (one clock, one
+// link.stale-after key, same shape every other kind's stale-after already
+// has), and a "both" link would need two independent clocks on one entity —
+// the one thing no other kind in the model ever does. Two single-direction
+// links, sharing a duplicated `ref`, was judged the smaller cost: one clock
+// everywhere, with no exception, and each half gets its own description
+// instead of one that has to serve both. This is a breaking change to a
+// released value (v0.5.0) — a stored `direction = "both"` now fails
+// checkValue's FieldDirection case (internal/truth/check.go) and is doctor's
+// `invalid` finding to report, same as any other value outside the set.
+var linkDirections = []string{"input", "output"}
 
 // LinkDirections returns the legal link directions, in declaration order.
 func LinkDirections() []string { return slices.Clone(linkDirections) }
 
-// IsLinkDirection reports whether d is one of the three a link's `direction`
+// IsLinkDirection reports whether d is one of the two a link's `direction`
 // field accepts.
 func IsLinkDirection(d string) bool { return slices.Contains(linkDirections, d) }
 

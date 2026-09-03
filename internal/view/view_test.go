@@ -528,6 +528,52 @@ func TestStaleFiresPastTheThreshold(t *testing.T) {
 	}
 }
 
+// TestStaleAppliesToLinks is para-nd3: link.stale-after joined
+// staleAfterKinds (internal/config/keys.go), so Env.Stale needed no code
+// change at all to start working for a link — this test pins that the
+// behavior change actually landed, not just that the key resolves.
+func TestStaleAppliesToLinks(t *testing.T) {
+	root := plantTree(t)
+	w := writer(t, root)
+	add(t, w, "projects.acme", "name", "Acme", "description", "A project.")
+	add(t, w, "projects.acme.links.jira-epic", "type", "jira-epic", "ref", "PROJ-1", "direction", "output")
+
+	r := reader(t, root)
+
+	// Unset everywhere: the check never fires, same as every other kind.
+	th, stale, err := r.Stale(load(t, r, "projects.acme.links.jira-epic"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.Found || stale {
+		t.Errorf("an unset link.stale-after never fires: %+v stale=%v", th, stale)
+	}
+
+	configure(t, root, "[link]\nstale-after = 14\n")
+
+	r = reader(t, root)
+	th, stale, err = r.Stale(load(t, r, "projects.acme.links.jira-epic"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.Key != "link.stale-after" || th.Value != 14 {
+		t.Errorf("threshold: %+v", th)
+	}
+	if stale {
+		t.Error("created today is not stale after 14 days")
+	}
+
+	// Every non-link kind's own resolution is untouched by link joining
+	// staleAfterKinds.
+	th, _, err = r.Stale(load(t, r, "projects.acme"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.Found {
+		t.Errorf("project.stale-after must stay unaffected by link.stale-after: %+v", th)
+	}
+}
+
 // TestSkillsReaching is §5.2's containment rule and §16.1's skills line.
 func TestSkillsReaching(t *testing.T) {
 	root := plantTree(t)

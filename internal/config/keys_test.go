@@ -21,6 +21,7 @@ func TestSpecsIsExactlySection7sTable(t *testing.T) {
 		"emit.gitattributes",
 		"key-result.at-risk-pace",
 		"key-result.stale-after",
+		"link.stale-after",
 		"log.rotate-bytes",
 		"objective.stale-after",
 		"project.stale-after",
@@ -59,6 +60,7 @@ func TestSpecDefaults(t *testing.T) {
 		{key: "objective.stale-after", hasDefault: false},
 		{key: "key-result.stale-after", hasDefault: false},
 		{key: "key-result.at-risk-pace", hasDefault: false},
+		{key: "link.stale-after", hasDefault: false},
 		{key: "review.cadence", hasDefault: false},
 	}
 
@@ -256,6 +258,7 @@ func TestStaleKeyPerKind(t *testing.T) {
 		{kindmeta.KindResource, "resource.stale-after"},
 		{kindmeta.KindObjective, "objective.stale-after"},
 		{kindmeta.KindKeyResult, "key-result.stale-after"},
+		{kindmeta.KindLink, "link.stale-after"},
 		{kindmeta.KindSkill, "review.cadence"},
 		{kindmeta.KindContainer, ""},
 		{kindmeta.KindUnknown, ""},

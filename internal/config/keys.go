@@ -149,6 +149,7 @@ func (s Spec) DefaultValue() (ptoml.Value, bool) {
 var staleAfterKinds = []kindmeta.Kind{
 	kindmeta.KindArea,
 	kindmeta.KindKeyResult,
+	kindmeta.KindLink,
 	kindmeta.KindObjective,
 	kindmeta.KindProject,
 	kindmeta.KindResource,

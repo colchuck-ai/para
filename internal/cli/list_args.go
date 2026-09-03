@@ -68,25 +68,47 @@ func parseListArgs(root, cwd string, args []string, archived bool) (listArgs, er
 		return listArgs{Scope: scope}, nil
 	}
 
-	first, err := address.ParseNoun(args[0])
+	kind, scope, err := kindFilterLookahead(args, archived)
 	if err != nil {
 		return listArgs{}, err
+	}
+	return listArgs{Kind: kind, Scope: scope}, nil
+}
+
+// kindFilterLookahead is R19's own disambiguation, factored out so review
+// (para-nd3, internal/cli/review.go's parseReviewArgs) can reuse the
+// identical rule rather than reimplementing it: whether the second argument
+// itself parses as a noun decides whether it is the filter's scope or the
+// first noun's own chain. args must be non-empty and args[0] must not be
+// "." — both callers check those cases themselves first, since what a bare
+// zero-argument or dot call means is specific to each command, not part of
+// this lookahead.
+//
+// Neither refusal below names the calling command — matching every other
+// shared refusal in this file (chainToLocator's, parseAddressArgs') — since
+// both are true of the rule itself, not of whichever command asked: a bad
+// second noun or a `container` filter is illegal the same way regardless of
+// which caller's grammar reached this lookahead.
+func kindFilterLookahead(args []string, archived bool) (kindmeta.Kind, locator.Locator, error) {
+	first, err := address.ParseNoun(args[0])
+	if err != nil {
+		return kindmeta.KindUnknown, nil, err
 	}
 
 	if len(args) == 1 {
 		if first == address.Container {
-			return listArgs{}, errContainerFilter()
+			return kindmeta.KindUnknown, nil, errContainerFilter()
 		}
-		out := listArgs{Kind: first}
+		var scope locator.Locator
 		if archived {
-			out.Scope = archiveRoot
+			scope = archiveRoot
 		}
-		return out, nil
+		return first, scope, nil
 	}
 
 	if second, err := address.ParseNoun(args[1]); err == nil {
 		if first == address.Container {
-			return listArgs{}, errContainerFilter()
+			return kindmeta.KindUnknown, nil, errContainerFilter()
 		}
 		chain := ""
 		if len(args) == 3 {
@@ -94,28 +116,29 @@ func parseListArgs(root, cwd string, args []string, archived bool) (listArgs, er
 		}
 		scope, err := chainToLocator(second.String(), chain, archived, true)
 		if err != nil {
-			return listArgs{}, err
+			return kindmeta.KindUnknown, nil, err
 		}
-		return listArgs{Kind: first, Scope: scope}, nil
+		return first, scope, nil
 	}
 
 	if len(args) == 3 {
-		return listArgs{}, paraerr.Newf(paraerr.KindValidation,
-			"%q is not a noun (want one of: %s) — a noun and a chain is `list`'s whole scope, with nothing after it",
+		return kindmeta.KindUnknown, nil, paraerr.Newf(paraerr.KindValidation,
+			"%q is not a noun (want one of: %s) — a noun and a chain is the whole scope, with nothing after it",
 			args[1], nounWords())
 	}
 
 	scope, err := chainToLocator(first.String(), args[1], archived, true)
 	if err != nil {
-		return listArgs{}, err
+		return kindmeta.KindUnknown, nil, err
 	}
-	return listArgs{Scope: scope}, nil
+	return kindmeta.KindUnknown, scope, nil
 }
 
 // errContainerFilter is R20's refusal: container is a legal noun everywhere
-// else an address is read, but never in list's filter position, because
-// containers are transparent to list and are never rows (§25).
+// else an address is read, but never in a kind filter position, because
+// containers are transparent to a kind-filtered walk and are never rows
+// (§25) — true of `list` and `review` alike, so the message names neither.
 func errContainerFilter() error {
 	return paraerr.New(paraerr.KindValidation,
-		"container is not a legal filter — containers are transparent to list and are never rows")
+		"container is not a legal filter — containers are transparent and are never rows")
 }

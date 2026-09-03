@@ -182,6 +182,22 @@ exec para set key-result acme-migration.q1-growth.launch --status dropped
 exec para review --overdue
 stdout '^nothing to review$'
 
+# --- para-nd3: link.stale-after, and review's bare-kind filter --------------
+
+# A link reads its own link.stale-after knob exactly like any other kind —
+# joining staleAfterKinds needed no code change beyond the one key.
+exec para add link project.acme-migration.status-page --type rss-feed --ref https://example.com/status --direction input --created 2026-01-05
+exec para config set link.stale-after 30
+exec para review --stale link
+cmp stdout $WORK/want-review-stale-link.txt
+
+# The bare-kind lookahead this needed (`review link` used to fail the same
+# way `review objective`/`review key-result` already did — the same root
+# cause, fixed the same way, not scoped to link alone) is confirmed for all
+# three rather than left implicit.
+exec para review objective
+exec para review key-result
+
 -- brain/.para/tree.toml --
 schema = 1
 name = "brain"
@@ -315,3 +331,6 @@ skills (1)
     }
   ]
 }
+-- want-review-stale-link.txt --
+stale (1)
+  link.project.acme-migration.status-page  59 days  link.stale-after 30 days

@@ -134,11 +134,13 @@ func TestAllStatuses(t *testing.T) {
 }
 
 // TestLinkDirections pins the closed, ordered vocabulary a link's direction
-// takes (para-6g7): input, output, both — the order the bead itself states
-// them in, so an error message and `--help` list them the same way §1.7's
-// status tables already do for every other closed field.
+// takes: input, output — the order an error message and `--help` list them
+// in, the same way §1.7's status tables already do for every other closed
+// field. para-nd3 removed "both": every link is single-direction, so every
+// link has exactly one attention clock and one link.stale-after key applies
+// to it, with no exception anywhere in the model.
 func TestLinkDirections(t *testing.T) {
-	want := []string{"input", "output", "both"}
+	want := []string{"input", "output"}
 	got := kindmeta.LinkDirections()
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("LinkDirections() = %v, want %v", got, want)
@@ -158,12 +160,13 @@ func TestTypeIsMeasurement(t *testing.T) {
 }
 
 func TestIsLinkDirection(t *testing.T) {
-	for _, d := range []string{"input", "output", "both"} {
+	for _, d := range []string{"input", "output"} {
 		if !kindmeta.IsLinkDirection(d) {
 			t.Errorf("IsLinkDirection(%q) = false, want true", d)
 		}
 	}
-	for _, d := range []string{"", "bidirectional", "INPUT", "in"} {
+	// "both" is para-nd3's removed value: no longer a link direction at all.
+	for _, d := range []string{"", "both", "bidirectional", "INPUT", "in"} {
 		if kindmeta.IsLinkDirection(d) {
 			t.Errorf("IsLinkDirection(%q) = true, want false", d)
 		}

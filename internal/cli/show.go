@@ -346,9 +346,9 @@ func showLinks(env *view.Env, ent view.Entity) ([]view.Entity, error) {
 }
 
 // printLinks is show's links summary (para-6g7): grouped by direction, in
-// the bead's own declaration order (kindmeta.LinkDirections — input, output,
-// both), one table so the id/name/type/ref columns line up across groups the
-// way printReview's grouped sections already do.
+// kindmeta.LinkDirections' declaration order (input, output — para-nd3
+// removed "both"), one table so the id/name/type/ref columns line up across
+// groups the way printReview's grouped sections already do.
 func printLinks(out io.Writer, links []view.Entity) {
 	fmt.Fprintln(out, "links")
 	t := table{indent: "  "}
