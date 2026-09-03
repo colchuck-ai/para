@@ -137,20 +137,6 @@ func completeNoun(words []string) completer {
 	}
 }
 
-// sevenNounWords is R2's seven words in address.AllNouns' order, for the
-// commands where a container is a legal address (R17): show, log, path,
-// activity, review, rebuild, doctor. addableNounWords (write.go) is the other
-// six — reused rather than re-listed, since add, set, and unset already
-// define that vocabulary for their own noun-dispatching subcommands.
-func sevenNounWords() []string {
-	nouns := address.AllNouns()
-	words := make([]string, len(nouns))
-	for i, n := range nouns {
-		words[i] = n.String()
-	}
-	return words
-}
-
 // completeChain offers the chains an already-typed noun (args[0]) accepts —
 // the R17 "entity or container" and entity-only shapes both, since chain
 // candidates come from the noun alone and neither shape narrows it further.
@@ -315,7 +301,7 @@ func completeList(cmd *cobra.Command, args []string, toComplete string) ([]strin
 	archived := archivedFlagSet(cmd)
 	switch len(args) {
 	case 0:
-		return withPrefix(addableNounWords(), toComplete), noFiles
+		return withPrefix(kindmeta.AddressableKindWords(), toComplete), noFiles
 	case 1:
 		noun, err := address.ParseNoun(args[0])
 		if err != nil {
@@ -324,7 +310,7 @@ func completeList(cmd *cobra.Command, args []string, toComplete string) ([]strin
 		if noun == address.Container {
 			return withPrefix(chainCandidates(noun, archived), toComplete), noFiles
 		}
-		out := append([]string{}, sevenNounWords()...)
+		out := append([]string{}, kindmeta.KindWords()...)
 		out = append(out, chainCandidates(noun, archived)...)
 		slices.Sort(out)
 		return withPrefix(out, toComplete), noFiles
@@ -518,7 +504,7 @@ func registerCompletions(root *cobra.Command) {
 	// R11 gives every one of these commands the same rule now that stubs are
 	// addressless everywhere rather than special-cased for `path` alone.
 	for _, name := range []string{"show", "log", "path", "activity", "review", "rebuild", "doctor"} {
-		setArgCompletion(byName[name], positional(completeNoun(sevenNounWords()), completeChain))
+		setArgCompletion(byName[name], positional(completeNoun(kindmeta.KindWords()), completeChain))
 	}
 
 	// R19's own lookahead, on its own (task P21.5).
@@ -526,10 +512,10 @@ func registerCompletions(root *cobra.Command) {
 
 	// R17: entity only — container is refused, so it is never offered.
 	for _, name := range []string{"archive", "unarchive", "remove", "suppress", "unsuppress"} {
-		setArgCompletion(byName[name], positional(completeNoun(addableNounWords()), completeChain))
+		setArgCompletion(byName[name], positional(completeNoun(kindmeta.AddressableKindWords()), completeChain))
 	}
-	setArgCompletion(byName["note"], positional(completeNoun(addableNounWords()), completeChain, nothing))
-	setArgCompletion(byName["move"], positional(completeNoun(addableNounWords()), completeChain, completeMoveTarget))
+	setArgCompletion(byName["note"], positional(completeNoun(kindmeta.AddressableKindWords()), completeChain, nothing))
+	setArgCompletion(byName["move"], positional(completeNoun(kindmeta.AddressableKindWords()), completeChain, completeMoveTarget))
 	setArgCompletion(byName["measure"], positional(completeChainFixed(address.KeyResult), nothing))
 
 	// `add`, `set`, and `unset` dispatch to one subcommand per noun (R3), and

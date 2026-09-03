@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/colchuck-ai/para/internal/address"
+	"github.com/colchuck-ai/para/internal/kindmeta"
 	"github.com/colchuck-ai/para/internal/locator"
 	"github.com/colchuck-ai/para/internal/paraerr"
 	"github.com/colchuck-ai/para/internal/tree"
@@ -53,7 +54,7 @@ func parseAddressArgs(root, cwd string, args []string, arity addressArity, archi
 		if arity.rootOK {
 			return nil, args, nil
 		}
-		return nil, args, paraerr.Newf(paraerr.KindValidation, "a noun is required (one of: %s)", nounWords())
+		return nil, args, paraerr.Newf(paraerr.KindValidation, "a noun is required (one of: %s)", kindmeta.KindWordList())
 	}
 	if args[0] == "." {
 		if !arity.dotOK {
@@ -90,18 +91,6 @@ func chainToLocator(nounWord, chain string, archived, bucketOK bool) (locator.Lo
 	}
 	a.Archived = archived
 	return a.ToLocator()
-}
-
-// nounWords renders R2's seven words for an error message naming what was
-// expected, the way address.ParseNoun's own refusal does for a single bad
-// word.
-func nounWords() string {
-	nouns := address.AllNouns()
-	words := make([]string, len(nouns))
-	for i, n := range nouns {
-		words[i] = n.String()
-	}
-	return strings.Join(words, ", ")
 }
 
 // dispatchedChainToLocator is chainToLocator's counterpart for add's,

@@ -311,3 +311,119 @@ func TestCheckTree(t *testing.T) {
 		})
 	}
 }
+
+func TestUnknownStateKeysAcceptsKind(t *testing.T) {
+	// kind is not a §15 field — no kindmeta.Field names it — but it is a
+	// legitimate part of state.toml's schema as of §30. Flagging it would make
+	// every entity in a migrated tree read as `invalid`.
+	got, err := truth.UnknownStateKeys([]byte("kind = \"area\"\nname = \"Health\"\n"))
+	if err != nil {
+		t.Fatalf("UnknownStateKeys: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("UnknownStateKeys = %v, want none", got)
+	}
+}
+
+func TestCheckRejectsUnrecognisedKind(t *testing.T) {
+	// A hand-edited or newer-para value outside the vocabulary. It is reported
+	// against no field, because kind is not a §15 field: it is a rule about
+	// the state as a whole.
+	probs := truth.Check(kindmeta.KindArea, truth.State{Kind: "banana", Name: "Health"})
+	var found *truth.Problem
+	for i := range probs {
+		if strings.Contains(probs[i].Msg, "banana") {
+			found = &probs[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("Check did not fault kind = \"banana\"; got %v", probs)
+	}
+	if found.Field != "" {
+		t.Errorf("Problem.Field = %q, want \"\" — kind is not a §15 field", found.Field)
+	}
+	if !strings.Contains(found.Msg, "kind") {
+		t.Errorf("Problem.Msg = %q, want it to name the key", found.Msg)
+	}
+}
+
+func TestCheckAcceptsEveryKindWordAsItsOwnStoredKind(t *testing.T) {
+	// Every word ParseKind accepts must be storable, including container —
+	// a container has its own state.toml (§8.2) and so its own stored kind.
+	//
+	// Each word is checked against its OWN kind rather than against a fixed
+	// one. Passing kindmeta.KindArea for all of them would assert that
+	// `kind = "skill"` under an area is clean, which pins the absence of
+	// §10's `misplaced` check (§30.4, para-sxt.9) as though it were intended.
+	for _, k := range kindmeta.AllStorableKinds() {
+		probs := truth.Check(k, truth.State{Kind: k.String(), Name: "Health"})
+		for _, p := range probs {
+			if strings.Contains(p.Msg, "kind") {
+				t.Errorf("Check faulted a legal stored kind %q: %s", k.String(), p.Msg)
+			}
+		}
+	}
+}
+
+func TestMistypedStateKeys(t *testing.T) {
+	// A known key holding the wrong TOML type is invisible to every typed
+	// accessor on ptoml.Document — they report a mismatch as absence — so
+	// without this check `kind = 5` decodes to no kind and the file reads
+	// clean. Before kind became a known key it was caught as an unknown one;
+	// this is the coverage that keeps.
+	cases := []struct {
+		name string
+		toml string
+		want []string
+	}{
+		{"kind as int", "kind = 5\nname = \"x\"\n", []string{"kind"}},
+		{"kind as bool", "kind = true\n", []string{"kind"}},
+		{"kind as array", "kind = [\"area\"]\n", []string{"kind"}},
+		// Every TOML type, not just the ones ptoml.Value can represent. A
+		// bare date is the likeliest hand-edit of `due` or `created`, and a
+		// number inside an array the likeliest of `tags` — both were silent
+		// while presence was probed with Value instead of Keys.
+		{"kind as bare date", "kind = 2026-01-01\n", []string{"kind"}},
+		{"kind as datetime", "kind = 2026-01-01T00:00:00Z\n", []string{"kind"}},
+		{"kind as int array", "kind = [1]\n", []string{"kind"}},
+		{"due as bare date", "due = 2026-06-01\n", []string{"due"}},
+		{"created as bare datetime", "created = 2026-03-05T17:00:00Z\n", []string{"created"}},
+		{"tags as int array", "tags = [1, 2]\n", []string{"tags"}},
+		{"scope as int array", "scope = [1]\n", []string{"scope"}},
+		{"mixed array", "tags = [\"a\", 1]\n", []string{"tags"}},
+		{"name as int", "kind = \"area\"\nname = 5\n", []string{"name"}},
+		{"tags as string", "tags = \"growth\"\n", []string{"tags"}},
+		{"attention as int", "attention = 5\n", []string{"attention"}},
+		{"well typed", "kind = \"area\"\nname = \"x\"\ntags = [\"a\"]\n", nil},
+		{"absent keys are not mistyped", "name = \"x\"\n", nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := truth.MistypedStateKeys([]byte(c.toml))
+			if err != nil {
+				t.Fatalf("MistypedStateKeys: %v", err)
+			}
+			if len(got) != len(c.want) {
+				t.Fatalf("MistypedStateKeys = %v, want %v", got, c.want)
+			}
+			for i := range got {
+				if got[i] != c.want[i] {
+					t.Errorf("MistypedStateKeys[%d] = %q, want %q", i, got[i], c.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestMistypedKindIsNotAlsoAnUnknownKey(t *testing.T) {
+	// The two checks must not double-report: kind is a known key whatever it
+	// holds, so a mistyped one is exactly one finding, not two.
+	data := []byte("kind = 5\n")
+	unknown, err := truth.UnknownStateKeys(data)
+	if err != nil {
+		t.Fatalf("UnknownStateKeys: %v", err)
+	}
+	if len(unknown) != 0 {
+		t.Errorf("UnknownStateKeys = %v, want none — kind is a known key", unknown)
+	}
+}

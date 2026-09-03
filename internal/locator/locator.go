@@ -16,14 +16,20 @@ import (
 // component, in order. It is a pure value — no filesystem, no clock.
 type Locator []string
 
-// ReservedWords cannot appear as an id anywhere in a locator (§1.4). The
-// list grows from ten words to seventeen with R6: the seven singular nouns
-// join the ten structural words, because without them an entity legitimately
-// named e.g. "project" would make a grammar whose first token is a noun
-// unable to tell the noun from an id sharing its spelling. para-6g7 adds a
-// nineteenth and twentieth word, "links" and "link", the same pair
-// "key-results"/"key-result" already is: the structural container word and
-// its singular noun.
+// ReservedWords cannot appear as an id anywhere in a locator (§1.4): the
+// eleven places and structural names, plus the eight singular nouns. The nouns are there because
+// without them an entity legitimately named e.g. "project" would make a
+// grammar whose first token is a noun unable to tell the noun from an id
+// sharing its spelling. "links"/"link" is the pair para-6g7 added, the same
+// shape "key-results"/"key-result" already was: a structural container word
+// and its singular noun. Eleven plus eight is nineteen, which is what §1.4
+// says.
+//
+// This is the one unavoidable second copy of the kind vocabulary. It cannot
+// be derived from kindmeta, because kindmeta imports this package — so the
+// guard runs from the other side, in kindmeta's TestEveryKindWordIsReserved,
+// which is the only thing standing between a new kind and an id that can
+// shadow its own noun.
 var ReservedWords = []string{
 	"projects", "areas", "resources", "archive", "objectives",
 	"key-results", "skills", "logs", ".para", ".agents",

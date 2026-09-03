@@ -1,6 +1,11 @@
 package kindmeta
 
-import "slices"
+import (
+	"slices"
+	"strings"
+
+	"github.com/colchuck-ai/para/internal/paraerr"
+)
 
 // §1.7's status vocabulary, per kind, in the order an error message lists it.
 //
@@ -170,4 +175,64 @@ func TerminalStatuses(kind Kind) []string {
 // a separate question this does not answer.
 func IsTerminal(kind Kind, status string) bool {
 	return slices.Contains(terminalStatuses[kind], status)
+}
+
+// storableKinds is every kind that can appear in a state.toml's `kind` key
+// (§8.3, §30): the addressable kinds, plus KindContainer.
+//
+// Container is here and absent from addressableKinds for the same reason in
+// both places — no locator names one — but a container does hold its own
+// state.toml (§8.2), so it has a kind to store and a word to store it as.
+// This is also §1.4's noun vocabulary, and that is not a coincidence to be
+// exploited twice: the words a user may type and the words a state.toml may
+// hold are one list, so address.AllNouns returns this rather than rebuilding
+// it.
+var storableKinds = append(slices.Clone(addressableKinds), KindContainer)
+
+// AllStorableKinds returns every kind ParseKind accepts, in §1.3's order with
+// container last.
+//
+// It is named for what distinguishes it from AllKinds — a container is
+// storable but not addressable — because two exported functions returning
+// []Kind and differing only in one member need names that say which is which.
+func AllStorableKinds() []Kind { return slices.Clone(storableKinds) }
+
+// KindWords is AllStorableKinds' words, and the one place that loop is
+// written. Four copies of it existed before §30 — here, in address, and twice
+// in cli — which is three more than a mapping this mechanical deserves.
+func KindWords() []string { return words(storableKinds) }
+
+// AddressableKindWords is AllKinds' words: the same list without container,
+// for the callers that enumerate what can actually be addressed — `add`'s
+// noun subcommands, which have no container to offer.
+func AddressableKindWords() []string { return words(addressableKinds) }
+
+// KindWordList renders KindWords as a comma-separated list, for the refusals
+// and help text that name the vocabulary rather than enumerate it.
+func KindWordList() string { return strings.Join(KindWords(), ", ") }
+
+func words(kinds []Kind) []string {
+	out := make([]string, len(kinds))
+	for i, k := range kinds {
+		out[i] = k.String()
+	}
+	return out
+}
+
+// ParseKind parses s as one of KindWords — the one place a kind word becomes a
+// Kind (§30). A stored `kind` and a typed noun draw on the same vocabulary, so
+// they parse through the same function; only the wording of the refusal
+// differs, and address.ParseNoun writes its own.
+//
+// KindUnknown is not parseable. Its word exists for String()'s default arm and
+// for printing something unclassified, and accepting it back would let
+// `kind = "unknown"` decode to a Kind that every switch downstream would treat
+// as a legitimate answer rather than as the absence it means.
+func ParseKind(s string) (Kind, error) {
+	for _, k := range storableKinds {
+		if k.String() == s {
+			return k, nil
+		}
+	}
+	return KindUnknown, paraerr.Newf(paraerr.KindValidation, "%q is not a kind (want one of: %s)", s, KindWordList())
 }
