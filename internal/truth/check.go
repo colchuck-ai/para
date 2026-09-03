@@ -85,6 +85,31 @@ func Check(kind kindmeta.Kind, s State) []Problem {
 		}
 	}
 
+	// kind is judged here rather than in the loop above because it is not a
+	// §15 field (§30): no kindmeta.Field names it, which is what keeps it out
+	// of reach of set and unset, so Requirement has nothing to say about it.
+	// It is reported against no field, the way every other rule about the
+	// state as a whole is, and its message is terse for the same reason every
+	// checkValue message is — the vocabulary belongs in a CLI refusal, where
+	// it helps, not in a doctor finding, where it is noise.
+	//
+	// Only a *present* value is judged, and two rules that look like this
+	// one's business are deliberately not here:
+	//
+	//   - Absence is §10's `no-kind`, not `invalid`, and it is a question
+	//     about the tree rather than the file: it is a finding only in a
+	//     `schema = 2` tree, and Check cannot see the schema. truth.Schema is
+	//     still 1 as of this comment, so no such tree exists yet — para-sxt.7
+	//     bumps it and owns that finding.
+	//   - Whether a stored kind is *legal where it sits* is §10's `misplaced`
+	//     (§30.4). That needs §30.2's containment table and the parent's own
+	//     kind, neither of which a single state file carries. para-sxt.9.
+	if s.Kind != "" {
+		if _, err := kindmeta.ParseKind(s.Kind); err != nil {
+			add("", "kind: %q is not a kind", s.Kind)
+		}
+	}
+
 	// The rules that judge the state as a whole, which cannot be decided one
 	// field at a time because one command may set both sides of the
 	// comparison. They are reported against the field a repair would edit.
@@ -246,14 +271,86 @@ func CheckBounds(kind kindmeta.Kind, s State) error {
 // than typed, and flagging them as unrecognised would make every suppressed
 // or attention-cached entity read as `invalid`.
 func UnknownStateKeys(data []byte) ([]string, error) {
-	known := make(map[string]bool, len(kindmeta.AllFields())+3)
+	known := make(map[string]bool, len(kindmeta.AllFields())+4)
 	for _, f := range kindmeta.AllFields() {
 		known[string(f)] = true
 	}
+	// kind is known here for the same reason attention is: not a §15 field, no
+	// kindmeta.Field names it, and yet a legitimate part of state.toml's
+	// schema as of §30 — flagging it would make every entity in a migrated
+	// tree read as `invalid`. Whether its *value* is legal is Check's
+	// question; this function only asks whether the key belongs.
+	known[stateKeyKind] = true
 	known[stateKeyAttention] = true
 	known[suppressionTableKey+"."+suppressionKeyUntil] = true
 	known[suppressionTableKey+"."+suppressionKeyNote] = true
 	return unknownKeys(data, known)
+}
+
+// MistypedStateKeys reports the keys that belong in a state.toml but hold a
+// value of the wrong TOML type — `kind = 5`, `name = true`, `tags = "growth"`
+// — in the order they are written on the way out (kind, then §15's rows, then
+// attention).
+//
+// It exists because UnknownStateKeys cannot see them and DecodeState will not
+// complain: every typed accessor on ptoml.Document reports a type mismatch as
+// *absence*, so `kind = 5` decodes to no kind at all and the whole file reads
+// clean. That was survivable while `kind` was an unknown key — the unknown-key
+// check caught it — and stopped being survivable the moment §30 made it a
+// known one, which is the coverage this restores.
+//
+// It reports keys rather than values because the repair is the same whatever
+// the wrong type was: write the value the key's row in §15 calls for.
+// [suppression]'s two members are not checked here; a mistyped one is the
+// same class of hole and wants the same fix, tracked separately rather than
+// half-solved.
+func MistypedStateKeys(data []byte) ([]string, error) {
+	doc, err := ptoml.Decode(data)
+	if err != nil {
+		return nil, err
+	}
+	// Presence comes from Keys, not from Value. ptoml.Value reports ok=false
+	// for every TOML type it has no Value case for — dates, datetimes, arrays
+	// of anything but strings — so probing presence with it would classify a
+	// wrongly-typed value of those types as *absent*, which is the exact
+	// conflation this function exists to undo. Keys enumerates what the
+	// document actually holds, whatever its type.
+	keys, err := doc.Keys()
+	if err != nil {
+		return nil, err
+	}
+	written := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		written[k] = true
+	}
+
+	var out []string
+	present := func(key string) bool { return written[key] }
+	isString := func(key string) bool {
+		_, ok := doc.String(key)
+		return ok
+	}
+	isStringArray := func(key string) bool {
+		_, ok := doc.StringArray(key)
+		return ok
+	}
+	check := func(key string, wellTyped func(string) bool) {
+		if present(key) && !wellTyped(key) {
+			out = append(out, key)
+		}
+	}
+
+	check(stateKeyKind, isString)
+	for _, f := range kindmeta.AllFields() {
+		switch f {
+		case kindmeta.FieldTags, kindmeta.FieldScope:
+			check(string(f), isStringArray)
+		default:
+			check(string(f), isString)
+		}
+	}
+	check(stateKeyAttention, isString)
+	return out, nil
 }
 
 // UnknownTreeKeys is UnknownStateKeys for .para/tree.toml, whose keys are

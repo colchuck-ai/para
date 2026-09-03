@@ -145,13 +145,13 @@ func TestIsReserved(t *testing.T) {
 	}
 }
 
-// TestReservedWordsGrewToSeventeen pins R6: the seven singular nouns join
-// the ten structural words, so an entity legitimately named e.g. "project"
+// TestReservedWordsCoverEveryNoun pins R6: the eight singular nouns join
+// the eleven structural words, so an entity legitimately named e.g. "project"
 // is refused as an id rather than silently accepted and later unparseable
 // by a grammar whose first token is a noun. para-6g7 grows the list again,
 // to nineteen: "links" (structural) and "link" (its singular noun), the
 // same pair "key-results"/"key-result" already is.
-func TestReservedWordsGrewToSeventeen(t *testing.T) {
+func TestReservedWordsCoverEveryNoun(t *testing.T) {
 	if len(ReservedWords) != 19 {
 		t.Fatalf("len(ReservedWords) = %d, want 19", len(ReservedWords))
 	}

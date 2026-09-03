@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/colchuck-ai/para/internal/kindmeta"
 )
 
 // The `--help` review (implementation plan, Phase 15, task 5) as properties
@@ -76,13 +78,13 @@ func TestAddAndSetHelpListTheNouns(t *testing.T) {
 		"set":   newSetCmd(),
 		"unset": newUnsetCmd(),
 	}
-	// Derived from addableNounWords() rather than a second hand-written
-	// list: TestAddDispatchesOnNoun already holds that function's six
-	// nouns to a hardcoded, independently-checked list, so drift between
-	// kindmeta and *that* test is caught there — this test's own job is
-	// narrower, whether the help text agrees with what the command
+	// Derived from kindmeta.AddressableKindWords() rather than a second
+	// hand-written list: TestAddDispatchesOnNoun already holds that
+	// function's seven nouns to a hardcoded, independently-checked list, so
+	// drift between kindmeta and *that* test is caught there — this test's
+	// own job is narrower, whether the help text agrees with what the command
 	// actually computes.
-	wantLine := "Nouns: " + strings.Join(addableNounWords(), ", ") + "."
+	wantLine := "Nouns: " + strings.Join(kindmeta.AddressableKindWords(), ", ") + "."
 	for name, cmd := range cmds {
 		t.Run(name, func(t *testing.T) {
 			if !strings.Contains(cmd.Long, wantLine) {

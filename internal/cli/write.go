@@ -179,25 +179,13 @@ func newNounDispatchCmd(use, short, long, containerWhy string, buildSub func(kin
 				return paraerr.New(paraerr.KindValidation, containerWhy)
 			}
 			return paraerr.Newf(paraerr.KindValidation,
-				"%q is not a noun %s takes (one of: %s)", args[0], cmd.Name(), strings.Join(addableNounWords(), ", "))
+				"%q is not a noun %s takes (one of: %s)", args[0], cmd.Name(), strings.Join(kindmeta.AddressableKindWords(), ", "))
 		},
 	}
 	for _, kind := range kindmeta.AllKinds() {
 		cmd.AddCommand(buildSub(kind))
 	}
 	return cmd
-}
-
-// addableNounWords is R2's seven words minus container, the six add, set,
-// and unset each register a subcommand for — used both for their help's
-// noun list and for naming what a bad noun should have been.
-func addableNounWords() []string {
-	kinds := kindmeta.AllKinds()
-	words := make([]string, len(kinds))
-	for i, k := range kinds {
-		words[i] = k.String()
-	}
-	return words
 }
 
 // newAddCmd implements `para add <noun> <chain>` (R3, R15). container is
@@ -214,7 +202,7 @@ func newAddCmd() *cobra.Command {
 			"a human look somewhere and trust that absence means none.\n\n"+
 			"The new entity's journal starts empty — `created` is a field, not an\n"+
 			"event — and the parent logs that its set of children changed.\n\n"+
-			"Nouns: "+strings.Join(addableNounWords(), ", ")+".",
+			"Nouns: "+strings.Join(kindmeta.AddressableKindWords(), ", ")+".",
 		"container is refused: a container is created eagerly by its parent and never directly",
 		newAddNounCmd,
 	)
@@ -328,7 +316,7 @@ func newSetCmd() *cobra.Command {
 			"write-through pass at the end. Setting a field to the value it already\n"+
 			"holds writes nothing and exits 0 — without that rule a loop would buy\n"+
 			"permanent silence from every check in `para review`.\n\n"+
-			"Nouns: "+strings.Join(addableNounWords(), ", ")+".",
+			"Nouns: "+strings.Join(kindmeta.AddressableKindWords(), ", ")+".",
 		"container is refused: containers hold name, description, and created and nothing you would want to set",
 		newSetNounCmd,
 	)
@@ -399,7 +387,7 @@ func newUnsetCmd() *cobra.Command {
 			"because absence already says everywhere.\n\n"+
 			"`created` cannot be unset — everything has a creation time — and\n"+
 			"neither can a field the kind requires or one fixed at creation.\n\n"+
-			"Nouns: "+strings.Join(addableNounWords(), ", ")+".",
+			"Nouns: "+strings.Join(kindmeta.AddressableKindWords(), ", ")+".",
 		"container is refused: containers hold name, description, and created and nothing you would want to unset",
 		newUnsetNounCmd,
 	)

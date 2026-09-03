@@ -11,11 +11,11 @@
 // denominator belongs to the reading (§4.1), so "480/9000" must survive as
 // written. Parsing happens where a value is used, not where it is stored.
 //
-// Field order on write is §15's row order — kindmeta.AllFields() — for every
-// kind, filtered to the fields actually present. One declared order rather
-// than one per kind, because §8.4's argument for uniform filenames applies
-// just as well here: a per-kind order would be a second copy of the kind,
-// which the path already states.
+// Field order on write is `kind` (§8.3, §30) followed by §15's row order —
+// kindmeta.AllFields() — for every kind, filtered to the fields actually
+// present. One declared order rather than one per kind, because §8.4's
+// argument for uniform filenames applies just as well here: a per-kind order
+// would be a second copy of the kind, which the file now states outright.
 package truth
 
 import (
@@ -33,10 +33,18 @@ import (
 // for a list — there is no distinct "set but empty" state, because §15 has no
 // field for which the empty string is a legal value.
 //
-// Absent by construction, and deliberately not fields here: kind, id, parent,
-// and locator, all of which come from the path; and updated, current,
-// progress, pace, and derived status, all of which are computed (§2.5, §8.3)
-// and never written anywhere.
+// Present: kind (§8.3, §30), which was in the list below until §1.3 stopped
+// deriving a kind from a position.
+//
+// §30 makes it the only copy. It is not yet: nothing writes it, and every
+// consumer still takes its kind from kindmeta.KindOf's path derivation, so
+// today the field is only what a human or a migration puts there
+// (para-sxt.4, para-sxt.7, para-sxt.10).
+//
+// Absent by construction, and deliberately not fields here: id, parent, and
+// locator, all of which come from the path; and updated, current, progress,
+// pace, and derived status, all of which are computed (§2.5, §8.3) and never
+// written anywhere.
 //
 // Attention and Suppression are also computed rather than typed, but as of
 // §28.4 they are the exception: present in the file once written, so that
@@ -51,6 +59,25 @@ import (
 // "zero" (§28.4) — every read path must fall back to a live journal
 // derivation when it finds either absent.
 type State struct {
+	// Kind is state.toml's `kind` key (§8.3, §30) — the only place a
+	// directory's kind is written down, now that §1.3 no longer derives it
+	// from the position.
+	//
+	// It is a string rather than a kindmeta.Kind for the reason Status,
+	// Priority, Type and Direction are: a closed vocabulary is stored as
+	// written and judged by Check, so a hand-edited value outside the
+	// vocabulary survives a rewrite as the visible error it is (§10's
+	// `invalid`) instead of being silently normalised or dropped. A
+	// kindmeta.Kind has no representation for "banana" other than
+	// KindUnknown, so decoding into one would make EncodeState normalise or
+	// discard the very value doctor needs to name. Parsing itself is not the
+	// problem — Check parses on every read — losing the original is.
+	//
+	// It is not a kindmeta.Field, which is what puts it out of reach of set
+	// and unset — the same device Attention and Suppression use. There is no
+	// `--kind` flag: an address carries a noun, and the noun is the kind
+	// (§0 principle 1).
+	Kind        string
 	Name        string
 	Description string
 	Status      string
@@ -162,6 +189,17 @@ func (s State) List(f kindmeta.Field) []string {
 // file the typed fields live in rather than a projection of its own.
 const stateKeyAttention = "attention"
 
+// stateKeyKind is state.toml's `kind` key (§8.3, §30), written before every
+// §15 field.
+//
+// The parser does not depend on that order — ptoml parses the whole document
+// and DecodeState fetches by name — so it is a choice about the
+// reader, not the parser: §8.3's example leads with `kind`, and a human
+// opening the file should learn what the thing is before reading fields whose
+// meaning depends on it. A `type` and a `start` only mean something once you
+// know you are looking at a key-result.
+const stateKeyKind = "kind"
+
 // suppressionTableKey and its two members are §28.4's `[suppression]` table.
 // ptoml.Encode's Field.Key writes a literal dotted path rather than a TOML
 // table header, so EncodeState composes the header by hand around a second
@@ -178,6 +216,15 @@ const (
 // calls over the same State always produce identical bytes (§0.2).
 func EncodeState(s State) ([]byte, error) {
 	var fields []ptoml.Field
+	// kind first (§8.3), and written exactly as it was handed over: an
+	// unrecognised value is doctor's `invalid` to report (§10), and dropping
+	// it here would turn a visible error into an absent key — a different and
+	// quieter one — while also breaking this function's contract to lose
+	// nothing it is given (§19), the same contract the [suppression] table
+	// below is careful about.
+	if s.Kind != "" {
+		fields = append(fields, ptoml.Field{Key: stateKeyKind, Value: ptoml.String(s.Kind)})
+	}
 	for _, f := range kindmeta.AllFields() {
 		switch f {
 		case kindmeta.FieldTags, kindmeta.FieldScope:
@@ -238,6 +285,13 @@ func DecodeState(data []byte) (State, error) {
 		return State{}, err
 	}
 	var s State
+	// An absent key leaves Kind "" — which is how a state.toml written before
+	// §30 decodes, and is distinguishable from every legal value. Whether ""
+	// is acceptable is Check's question, not this function's: decoding stays
+	// lenient so that doctor can read a broken file in order to report it.
+	if v, ok := doc.String(stateKeyKind); ok {
+		s.Kind = v
+	}
 	for _, f := range kindmeta.AllFields() {
 		switch f {
 		case kindmeta.FieldTags:

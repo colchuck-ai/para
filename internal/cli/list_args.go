@@ -124,7 +124,7 @@ func kindFilterLookahead(args []string, archived bool) (kindmeta.Kind, locator.L
 	if len(args) == 3 {
 		return kindmeta.KindUnknown, nil, paraerr.Newf(paraerr.KindValidation,
 			"%q is not a noun (want one of: %s) — a noun and a chain is the whole scope, with nothing after it",
-			args[1], nounWords())
+			args[1], kindmeta.KindWordList())
 	}
 
 	scope, err := chainToLocator(first.String(), args[1], archived, true)

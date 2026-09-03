@@ -227,7 +227,8 @@ func TestToLocatorFromLocatorRoundTrip(t *testing.T) {
 // every arity that noun allows (including the bucket where R3 gives it
 // one), and the archive qualifier where R7 allows it.
 func randomAddress(rng *rand.Rand, randID func() string) Address {
-	noun := allNouns[rng.IntN(len(allNouns))]
+	nouns := AllNouns()
+	noun := nouns[rng.IntN(len(nouns))]
 	archived := noun != Skill && rng.IntN(4) == 0
 
 	switch noun {

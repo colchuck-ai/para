@@ -398,3 +398,93 @@ func TestStatePathAndTreePathNameTheUniformFilenames(t *testing.T) {
 		t.Errorf("LogsDir = %q, want %q", got, want)
 	}
 }
+
+func TestEncodeStateWritesKindFirst(t *testing.T) {
+	// kind leads the file (§8.3): it is the one field that has to be readable
+	// before anything else in the file means anything, since `type` and
+	// `start` are interpretable only once you know you are reading a
+	// key-result.
+	s := truth.State{
+		Kind:    "key-result",
+		Name:    "Weekly signups",
+		Type:    "ratio",
+		Created: "2026-01-01T08:15:00-08:00",
+	}
+
+	got, err := truth.EncodeState(s)
+	if err != nil {
+		t.Fatalf("EncodeState: %v", err)
+	}
+
+	want := `kind = "key-result"
+name = "Weekly signups"
+created = "2026-01-01T08:15:00-08:00"
+type = "ratio"
+`
+	if string(got) != want {
+		t.Errorf("EncodeState =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestStateKindRoundTrips(t *testing.T) {
+	for _, k := range kindmeta.AllStorableKinds() {
+		data, err := truth.EncodeState(truth.State{Kind: k.String(), Name: "x"})
+		if err != nil {
+			t.Fatalf("EncodeState(%s): %v", k, err)
+		}
+		got, err := truth.DecodeState(data)
+		if err != nil {
+			t.Fatalf("DecodeState(%s): %v", k, err)
+		}
+		if got.Kind != k.String() {
+			t.Errorf("round-trip kind = %q, want %q", got.Kind, k.String())
+		}
+	}
+}
+
+func TestDecodeStateAbsentKindIsEmpty(t *testing.T) {
+	// A state.toml written before §30 has no kind key at all. That must decode
+	// to "" — distinguishable from any legal value — rather than to a word
+	// that would read as a real answer.
+	s, err := truth.DecodeState([]byte("name = \"Health\"\n"))
+	if err != nil {
+		t.Fatalf("DecodeState: %v", err)
+	}
+	if s.Kind != "" {
+		t.Errorf("Kind = %q, want \"\" for an absent key", s.Kind)
+	}
+}
+
+func TestEncodeStatePreservesUnrecognisedKind(t *testing.T) {
+	// EncodeState's contract is to lose nothing it is handed (§19), the same
+	// reason a Suppression Note with no Until still round-trips. A hand-edited
+	// `kind = "banana"` is doctor's finding to report, not this function's to
+	// silently delete — deleting it would turn a visible error into an absent
+	// key, which is a different and quieter one.
+	data, err := truth.EncodeState(truth.State{Kind: "banana", Name: "x"})
+	if err != nil {
+		t.Fatalf("EncodeState: %v", err)
+	}
+	if !strings.Contains(string(data), `kind = "banana"`) {
+		t.Errorf("EncodeState dropped an unrecognised kind:\n%s", data)
+	}
+	got, err := truth.DecodeState(data)
+	if err != nil {
+		t.Fatalf("DecodeState: %v", err)
+	}
+	if got.Kind != "banana" {
+		t.Errorf("Kind = %q, want it preserved as \"banana\"", got.Kind)
+	}
+}
+
+func TestKindIsNotAFieldSetOrUnsetCanReach(t *testing.T) {
+	// There is no --kind flag (§0 principle 1): an address carries a noun and
+	// the noun is the kind. set and unset find a field by kindmeta.Field, so
+	// kind's absence from that vocabulary is what puts it out of their reach —
+	// the same device Attention and Suppression use.
+	for _, f := range kindmeta.AllFields() {
+		if string(f) == "kind" {
+			t.Fatal("kind became a kindmeta.Field, which puts it in reach of set/unset")
+		}
+	}
+}

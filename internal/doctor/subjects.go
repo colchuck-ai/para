@@ -105,6 +105,21 @@ func (s *scan) checkTruth(sub rebuild.Subject) (truth.State, bool, error) {
 		})
 	}
 
+	// A known key holding the wrong TOML type, which the unknown-key check
+	// above cannot see and DecodeState reports as absence. Without this a
+	// `kind = 5` reads as a file with no kind and a clean bill of health
+	// (§30).
+	mistyped, err := truth.MistypedStateKeys(data)
+	if err != nil {
+		return state, false, err
+	}
+	for _, key := range mistyped {
+		s.add(Finding{
+			Kind: KindInvalid, Path: rel, Locator: sub.Locator,
+			Detail: fmt.Sprintf("key %q holds a value of the wrong type", key),
+		})
+	}
+
 	for _, p := range truth.Check(sub.Kind, state) {
 		s.add(Finding{Kind: KindInvalid, Path: rel, Locator: sub.Locator, Detail: p.String()})
 	}

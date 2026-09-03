@@ -1,6 +1,13 @@
-// Package kindmeta derives an entity's kind from its locator (design §1.3)
-// and holds the §15 field matrix, the one source of truth from which a
-// kind's legal fields, required fields, and sortable fields all fall out.
+// Package kindmeta holds what is true of a kind: the kind vocabulary and the
+// one parser for it (§30), the §15 field matrix from which a kind's legal,
+// required and sortable fields all fall out, and KindOf, the §1.3 path→kind
+// derivation.
+//
+// §30 moves a kind into state.toml, which will demote KindOf to reading a
+// `schema = 1` tree during §30.5's migration and nothing else. That has not
+// happened yet: para-sxt.4 builds the locator→kind index that replaces it,
+// and until then KindOf is still every caller's only classifier and the
+// stored kind is written by nothing.
 package kindmeta
 
 import (
@@ -41,7 +48,7 @@ var addressableKinds = []Kind{
 // It exists so that "every kind" is written down once. A completion that must
 // offer the union of some per-kind vocabulary, and a test that must check a
 // per-kind rule holds for all of them, are otherwise two hand-written lists
-// that a seventh kind would silently leave stale.
+// that a new kind would silently leave stale.
 func AllKinds() []Kind { return slices.Clone(addressableKinds) }
 
 func (k Kind) String() string {
