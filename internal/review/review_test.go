@@ -265,6 +265,47 @@ func TestStaleFiresOffTheKindsOwnThreshold(t *testing.T) {
 	}
 }
 
+// TestStaleFiresOffLinkStaleAfter is para-nd3: link joined staleAfterKinds
+// (internal/config/keys.go), so a link reads its own link.stale-after knob
+// exactly like any other kind — kept in its own tree rather than fixture()'s,
+// so the many tests reading that shared fixture's exact locator lists never
+// have to widen for a kind they are not about.
+func TestStaleFiresOffLinkStaleAfter(t *testing.T) {
+	root := plantTree(t)
+	w := writer(t, root)
+	add(t, w, "projects.acme", "name", "Acme", "description", "Rebuild.", "created", "2026-01-05")
+	add(t, w, "projects.acme.links.jira-epic", "type", "jira-epic", "ref", "PROJ-1",
+		"direction", "output", "created", "2026-01-05")
+	configure(t, root, "link.stale-after", "30")
+
+	got := run(t, root, review.Options{Only: []review.Group{review.GroupStale}})
+	assertLocators(t, section(t, got, review.GroupStale), "projects.acme.links.jira-epic")
+
+	items := sectionItems(t, got, review.GroupStale)
+	if items[0].Threshold.Key != "link.stale-after" {
+		t.Errorf("threshold key = %q, want link.stale-after", items[0].Threshold.Key)
+	}
+}
+
+// TestKindFilterReachesALink is para-nd3's `review link` fix: Options.Kind
+// narrows the walk to one addressable kind, the same way query.List already
+// lets `list` do it — confirming review.Run itself needs no change beyond
+// threading the field through, since classify/staleItem never look at kind
+// beyond what config.StaleKey already answers.
+func TestKindFilterReachesALink(t *testing.T) {
+	root := plantTree(t)
+	w := writer(t, root)
+	add(t, w, "projects.acme", "name", "Acme", "description", "Rebuild.", "created", "2026-01-05")
+	add(t, w, "projects.acme.links.jira-epic", "type", "jira-epic", "ref", "PROJ-1",
+		"direction", "output", "created", "2026-01-05")
+	add(t, w, "projects.acme.objectives.q1", "name", "Q1", "description", "Grow.",
+		"created", "2026-01-05")
+	configure(t, root, "link.stale-after", "30", "objective.stale-after", "30")
+
+	got := run(t, root, review.Options{Kind: kindmeta.KindLink, Only: []review.Group{review.GroupStale}})
+	assertLocators(t, section(t, got, review.GroupStale), "projects.acme.links.jira-epic")
+}
+
 // TestStaleNeverContainsASkill is §20's "skills are reached by --skills and
 // nothing else": a skill's threshold is review.cadence, and putting it in
 // --stale would mean one group reading two different knobs.

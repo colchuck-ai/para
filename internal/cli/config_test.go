@@ -443,8 +443,8 @@ func TestConfigListPrintsEveryKnobAndWhereItCameFrom(t *testing.T) {
 		"log.rotate-bytes":        {"4194304", "(default)"},
 	}
 	got := listRows(stdout)
-	if len(got) != 13 {
-		t.Errorf("listed %d keys, want all 13 of §7's table:\n%s", len(got), stdout)
+	if len(got) != 14 {
+		t.Errorf("listed %d keys, want all 14 of §7's table:\n%s", len(got), stdout)
 	}
 	for key, cols := range want {
 		if !slices.Equal(got[key], cols) {

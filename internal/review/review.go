@@ -58,6 +58,14 @@ type Options struct {
 	// it names. The empty locator is the whole tree.
 	Scope locator.Locator
 
+	// Kind narrows the walk to one addressable kind, or the zero value
+	// (kindmeta.KindUnknown) for no filter — the same field query.Options
+	// already carries for `list` (internal/query/query.go), threaded through
+	// here (para-nd3) so a bare `review link` can mean "every link,
+	// tree-wide" the way `list link` already does, composing with Scope
+	// exactly as query.List's own Kind+Scope combination already does.
+	Kind kindmeta.Kind
+
 	// Only selects the groups to run. Empty runs all six, which is what a bare
 	// `para review` asks: the flags name a subset, and naming none of them is
 	// not the same as naming an empty one.
@@ -146,6 +154,7 @@ type Result struct {
 func Run(env *view.Env, opts Options) (Result, error) {
 	found, err := query.List(env, query.Options{
 		Scope: opts.Scope,
+		Kind:  opts.Kind,
 		// Terminal hiding is `list`'s rule, with `list`'s exceptions (§16.2);
 		// §20's is a different one, applied below, so nothing is dropped here.
 		Filter:          query.Filter{All: true},

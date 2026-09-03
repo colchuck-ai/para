@@ -54,6 +54,19 @@ func TestCheck(t *testing.T) {
 			want:  []kindmeta.Field{kindmeta.FieldDirection},
 		},
 		{
+			// para-nd3's breaking change: "both" was a legal link direction
+			// in v0.5.0 (para-6g7) and no longer is — removed so every link
+			// has exactly one attention clock and one link.stale-after key
+			// applies to it, with no exception in the model. A state.toml
+			// carried over from before this change must be refused the same
+			// way any other unrecognised value already is, not silently
+			// accepted.
+			name:  "a link direction of the removed value both",
+			kind:  kindmeta.KindLink,
+			state: truth.State{Type: "jira-epic", Ref: "PROJ-123", Direction: "both"},
+			want:  []kindmeta.Field{kindmeta.FieldDirection},
+		},
+		{
 			name:  "a project with no name or description",
 			kind:  kindmeta.KindProject,
 			state: truth.State{Status: "planned"},
