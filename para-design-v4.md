@@ -25,12 +25,19 @@ derived files to get it.
 
 Five rules. Every section below is downstream of one of them.
 
-1. **Location is kind.** Where a directory sits says what it is; internally that fact is the
-   `Locator` — its path with `/` swapped for `.` — and nothing else names it (§1.3). The noun and
-   id-chain you type or read (§1.4) are a fixed, total, invertible encoding of that same path, never a
-   second fact that could disagree with it: no `--kind` flag, no elision table, and no format choice
-   for a command's own address argument — that slot is always two tokens on the command line and one
-   dotted token wherever it is serialized, including as another command's flag value (§1.4).
+1. **Location is identity.** Where a directory sits says *which* thing it is — its id, its parent,
+   and its `Locator`, its path with `/` swapped for `.` — and nothing else names it (§1.3). The noun
+   and id-chain you type or read (§1.4) are a fixed, total, invertible encoding of that same path,
+   never a second fact that could disagree with it: no elision table, and no format choice for a
+   command's own address argument — that slot is always two tokens on the command line and one dotted
+   token wherever it is serialized, including as another command's flag value (§1.4).
+
+   **Position does not say *what* a directory is.** The kind is stored, in `state.toml`, and §30 is
+   the argument for why that one fact left the path while the other three stayed: id, parent, and
+   locator are facts *about* the path and a second copy could contradict it, whereas a position that
+   is a legal home for two kinds states nothing to contradict. The `--kind` flag this principle has
+   always forbidden stays forbidden, for the reason it always was: an address carries a noun, and the
+   noun is the kind, spoken once.
 2. **One source of truth per fact.** For anything with a `.para/`, that is its `.para/state.toml`.
    For history, the append-only journal. Nothing else is authoritative, ever.
 3. **Generated files are the product, not a cache.** README frontmatter, `ACTIVITY.md`,
@@ -147,10 +154,15 @@ brain/
 
 Containers and entities hold the same two filenames and are distinguished by **name**: a container's
 name is always one of the reserved words (§1.4), and a reserved word can never be an id, so the test
-is exact and needs no file read. The kind itself comes from the full path (§1.3), which is the only
-place it is written down.
+is exact and needs no file read. The kind itself is **stored**, in `state.toml`'s `kind` key (§8.3,
+§30) — one copy, in one place, and the only place it is written down.
 
-### 1.3 Location is kind
+The name rule outlives the derivation it used to support. A directory whose name is a reserved word
+but whose stored kind is an entity kind is §10's `collision`, and a container sitting where no
+container of that name may sit is `misplaced`; telling those two apart is why the reserved list is
+still exact rather than advisory.
+
+### 1.3 Kind is stored; location is constrained
 
 | Location | Kind | Nests? |
 | --- | --- | --- |
@@ -166,15 +178,33 @@ place it is written down.
 | `.agents/**` without a `para-` prefix | **yours**. para does not read or write it, ever. | — |
 | anything else | **content**. para does not track it, ever. | — |
 
-No state file records its own kind, id, parent, or locator. All four come from the path. *(v2 §1.2's
-load-bearing idea, kept whole — with the caveat in §1.5 about what a hand-`mv` now costs.)*
+**The table above states where each kind may live, not how a kind is derived.** A directory's kind
+comes from `state.toml`'s `kind` key; the table is the containment rule — §30 makes it an explicit
+table that `add`, `move`, and `doctor` all consult — against which a stored kind is checked. Read the
+kind, then ask whether that kind is allowed where it sits.
+
+A state file records its own **kind**. It records no **id**, no **parent**, and no **locator**: those
+three come from the path, and they are the half of v2 §1.2's load-bearing idea this design keeps
+whole. *(§30 says why the other half was given up, and what it bought; §1.5 has the caveat about what
+a hand-`mv` costs.)*
+
+The two halves are not the same bet. id, parent, and locator are facts *about the path* — a second
+copy of any of them could contradict the bytes' own location, which is the desync §8.4 refuses. A
+kind is not a fact about the path: `areas/relationships/people` is a legal home for an area and for a
+Managed Directory alike, so the position states nothing to contradict.
 
 **`max-depth` remains gone**, with its two config keys, its creation-time refusal, its `--force`, and
 its `doctor` finding. Depth was a proxy for a filing judgement it could not make. *(v2 §5.3.)*
 
-This table is the **internal** mapping — path to kind — and it does not change. `Locator` (the
-relative path) stays the representation the walk, the tree, and every internal package reason about;
-§1.4 gives it a second, external half by defining the mapping this table's inverse needs.
+`Locator` (the relative path) stays the representation the walk, the tree, and every internal package
+reason about, and §1.4 gives it a second, external half. What changes is that a locator alone no
+longer answers *what kind is this*. The walk reads each entity's stored kind and carries a
+locator→kind index for the command's lifetime (§30); every internal caller that used to derive a kind
+from a path now consults that index.
+
+The direction that matters to §1.4 is unaffected: a spoken address still names exactly one path with
+no tree read at all, because the noun is spoken. It is only the inverse — a path, asked what it is —
+that now needs the index.
 
 ### 1.4 Addressing: noun + id-chain → path
 
@@ -199,15 +229,25 @@ and that only works if a bare noun can never also be a live id. Reserving the no
 this token a noun or an id" a lexical question instead of a contextual one.
 
 Given the noun, the arity and shape of the id-chain determine the path completely. This is the
-**inverse** of §1.3's location-is-kind, restricted to the rows §1.3 gives an entity or container kind
+**inverse** of §1.3's location table, restricted to the rows §1.3 gives an entity or container kind
 to — a rule, a piece of content, and anything under `.agents/**` without a `para-` prefix have no noun
 and no address (§5.3), and an archived entity's stored form carries `archive.` as an extra prefix on
-top of this table (§1.6). Within that restriction it is total in both directions: every legal
-`(noun, chain)` pair names exactly one path, because each noun's path template starts with its own
-fixed, noun-specific prefix — a distinct bucket name, or `.agents/skills/para-` for `skill` — so no two
-nouns can ever produce the same path, and a chain's arity fixes the rest; and every path in an
-addressable row names exactly one `(noun, chain)`, because the arity rule below is the argument that a
-badly-shaped chain never reaches a path at all, leaving one legal chain shape per path:
+top of this table (§1.6). Within that restriction, **address → path is total and needs no tree**:
+every legal `(noun, chain)` pair names exactly one path, because each noun's path template starts with
+its own fixed, noun-specific prefix — a distinct bucket name, or `.agents/skills/para-` for `skill` —
+so no two nouns can ever produce the same path, and a chain's arity fixes the rest.
+
+**Path → address is where the stored kind is felt, and only there.** It was once equally total, on the
+argument that a badly-shaped chain never reaches a path at all, leaving one legal chain shape per path.
+That argument held while position derived kind. It does not now: `areas/relationships/people` is a
+legal path for an area and for a Managed Directory alike, and only the stored kind separates them
+(§1.3, §30). So a path names exactly one `(noun, chain)` *given the kind index* — which every caller
+asking a path what it is already holds, because it walked to find the path in the first place.
+
+What survives untouched is the property §1.5 calls load-bearing. A stored `<noun>.<chain>` still
+resolves to its path with no resolution step, so scope entries, journal event ids, `doctor` findings,
+and README frontmatter keep working exactly as before. It is only the reverse question — handed a
+bare path, what is this — that consults the index:
 
 | Address | Stored form | Path |
 | --- | --- | --- |
@@ -278,6 +318,11 @@ The consequence is that **locators are isomorphic to disk paths**, with archive 
 stated exception (§1.6). That isomorphism is what lets scope lists, `doctor` messages, log entry ids,
 and README frontmatter all use one string with no resolution step.
 
+Moving the kind into `state.toml` (§1.3, §30) does not touch this. The isomorphism is a claim about
+locators and paths, and a kind is neither: id, parent, and locator still come from the path, so the
+one string still resolves with no step. This is the invariant the stored kind was designed around
+rather than through, and the reason `kind` was the only fact allowed to move.
+
 **Adoption is gone.** v2 had `import`, and `add` on an existing directory writing only `.para/`. v4
 has neither: an untracked directory is invisible, and the way to make something an entity is to
 create the entity and move your files into it. This costs the "point para at my existing repo"
@@ -289,6 +334,13 @@ because nothing was stored. In v4, a move invalidates README frontmatter, `ACTIV
 that; a hand-`mv` leaves the tree readable but stale, and `doctor` reports `stale-projection`. This
 is a real regression against v2 and it is accepted, because it is the same bill principle 3 already
 signed.
+
+**What a hand-`mv` no longer costs is the kind.** The `kind` key travels with the state file, so
+`mv areas/health/acme projects/acme` leaves a project that is still a project. Under position-derived
+kinds the same `mv` silently *reinterpreted* it — an area with objectives, measurements, and key-results
+hanging off it, and no finding raised anywhere. Now the kind survives the move and `doctor` reports the
+position as illegal (§10, §30). The stale-projection bill above is unchanged; the silent-reinterpretation
+bill is withdrawn.
 
 ### 1.6 Archive is a place
 
@@ -337,6 +389,14 @@ archived by definition). `move` keeps refusing to cross the archive boundary eit
   stub by its on-disk relative path instead of an address, and `para path` drops stub support
   entirely: there is no address to resolve into a path in the first place. This is the one capability
   the noun-verb grammar gives up, and it is deliberate rather than an oversight.
+
+  This sentence outlived the reasoning that produced it, and now has a better one. It was written
+  when kind came from position and a stub's position was a real position, so "no kind" was a choice.
+  With the kind stored (§1.3, §30) it is simply the fact: no `.para/`, no `state.toml`, nothing to
+  read. `KindAt` reports it the way it already reports the tree root — no kind, and no error — because
+  a stub is the same category of thing, a real directory that is not an entity. Nothing writes a
+  `.para/` into a stub to give it one: the walk and `Exists` both use `state.toml`'s presence as their
+  test, so a stub carrying one would become "existing", which is the one thing a stub is not.
 - **Areas and resources have no status field.** Location *is* archival state: in `areas/` it is
   active, in `archive/areas/` it is archived. This deletes v2's `active | archived` enum outright —
   a second copy of the answer, which principle 1 forbids.
@@ -1093,8 +1153,8 @@ Schema version and tree identity, and nothing else. No counters, no caches, no i
 else is a walk.
 
 ```toml
-schema       = 1
-para-version = "0.4.0"          # the version that last wrote here
+schema       = 2
+para-version = "0.7.0"          # the version that last wrote here
 name         = "max's brain"
 description  = "Everything I am carrying."
 created      = "2026-01-01T16:00:00Z"
@@ -1102,6 +1162,14 @@ created      = "2026-01-01T16:00:00Z"
 
 This is the root marker, and it is the root's state — the root has no `state.toml`, because the root
 is not an entity, it is the tree. Its README frontmatter generates from here.
+
+**`schema` is the migration gate**, and the reason it is stated here rather than inferred. A binary
+reads it before anything else and refuses a tree it does not understand — `schema = 1` is a tree whose
+entities carry no stored `kind` (§1.3), and no read or write proceeds until `para migrate` has
+backfilled them (§30.5). `para-version` records who last wrote and is informational only: a tree
+written by 0.6.1 and one written by 0.6.9 differ in nothing that matters to a reader, whereas the
+schema number is the format contract itself. Gating on the version string instead would be asking a
+changelog a question only the format can answer.
 
 **Why a distinct marker, rather than testing for `.para/` and walking to the outermost one.** That
 alternative is tempting — §1.5 guarantees the `.para/` chain is contiguous from the root down to any
@@ -1165,9 +1233,20 @@ created = "2026-01-01T16:15:00Z"
 takes the dotted stored form §1.4 defines, the same as every other place an address must be a single
 token.
 
-**Absent by construction**: `kind`, `id`, `parent`, `locator` — all in the path; `updated`,
-`current`, `progress`, derived status — all read from the journal or computed, and none of them
-cached here. An area's or resource's `archived` — that is the path too (§1.6).
+**Present, and the only copy**: `kind` (§1.3, §30). It leads the file, because it is the one field
+that has to be readable before anything else in the file means anything — a `type` or a `start` is
+interpretable only once you know you are reading a key-result.
+
+```toml
+# areas/relationships/.para/state.toml
+kind    = "area"
+name    = "Relationships"
+created = "2026-01-01T16:15:00Z"
+```
+
+**Absent by construction**: `id`, `parent`, `locator` — all in the path; `updated`, `current`,
+`progress`, derived status — all read from the journal or computed, and none of them cached here. An
+area's or resource's `archived` — that is the path too (§1.6).
 
 **Present despite being computed**: `attention` and an entity's `[suppression]` table, if it has one
 (§28). Both are written here by the same derivation that answers `review`'s and `show`'s questions,
@@ -1181,14 +1260,24 @@ legal, and pointless the moment the next mutation or a `rebuild` overwrites them
 
 The alternative — naming each file for its kind — reads pleasantly in a directory listing, and v3
 sketched it that way. It loses on principle 1: the filename would be a **second copy of the kind**,
-which the path already states, and two copies with nothing able to adjudicate is the failure v2 named
-as the load-bearing risk of the whole design. Rename a directory into a different bucket and the
-filename is a lie; para can rewrite it, but a hand-`mv` or a half-applied merge cannot.
+and two copies with nothing able to adjudicate is the failure v2 named as the load-bearing risk of the
+whole design. Rename a directory into a different bucket and the filename is a lie; para can rewrite
+it, but a hand-`mv` or a half-applied merge cannot.
+
+**This section's argument is why `kind` lives in `state.toml` and not in the filename, and §1.3's
+move did not weaken it.** The heading still means what it says: the kind is in exactly one place. What
+changed is *which* place. When the path stated the kind, the filename would have been the second copy
+and the path the first; now `state.toml` holds the only copy and the path states nothing to
+contradict. The count is what mattered — one — and it is still one. A reader arriving here from §1.3
+should not conclude that this section was overridden; it was the section that constrained how §1.3
+was allowed to change.
 
 Uniform names also make one rule serve everywhere: a projection generator, the walk, `doctor`, and
 `rebuild` all open the same path relative to any `.para/` without first deciding what they are looking
-at. The cost is that a directory listing no longer announces the kind — which the *directory's own
-position* announces instead, and which `README.md`'s frontmatter prints for anyone browsing.
+at. The cost is that a directory listing no longer announces the kind — which `state.toml`'s first
+line states outright, and which `README.md`'s frontmatter prints for anyone browsing. Since §1.3, the
+position no longer announces it either, which makes that first line the answer rather than a
+convenience.
 
 The single non-uniform file is `.para/tree.toml` at the root (§8.1), which names a different kind of
 fact and exists once.
@@ -1269,7 +1358,8 @@ the model can be checked against them.
 | Finding | Means |
 | --- | --- |
 | `orphan` | a `state.toml` the fast walk cannot reach — an entity beneath content (§1.5) |
-| `misplaced` | a `state.toml` at a location that derives no kind — e.g. depth 2 under `projects/`, or a key-result outside a `key-results/` container |
+| `misplaced` | a `state.toml` whose stored `kind` is not allowed where it sits, against §30.2's containment table — e.g. a project at depth 2 under `projects/`, or a key-result outside a `key-results/` container |
+| `no-kind` | a `state.toml` in a `schema = 2` tree with no `kind` key, or a `kind` outside the vocabulary — the entity cannot be read as anything (§30) |
 | `invalid` | unparseable TOML, missing required field, enum out of range, a measurement whose shape contradicts its key-result's `type`, a skill with no `description` (it would be inert) |
 | `journal` | a line that is not valid JSON, or has no `at`/`kind`, or an unknown `kind`, or an `at` in the future — reported with file and line |
 | `collision` | a reserved name used as an id (§1.4) |
@@ -1411,6 +1501,7 @@ and a future reader deserves both sides.
 | No archive bucket. Status archives; locators are stable for life. | `archive/` is a place; archiving moves bytes. | Locators are no longer stable for life, and stubs are an exception to locator↔entity correspondence. Bought: "where did it go" answerable by looking. |
 | Skills are not entities. | Skills are entities. | A `.para/` per skill. Bought: scope and tags get a history. |
 | Three buckets. | Four. | One more reserved name. |
+| Kind, id, parent and locator all come from the path; a state file records none of them. | Id, parent and locator still do. Kind is stored in `state.toml` (§30). | A `schema` bump and one `migrate` run per tree; asking a bare path what it is now needs the walk's kind index; a new `doctor` finding for a kind illegal in its position. Bought: a kind whose position implies nothing, one kind mapping where there were two, adoption becoming expressible, and a hand-`mv` that no longer silently changes what a thing is. |
 | `import`/adoption exists. | It does not. | The "point para at my existing repo" story. Bought: entities-all-the-way-up, and therefore locator↔path isomorphism. |
 | Git is a precondition. | It is not, and para never invokes git. | Nothing. v2's precondition guarded a projection-merge problem that `merge=ours` now answers. |
 | One `entity.md` per entity, fields in its frontmatter. | Two truth files — `state.toml` and `config.toml` — and a generated `README.md`. | Three files where there was one, and a `config.toml` that is usually empty. Bought: policy separable from identity at any level of the tree, and a README body that is yours. |
@@ -1430,8 +1521,8 @@ noun the first time.
 there is no v2 position to reverse.** It sits in this table anyway because the shape — what changed,
 what it costs, what it buys — is the same shape as every other row.
 
-Kept from v2 without amendment, so nobody re-litigates them: location is kind; kind, id, parent, and
-locator all derived from the path and written nowhere else; one locator form; setting a field to its current value writes nothing; pushing
+Kept from v2 without amendment, so nobody re-litigates them: id, parent, and locator all derived from
+the path and written nowhere else; one locator form; setting a field to its current value writes nothing; pushing
 a due date must not buy quiet; `missed` is not terminal; terminal status cascades by derivation;
 derived key-result status does not latch; word operators rather than `&`/`|` in any filter; all three
 key-result types; one clock and two knobs; no `max-depth`; union merge for append streams; generated
@@ -1441,7 +1532,7 @@ output declares itself in-band rather than via a manifest.
 
 ## 13. The verb set
 
-Twenty-one commands, twenty-four shapes counting `config`'s four. Every one of them is derived from the
+Twenty-two commands, twenty-five shapes counting `config`'s four. Every one of them is derived from the
 model above rather than inherited: where a v2 verb survives, it survives because §1–§10 still needs
 it, and where it does not, §13.1 says what deleted it. `suppress`/`unsuppress` (§28) are the two added
 after v4 was otherwise settled.
@@ -1471,9 +1562,10 @@ container segments, so the chain is not the whole path (§1.4).
 | `rebuild` | `para rebuild [<noun> [<chain>]] [--dry-run]` |
 | `path` | `para path <noun> [<chain>]` |
 | `doctor` | `para doctor [<noun> [<chain>]]` |
+| `migrate` | `para migrate [--dry-run]` |
 | `config` | `set` / `unset` / `list [--prefix …]` / `show <key> [<noun>.<chain>]` |
 
-Four are new against v2, and each is demanded by a specific decision in the first half:
+Five are new against v2, and each is demanded by a specific decision in the first half:
 
 - **`archive` / `unarchive`** — archival moves bytes now (§1.6), so it is an operation rather than a
   field value. `move` cannot serve: two spellings for one thing violates principle 5, so `move`
@@ -1481,6 +1573,9 @@ Four are new against v2, and each is demanded by a specific decision in the firs
 - **`rebuild`** — projections exist (§2.4), so something has to render them from truth.
 - **`activity`** — §3.2 promised the recursive rollup would be a read-time command, and this is it.
   Nothing about it is stored.
+- **`migrate`** — `schema` is a format contract a binary must be able to refuse (§8.1), and a refusal
+  is only defensible if something can satisfy it. It takes no noun and no chain because it operates on
+  the tree rather than on anything in it, which is the same reason `init` does not (§30.5).
 
 Three shapes in the table above are irregular, and each is bought by a constraint the model already
 enforces rather than by convenience:
@@ -2783,3 +2878,175 @@ by the first release of `link`. A `state.toml` carried over from before this sec
 same way any other value outside a closed field's vocabulary already is (§15, §10's `invalid`
 finding) — there is no migration path beyond hand-editing the value, which is the correct level of
 machinery for a value that was never valid to begin with once the vocabulary changed under it.
+
+---
+
+## 30. Kind in `state.toml`
+
+§1.3 used to be called *location is kind*. It is not any more. `state.toml` carries a `kind` key
+(§8.3) and that key is the only place a directory's kind is written down. The path keeps deriving
+**id**, **parent**, and **locator**; it stops deriving **kind**.
+
+That sentence is the entire change, and the shape of it is deliberate. Three of the four facts v2 put
+in the path stay there, because each is a fact *about the path* — a second copy of an id, a parent, or
+a locator could contradict the bytes' own location, which is exactly the desync §8.4 refuses. A kind
+is not a fact about the path. `areas/relationships/people` is a legal home for an area and for a
+Managed Directory alike, so the position states nothing that a stored kind could contradict, and the
+count §8.4 cares about stays at one.
+
+### 30.1 Why
+
+A directory whose purpose is to hold files needs to sit at a natural, user-chosen path. Under
+location-is-kind it cannot. `areas/relationships/people` necessarily derives **area**, because
+`areas/` nests with no depth limit and every segment there is an area id; `projects/acme/evidence`
+derives nothing at all, because a project cannot nest. Neither answer is wrong under the old rule —
+the rule simply has no room for a kind whose position implies nothing.
+
+The alternative was a reserved container word, the device `links/` uses (§29.3):
+`areas/relationships/directories/people`. It preserves every invariant and it was rejected on cost.
+The word is mechanical, it lands in the middle of paths a human reads and an agent writes to, and
+adopting an existing directory would mean moving every file inside it. A tool whose first principle is
+that the tree is readable without it should not spend a path segment on its own bookkeeping.
+
+Two things fell out of the change that were not the reason for it, and both are worth more than the
+feature that prompted it.
+
+**One kind mapping instead of two.** `kindmeta.KindOf` and `address.FromLocator` were two independent
+traversals of the same path→kind mapping, kept apart on purpose so that nothing in the CLI path
+inferred a kind from a shape. Each carried its own project / nesting / link / skill chain walker.
+There is now one source and both are lookups.
+
+**Adoption stops being impossible.** §1.5 gave up adoption — "an untracked directory is invisible, and
+the way to make something an entity is to create the entity and move your files into it" — *because*
+the kind came from position. There was nothing to write. With a stored kind, pointing para at a
+directory that already exists is a coherent operation rather than a contradiction.
+
+### 30.2 The containment table
+
+§1.3's table did two jobs: it derived a kind, and it forbade illegal shapes. Only the second job
+survives, and it becomes an explicit table rather than a property of a parser.
+
+| Parent | May contain |
+| --- | --- |
+| **project** | `objectives/`, `links/` |
+| **area** | area, `links/` |
+| **resource** | resource, `links/` |
+| **objective** | `key-results/`, `links/` |
+| **key-result** | — leaf |
+| **link** | — leaf |
+| **skill** | — leaf |
+| **container** `objectives/` | objective |
+| **container** `key-results/` | key-result |
+| **container** `links/` | link |
+
+One table, three callers: `add` asks *may I create this kind here*, `move` asks *may this kind land
+there*, and `doctor` asks *is what I found where it is allowed to be* (§10). Every refusal the old
+parser made is a row here — a project cannot nest, a key-result is a leaf, a `links/` container may
+sit under any of three parent kinds — and adding a kind becomes a row rather than an edit to four
+functions in two packages.
+
+The container rows are not decoration. *May a container named `key-results` sit under this parent* was
+already a containment question, answered by a switch statement several layers away from the rules it
+belonged with.
+
+**The table grants no new freedom.** It reproduces §1.3 exactly, and nothing more. A stored kind means
+no position is *inherently* illegal any more, which invites re-deriving the whole table from scratch —
+projects nesting, objectives hanging off areas, resources under projects. That is a redesign of what
+PARA means, not a consequence of where a kind is written, and each new combination would need its own
+answers for rollup, archival, and projection. Kinds whose position implies nothing are what this
+section exists to allow; every other row stays as it was.
+
+Two details this table does not settle, because they belong with the kind that needs them:
+
+- **A kind whose chain is ambiguous.** Where a kind may nest inside itself *and* inside a parent that
+  also nests, a flat id-chain no longer says where the parent ends — `area.relationships.people.ryan-king`
+  splits two ways. The kind index answers it (§30.3), path→path is unaffected (§1.4), and the arity
+  rule that used to make chains self-describing is the thing given up. The section introducing such a
+  kind owns the statement of its own chain shape.
+- **A stub still has no kind** (§1.6), and now for a plainer reason than before: there is no
+  `state.toml` to read. `KindAt` reports it the way it reports the tree root — no kind, no error.
+  Nothing gives a stub a `.para/` to fix this, because a stub carrying one would satisfy the
+  `state.toml`-presence test the walk uses to tell an entity from content.
+
+### 30.3 The kind index
+
+The walk already opens `.para/state.toml` for every entity it descends into — that presence test is
+what tells it an entity from content (§8.5). It now reads the file it was already opening, and emits a
+locator→kind index for the command's lifetime. The walk stays O(entities); a stat becomes a read.
+
+Everything that used to derive a kind from a path consults the index instead. `KindAt` keeps its job
+and changes its method. Address→path is untouched and stays free of the tree, because the noun is
+spoken (§1.4).
+
+The old path→kind walker is **retired, not deleted**. It is exactly the right code for reading a
+`schema = 1` tree, where position *is* authoritative, and that is the one job left for it: §30.5's
+migration step. Deleting it would mean writing the same traversal again a week later.
+
+### 30.4 When the stored kind disagrees with its position
+
+A `state.toml` saying `kind = "project"` in a directory under `areas/`. The stored kind wins, every
+read treats it as a project, and `doctor` reports the position as illegal against §30.2's table.
+
+The tempting alternative is that position wins and `rebuild` repairs the field, which is self-healing
+and never leaves a tree the write path would refuse to create. It is also unimplementable. A rule that
+rewrites a field disagreeing with its position cannot distinguish a mistake from a Managed Directory,
+because the two are the same observation: a stored kind its position does not imply. The rule that
+repairs the first destroys the second, and it cannot tell which it is looking at.
+
+So the field is authoritative because it is the only copy, and reinterpreting the only copy is
+inventing data. Repair stays manual, as everything in `doctor` does (§21) — `mv` it back, or
+`para move` it.
+
+Note what this replaces rather than adds. The same hand-`mv` used to raise nothing at all: the project
+became an area, silently, with its objectives and measurements hanging off a kind that cannot hold
+them (§1.5). A finding where there was none is the improvement.
+
+### 30.5 `schema = 2` and `para migrate`
+
+`schema` (§8.1) goes to 2, and a binary reading a `schema = 1` tree refuses it and names the command
+that fixes it.
+
+`para migrate` is a schema-step verb rather than a one-off: it reads `schema`, applies each registered
+step in order, and bumps the field. Step 1 → 2 derives every entity's kind from its position and
+writes it down.
+
+**That derivation cannot be wrong.** Position was authoritative in every tree that predates this
+section, because no kind existed whose position implied nothing. The migration is not a guess about
+old data; it is a transcription of what the old rule already said, performed once by the very walker
+that used to say it.
+
+Properties, in the order they matter:
+
+- **No files move and no paths change.** A `schema = 1` tree's layout is already correct; only the
+  state files gain a line.
+- **`schema` is bumped last**, after every entity is written. A crash halfway leaves a tree that still
+  says `schema = 1`, which is true — some entities carry a kind, the rest do not, and the tree is
+  still owed a migration. Bumping first would leave a tree lying about itself.
+- **Re-running completes it.** The derivation is idempotent and position-based, so a second run writes
+  only what the first did not reach. This is the same property, and the same reason, as writing a
+  cascade parent-first: ordering alone buys the safety, so no transaction is needed.
+- **`--dry-run` reports the count**, and a tree already at 2 reports that it is and exits 0.
+- **One journal event at the root**, which is where tree-level facts already go (§8.1).
+
+### 30.6 What it cost
+
+Honest ledger, since three of these are real.
+
+**A pure function became tree-dependent.** Asking a bare path what it is now needs the index. Every
+caller that asks already walked to find the path, so no caller acquired a dependency it lacked — but
+the function's signature says so now, and that is a genuine loss of the kind of code that can be
+reasoned about in isolation.
+
+**Path → address is no longer total on its own** (§1.4). Address → path still is, which is the
+direction scope entries, journal event ids, and `doctor` findings actually travel, so the property
+§1.5 calls load-bearing survives. The reverse question is the one that changed.
+
+**"Holds only files" stops being a path fact.** Under a container word, what may sit inside a
+directory would be structurally checkable. It is now a claim the containment table makes and `doctor`
+verifies, which is weaker: a hand-created directory in the wrong place is found on the next `doctor`
+run rather than being impossible to express.
+
+**Every tree needs one command run before the upgrade works.** This is the first release that refuses
+to operate until the user acts. It is also the first one that could offer a migration at all — compare
+§29.4, where a vocabulary change left no path but hand-editing, because the values were never valid.
+A mechanical change to a mechanical fact earns mechanical repair.
