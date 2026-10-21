@@ -22,7 +22,7 @@ The next revision starts from one unified spec, and new code is written against 
 | D4 | **Skills are removed, with no migration.** Distributing skills is a separate problem that para keeps out of scope. Skills can be layered on top of a para tree by other tools. |
 | D5 | **`AGENTS.md` and `CLAUDE.md` stay** as marker-scoped generated blocks. `CLAUDE.md` loses its rule imports. |
 | D6 | **`skill` and `skills` are ordinary names again.** Both leave the reserved-word list. |
-| D7 | **The tree format stays at `schema = 2`.** The next revision reads and writes it unchanged. |
+| D7 | **The tree format stays at its current version, `schema = 1`** (what `~/brain` and the code use). `schema = 2` and `para migrate` were designed in §30.5 but never built. |
 | D8 | **The first clean-room release is `v0.8.0`.** |
 | D9 | **Managed Directories and sensitivity labels are designed as part of the new spec** and ship in `v0.8.0`. Storing `kind` in `state.toml` was the first step toward them. The design is worked through together, chapter by chapter, in Phase 1. |
 
@@ -61,8 +61,9 @@ D4 removes more than one noun. Everything below exists only because skills did:
 3. Tag that commit `poc-final`. Every deleted document stays reachable from there.
 4. Delete the stale `impl`, `rc` and `fixes` branches, local and remote, once they are confirmed
    merged or abandoned.
-5. In beads: recreate `para-sxt` and `para-nd3` as closed records, then open a `clean-room` epic
-   with one child per phase below.
+5. In beads: recreate the lost issues as records. `para-nd3` and `para-sxt.1`/`.2` were finished.
+   The rest of `para-sxt` (at least `.4`, `.7` and `.10`) and `para-5ul.1` were not, and the
+   `clean-room` work supersedes them. Then open a `clean-room` epic with one child per phase below.
 
 Done when: `poc-final` exists on GitHub, `v0.7.0` is released, and only `main` remains.
 
@@ -121,11 +122,15 @@ AGENTS.md / CLAUDE.md        contributor and agent orientation for this repo
 
 1. **Feature cuts.** These are candidates to argue, not decisions: `migrate` (is there anything left
    for it to do?), `path`, the `log` / `activity` split, filter flags versus `--where`.
-2. **`emit.claude`.** With no rule imports, the block is `@AGENTS.md` plus a note. Is
+2. **Stored kind in a `schema = 1` tree.** Managed Directories (D9) need a stored `kind`, and
+   §30.5 planned a schema bump to 2 plus `para migrate` to fill it in. D7 rules out the bump. The
+   likely answer: a missing `kind` means the kind its position implies, and `add` writes `kind`
+   for every new directory. Settle this in `01-model.md`.
+3. **`emit.claude`.** With no rule imports, the block is `@AGENTS.md` plus a note. Is
    `emit.claude` still worth a config key, or is `CLAUDE.md` always written?
-3. **Managed Directory.** Its word, where it may sit, its address form (including the ambiguous
+4. **Managed Directory.** Its word, where it may sit, its address form (including the ambiguous
    chain that §30.2 flags), and how it appears in projections, `review` and `doctor`.
-4. **Sensitivity labels.** Which directories can carry a label, the default, how a label
+5. **Sensitivity labels.** Which directories can carry a label, the default, how a label
    reaches files beneath it, what para does with a label (does it show it, check it, or put it in
    `AGENTS.md`?), and how a v0 tree with no labels reads.
 
@@ -177,7 +182,9 @@ Done when: every spec example passes as a script test, and the compat fixture pa
   position implies no kind. §30.2 leaves the kind "deliberately unbuilt": it has no word, no
   containment row and no chain shape, and no code exists for it. Its follow-up issue was probably
   lost along with `para-sxt`. The next spec has to finish it or drop it, because the stored kind
-  only exists to support it.
+  only exists to support it. The PR for `para-sxt` (#15) says the feature that needed it was
+  `para-5ul.1`, at a path like `projects/entra/evidence`. That issue is lost too, and nothing
+  else records what it was.
 - **Sensitivity scoped by Managed Directory.** A classification set in a Managed Directory's
   `.para/` applies to every file beneath it, so no file carries its own label. Nothing in the
   repo records this pairing yet. The labelling rules from the Oct 20 brain session carry over:
