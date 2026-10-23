@@ -6,12 +6,13 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local only (not pushed). `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours.
-- **Next:** §0.4 Why deterministic structure helps agents. Then continue in outline order.
-- **Decisions:** D1–D24 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents.
+- **Next:** §0.5 Scope and non-goals. Then continue in outline order.
+- **Decisions:** D1–D25 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
+  - D25: every refusal says why and what to do instead. D13 amended: a hand copy (`cp -r`) can also duplicate ids.
 
 ## Priorities
 
@@ -36,7 +37,7 @@ print('broken:',[l for l in re.findall(r'\]\(#([^)]+)\)',s) if l not in anchors]
 ## Context to load when resuming
 
 - `spec.md`: the outline and drafted sections. Each undrafted section's one sentence is its charter.
-- `plans/clean-room/plan.md`: decisions D1–D24, open questions, and design inputs.
+- `plans/clean-room/plan.md`: decisions D1–D25, open questions, and design inputs.
 - `plans/clean-room/research/labeling.md`: research behind chapter 6.
 - `para-design-v4.md` (on `main` until Phase 2, always at `poc-final`): PoC design, background only. Decisions win where they disagree.
 - `bd show para-a1b.2`: progress notes.
@@ -101,6 +102,14 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Damaged block markers**: `para` must refuse to rewrite rather than guess, so it never overwrites the user's text. Belongs in §5.2.
 - **Case-insensitive filesystems** (`README.md` vs `readme.md`): collisions resolve as the filesystem sees them. Belongs in §8.1.
 - **Partial failure**: validation happens before any write; what happens if a write fails partway (including `remove` reruns, D22) belongs in §8.1.
+- **Concurrent commands**: §0.4 says agents, people and scripts share a tree; what happens when two `para` commands run at once belongs in §8.1.
+- **Mid-write conditions** (a destination appearing mid-run, a full disk) are partial failures under §8.1, not refusals; §0.4 promises refusal only before anything is written.
+- **Ids in README frontmatter**: §0.4 says file tools can find any entity and its main facts, and commands take only ids (D11), so §5.3 must make the id a frontmatter key.
+- **Journaling outside entities**: §0.4 says each entity's journal shows what happened to it; §1.8 or §3.4 must say whether changes at the root and buckets (such as `AGENTS.md` blocks, D21's `CLAUDE.md` cleanup) are journaled, for example in the root's `.para/`.
+- **A command for every structural change** (§0.4): every change §0.3 lists (create, move, rename, re-parent, archive, unarchive, remove, adopt) has a command, ideally one per change; check chapter 7's charters against this list.
+- **Refusals and remedies** (D25): every refusal gives the rule, the offending id or path, and what to do instead, which may be the user's own files to move; §7.10 defines the output.
+- **Hand changes `doctor` must catch** (§8.2): `mv` of an entity (possibly to a place its kind may not sit), `rm -r` of an entity, a hand edit to a `para` frontmatter key, and `cp -r` of an entity, which duplicates its id (D13). Decide whether a plain folder directly in `projects/` or `areas/` is a finding, since §0.3 calls it content.
+- **Non-interactive confirmation**: agents confirm results from JSON output and exit codes (§0.4), so every confirmation prompt, such as `remove`'s (D22), needs a non-interactive path with JSON output (§7.10).
 - **`doctor`** reports a `.para/` that `para` did not create, and references to removed ids (§8.2).
 - **Determinism** (§0.1): output and changes depend only on the tree, arguments and current time, apart from new ids. Config must therefore come from inside the tree (§3.6), or §0.1 needs revisiting.
 - **README frontmatter**: `para` writes only its own keys (D24); §5.3 defines them.

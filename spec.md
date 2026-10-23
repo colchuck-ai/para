@@ -42,7 +42,14 @@ Changing `para`'s side by hand, such as moving a managed folder or editing a fil
 Every command depends on this split: it writes only `para`'s side.
 
 ### 0.4 Why deterministic structure helps agents
-Why a simple, predictable framework with reliable commands lets agents act safely, while leaving them free to manage the files inside it.
+
+Agents, like people, are drawn to a clear, predictable framework that leaves them free to create within it. The framework keeps their attention on the task, and when following its rules is also the easiest way to work, they follow them. An agent often arrives in a tree with no memory of it and shares the tree with people, scripts and other agents, so it needs rules it can learn quickly and trust everyone else to follow, and `para` provides them.
+
+`para`'s rules for the structure (the buckets, the kinds and which kind may sit where) are small and the same in every tree, so an agent learns them once. The tree explains itself on disk: `AGENTS.md` at the root, in each bucket and in each archive bucket describes the rules ([`AGENTS.md`](#56-agentsmd)), and each entity's README shows its main facts in frontmatter ([README frontmatter](#53-readme-frontmatter)), so ordinary file tools are enough to find any entity and read about it.
+
+The commands make the right path the easy one. Every change to the structure is made with a command, so the agent never needs to edit `para`'s side or know how `.para/` is laid out. A command refuses an invalid change before writing anything and says why and what to do instead, and [safety guarantees](#81-safety-guarantees) covers one that fails partway. Commands are [deterministic](#01-what-para-is), so an agent can rely on how each one behaves and confirm its result from the JSON output and exit codes ([output and exit codes](#710-output-and-exit-codes)). Each entity's journal shows the next agent or person what happened to it ([notes and the journal](#18-notes-and-the-journal)).
+
+Within that framework, agents are free to create, edit and organize content with any tool ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)).
 
 ### 0.5 Scope and non-goals
 What `para` does not do, such as distribute skills, so features outside it are refused for a stated reason.
