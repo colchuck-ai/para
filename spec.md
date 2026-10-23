@@ -76,7 +76,12 @@ Every design decision in this spec follows these rules. A new question is answer
 8. **Small and one way**: a feature is added only when managing a PARA tree needs it ([scope and non-goals](#05-scope-and-non-goals)), and each concept has one name, each kind of change one command and each value one format ([glossary](#appendix-c-glossary)).
 
 ### 0.7 How to read this spec
-The spec's structure (a tour of every component in chapter 1, then the detail in later chapters), its normative words and how its examples are tested, so a reader knows where to look and what is binding.
+
+[Chapter 1](#1-components) tours the tool, with one short section for each component. Chapters 2 to 9 give the detail, and the appendices hold the [example tree](#appendix-a-example-tree), the [worked examples](#appendix-b-worked-examples), the [glossary](#appendix-c-glossary) and the [decision index](#appendix-d-decision-index).
+
+Every statement about what `para` does is a requirement, written in the present tense: "`para` refuses" means an implementation must refuse, "never" means must not, and "may" means allowed but not required. A reason given with a rule explains it and adds no requirement, and neither does the decision index, which summarizes each decision and links its record. Each term means what the glossary says. Chapter 0 and the tour summarize the detail chapters, and examples illustrate them; where any of these disagrees with a detail chapter, the detail chapter is right.
+
+Every example starts from the tree in Appendix A unless it names another starting point, such as an empty directory, a v0 tree or the example tree with a stated change. The worked examples in Appendix B are the acceptance tests: each states its starting point, command and any input it reads, and a test checks its output, exit code and every file's path and contents exactly. Appendix B says how tests fix the clock, new ids and the terminal.
 
 ## 1. Components
 
@@ -319,7 +324,7 @@ What schema 2 is and how `para` treats other versions, so the format can evolve 
 One complete example tree, used by every example in the spec, so readers learn one tree.
 
 ## Appendix B. Worked examples
-Commands run against the example tree with their output, which double as the acceptance tests.
+Commands run from a stated starting point, usually the example tree, with their output, exit code and resulting files, which double as the acceptance tests, and how those tests fix the clock, new ids and the terminal.
 
 ## Appendix C. Glossary
 One definition per term, so every word in the spec means one thing.
