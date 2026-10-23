@@ -10,7 +10,7 @@ Status: **outline.** One sentence per section: what it holds, and why it is here
 
 The **structure** is which entities (the projects, areas, dirs and other things `para` manages) exist, what kind each one is and where it sits. The **metadata** is the facts `para` records about entities, such as ids, status, history and measurements. Both are meant to change only through `para`'s commands ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)). Each command is deterministic: for the same tree, arguments and current time, it gives the same output and makes the same change, apart from any new ids it generates. [Safety guarantees](#81-safety-guarantees) states what `para` promises when a command fails or is interrupted.
 
-Apart from `para`'s own files ([storage](#3-storage)) and the parts of generated files that `para` owns ([para-owned blocks](#52-para-owned-blocks)), everything in the tree is content. People, AI agents and scripts create and edit it freely, inside a structure they can rely on.
+Everything `para` doesn't own is content, which people, AI agents and scripts edit freely inside a structure they can rely on ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)).
 
 ### 0.2 The PARA method
 
@@ -26,7 +26,20 @@ Following the method's focus on actionability, something that fits more than one
 In `para`, each category is a top-level [bucket](#12-buckets) of the tree.
 
 ### 0.3 Structure is para's, content is yours
-Structure and metadata change only through `para`'s commands, which are the easiest way for a person or an agent to make those changes, while content is edited freely by anyone; every command and generated file depends on this line.
+
+`para` owns everything it writes:
+
+- its own files: `tree.toml` at the root and the `.para/` folder in each folder it manages, holding state, config, the journal, and records about content such as sensitivity rules and provenance ([storage](#3-storage));
+- the files it generates whole, such as `ACTIVITY.md` and `MEASUREMENTS.csv`;
+- its marked blocks inside files you also write in, such as a README's frontmatter ([para-owned blocks](#52-para-owned-blocks)).
+
+Change these, and create, move, rename, archive or remove entities, only through `para`'s commands. The commands are designed to be the easiest way for a person or an agent to make these changes, and `para` validates each change and refuses an invalid one before writing anything.
+
+Everything else is content: notes, documents, data, folders without a `.para/`, and your text around `para`'s blocks. Anyone may create and edit content. `para` never edits or deletes it. It moves content only along with the entity that holds it, removing an entity leaves its content in place, and if content already sits where `para` needs to put a file of its own or move an entity, `para` refuses rather than overwrite or merge it.
+
+Hand edits to anything on `para`'s side are possible but unsupported. Text written in a file `para` generates whole, or inside one of its blocks, is replaced the next time `para` rewrites it. `para`'s [safety guarantees](#81-safety-guarantees) cover only changes made through its commands, and [`doctor`](#82-doctor-findings) reports hand edits that leave the tree inconsistent.
+
+Every command and generated file depends on this split: commands write only `para`'s side, and generated files show it to readers who never run `para`.
 
 ### 0.4 Why deterministic structure helps agents
 Why a simple, predictable framework with reliable commands lets agents act safely, while leaving them free to manage the files inside it.
