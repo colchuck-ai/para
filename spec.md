@@ -165,7 +165,14 @@ Apart from `dropped`, which you set, its status is computed from the analytic, t
 Before the due date, status follows the latest value, so a key result that falls back short of its target is no longer `achieved`. Once the due date has passed, status uses the latest value dated on or before it, so later readings do not change it.
 
 ### 1.4 Areas
-Ongoing responsibilities with no end date, which hold standards rather than deadlines.
+
+An area is a part of work or life you keep up with no end date, such as health or a home, the second of the [PARA categories](#02-the-para-method). Its standards say what good upkeep looks like, and its indicators show whether the area meets them.
+
+Each live area is a folder directly in `areas/` or directly in another area, so areas nest to any depth (health can hold fitness and sleep), and nothing else holds one. An area has no [status](#114-status) and no due date, because it never finishes; [review](#115-review) reports it when it has gone too long without attention ([staleness](#45-staleness)). As for a project, `para` keeps an area's facts in [`.para/state.toml`](#32-statetoml), copies them into the README's frontmatter and keeps its own block there ([projects](#13-projects)).
+
+An area holds its [standards](#141-standards) in `standards/`, each with its [indicators](#142-indicators) in `indicators/`, and its [links](#110-links) in `links/`. It can also hold sub-areas, [dirs](#111-dirs) and any content of your own ([kinds and containment](#22-kinds-and-containment)). Standards are optional, and so are a standard's indicators, but every indicator sits under a standard.
+
+An area stays live until you [archive](#17-archive) it, for example when you sell the house it was about. Archiving moves it, with everything beneath it, to the matching path in `archive/areas/`.
 
 #### 1.4.1 Standards
 What an area must keep up, the qualitative bar its indicators are measured against.

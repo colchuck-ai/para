@@ -6,9 +6,9 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local only (not pushed). `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results.
-- **Next:** §1.4 Areas. Then continue in outline order.
-- **Decisions:** D1–D37 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas.
+- **Next:** §1.4.1 Standards and §1.4.2 Indicators (together). Then continue in outline order.
+- **Decisions:** D1–D39 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -26,6 +26,8 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D35 (amended): after the due date only measurements dated on or before it count; `dropped` overrides and can be cleared.
   - D36: every key result has its own due date.
   - D37: an objective holds only `key-results/` and your content; a key result holds no entities.
+  - D38: areas nest at any depth.
+  - D39: `standards/` and `indicators/` containers; a standard holds only indicators and content, an indicator no entities.
 
 ## Priorities
 
@@ -50,7 +52,7 @@ print('broken:',[l for l in re.findall(r'\]\(#([^)]+)\)',s) if l not in anchors]
 ## Context to load when resuming
 
 - `spec.md`: the outline and drafted sections. Each undrafted section's one sentence is its charter.
-- `plans/clean-room/plan.md`: decisions D1–D37, open questions, and design inputs.
+- `plans/clean-room/plan.md`: decisions D1–D39, open questions, and design inputs.
 - `plans/clean-room/research/labeling.md`: research behind chapter 6.
 - `para-design-v4.md` (on `main` until Phase 2, always at `poc-final`): PoC design, background only. Decisions win where they disagree.
 - `bd show para-a1b.2`: progress notes.
@@ -145,6 +147,9 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Simple key results** (§4.1, §4.3): a key result must hold an analytic (D20), so counting one metric needs a metric and an analytic; decide whether `para` offers a shortcut, such as an analytic that is one metric's latest value.
 - **Dropped and archived key results** (§1.14, §2.5): whether a dropped key result still counts toward its objective, and what a key result's status is once its project is archived.
 - **Key result computation** (§4.3, §4.4): define the start value and start date, the at-risk threshold, a target below the start (such as latency, where reaching means crossing downward), a yes/no target with no pace, the status with no measurements yet, a due date already past at creation, and a key result due after its objective. Also when a due date counts as passed (through the end of that day, in which time zone, §3.4), and whether a measurement may be backdated to on or before a passed due date, which would change a settled result.
+- **Reserved container names** (§2.2, §2.4, §8.2, D20, D39): every container name is reserved in its parent, like `measurement`. Define the rule once: `para` refuses to create or adopt anything under a reserved name, adopting refuses when a plain folder already has one (D25), and `doctor` reports content found there. The tour (§1.3, §1.4) leaves this to §2.2.
+- **Staleness of nested areas** (§4.5): whether activity in a sub-area keeps its parent from going stale, so a parent like `health/` with no work of its own is not flagged forever.
+- **Moving into a descendant** (§2.2, §7.6): moving an area (or dir) under its own descendant must be refused (D25).
 - **Finding the tree** (§3.6): §1.1 says every command but `init` looks upward from the current directory for the nearest root (D28). §3.6 must settle a start outside any tree, inside a `.para/`, in a tree nested in another tree's content, under a symlinked root, and whether the PoC's `$PARA_HOME` override survives. Also: an ancestor `state.toml` that cannot be read (skip or refuse), an entity's `state.toml` hand-edited to `kind = "root"` (silently a nested tree; `doctor`?), the downward walk stopping at a nested root, and a v0 `tree.toml` recognised so every command but `migrate` refuses with the `para migrate` remedy (D14).
 - **Targeting folders without ids** (§2.3): the root, buckets and containers have no id (§1.1), so §2.3 must say how a command names one as a parent, such as creating a dir directly in `resources/` (D18).
 - **Issued-id record** (§2.3 or §3.2): §1.1 says `para` never reuses an id (and D30 repair issues new ids into the same record), so a per-tree record of issued ids must outlive `remove` (D22) and merge cleanly (plan §1.4 item 4).
