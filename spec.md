@@ -29,9 +29,8 @@ In `para`, each category is a top-level [bucket](#12-buckets) of the tree.
 
 `para` owns everything it writes:
 
-- its own files: `tree.toml` at the root and the `.para/` folder in each folder it manages, holding state, config, the journal, and records about content such as sensitivity rules and provenance ([storage](#3-storage));
-- the files it generates whole, such as `ACTIVITY.md` and `MEASUREMENTS.csv`;
-- its marked blocks inside files you also write in, such as a README's frontmatter ([para-owned blocks](#52-para-owned-blocks)).
+- its own files: `tree.toml` at the root and the `.para/` folder in each folder it manages, holding state, config, the journal, records about content such as sensitivity rules and provenance, and the files it generates whole, such as `ACTIVITY.md` ([storage](#3-storage));
+- its marked blocks inside the two visible files it writes in, a README and `AGENTS.md` ([para-owned blocks](#52-para-owned-blocks)).
 
 Change these, and create, move, rename, archive or remove entities, only through `para`'s commands. The commands are designed to be the easiest way for a person or an agent to make these changes, and `para` validates each change and refuses an invalid one before writing anything.
 
@@ -205,10 +204,10 @@ The markers that separate `para`'s text from yours, so `para` never overwrites y
 The generated header on each thing's README, the main place a reader sees its facts.
 
 ### 5.4 `ACTIVITY.md`
-The rendered history file, so recent changes are readable without the CLI.
+The rendered history file in `.para/`, linked from the README, so recent changes are readable without the CLI.
 
 ### 5.5 `MEASUREMENTS.csv`
-The rendered measurement table, so data opens in any spreadsheet.
+The rendered measurement table in a metric's `.para/`, linked from its README, so data opens in any spreadsheet.
 
 ### 5.6 `AGENTS.md`
 The file that orients an agent to the tree, which is how agents learn the framework.
