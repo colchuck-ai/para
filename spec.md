@@ -31,7 +31,7 @@ The tree's structure and metadata belong to `para`. They are:
 
 - every folder `para` manages (the folder itself, not what you put in it): the root, the buckets and archive buckets, containers such as `objectives/`, archive stubs, and every entity. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
 - everything inside each `.para/`: state, config (including sensitivity rules), the journal, provenance records and the files `para` generates, such as `ACTIVITY.md` ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
-- the keys `para` writes in README frontmatter, its marked blocks in `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
+- the keys `para` writes in README frontmatter, its marked blocks in READMEs and `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
 
 Change these only through `para`'s commands, including creating, moving, renaming, archiving and removing entities. The commands are designed to be the easiest way for a person or an agent to make these changes. `para` validates each change before writing anything and refuses an invalid one.
 
@@ -133,7 +133,14 @@ Each archive bucket holds the projects, areas or dirs archived from the matching
 Besides those, every bucket and archive bucket holds its `.para/`, a `README.md` and an `AGENTS.md`. `para` writes its own block in each of the last two, and anything you write outside the block is yours ([para-owned blocks](#52-para-owned-blocks)). Anything else put directly in a bucket or archive bucket, such as a file or a folder with no `.para/`, stays content that `para` never moves or deletes, but [`doctor`](#82-doctor-findings) reports it and says to move it into an entity, or to [adopt](#24-adopting-existing-directories) a folder as one.
 
 ### 1.3 Projects
-Work with a finish line, the main unit people and agents act on.
+
+A project is work with a finish line, the first of the [PARA categories](#02-the-para-method). Its objectives say what it is trying to do, and its key results and status say how far it has got.
+
+Each live project is a folder directly in `projects/`, as sketched in [the tree](#11-the-tree). Its [status](#114-status) is one of `planned` (where a new project starts), `in-progress`, `blocked`, `done` or `dropped`, which a person or agent sets with a command as the work moves, and it may have a due date. Its `.para/state.toml` records these facts, and `para` copies them into keys in the README's frontmatter and keeps its own block in the README. Any other keys and text you put in the README stay as you wrote them ([README frontmatter](#53-readme-frontmatter), [para-owned blocks](#52-para-owned-blocks)).
+
+A project holds its [objectives](#131-objectives) in `objectives/`, each with its [key results](#132-key-results), and its [links](#110-links) in `links/`. It can also hold [dirs](#111-dirs) and any content of your own. A project sits only in `projects/` or `archive/projects/`, and nothing else holds one at any depth, so a large effort is one project with several objectives ([kinds and containment](#22-kinds-and-containment)).
+
+A project stays in `projects/` whatever its status until you [archive](#17-archive) it, which moves it to `archive/projects/`.
 
 #### 1.3.1 Objectives
 What a project is trying to achieve, with objectives and key results (OKRs) explained from scratch here, since they exist only inside projects.
