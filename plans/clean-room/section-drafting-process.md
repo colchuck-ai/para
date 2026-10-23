@@ -1,47 +1,64 @@
 # Section drafting process
 
-How each section of `spec.md` is written. Read this first when resuming the work in a new session.
+How each section of `spec.md` is written, and where the work stands. Read this first when resuming in a new session.
+
+## Where we are (handoff)
+
+- **Branch:** `clean-room-impl`, local only (not pushed). `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
+- **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours.
+- **Next:** §0.4 Why deterministic structure helps agents. Then continue in outline order.
+- **Decisions:** D1–D24 in `plans/clean-room/plan.md`. The ones written during drafting:
+  - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
+  - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
+  - D24: `para` owns only its own keys in README frontmatter.
 
 ## Priorities
 
-**Reader clarity, and less is more.** Every section is written for a reader who has only the
-spec: a person meeting para for the first time, or an AI agent dropped into a tree. Keep it simple.
-The shortest section that is complete wins.
+**Reader clarity, and less is more.** Every section is written for a reader who has only the spec: a person meeting `para` for the first time, or an AI agent dropped into a tree. Keep it simple. The shortest section that is complete wins.
 
 ## Writing conventions
 
-- **Cross-references are Markdown links** to the section's heading anchor, such as
-  `[the PARA method](#02-the-para-method)`. Never use the § sign.
+- **Cross-references are Markdown links** to the heading anchor, such as `[the PARA method](#02-the-para-method)`. Never use the § sign. Anchors follow GitHub: lowercase, punctuation dropped, spaces to hyphens (`### 8.2 \`doctor\` findings` → `#82-doctor-findings`).
 - **One line per paragraph.** Never hard-wrap prose.
-- **The tool is always `` `para` `` in backticks.** "PARA" in capitals is the method.
-- After any renumbering, check that every `#anchor` link still resolves.
+- **The tool is always `` `para` `` in backticks** in prose. Headings stay plain. "PARA" in capitals is the method.
+- **Each drafted section replaces its one-sentence charter.** Keep the charter in the reviewer prompt.
+- **Check links after every edit** with this snippet:
+
+```python
+import re
+s=open('spec.md').read()
+slug=lambda h: re.sub(r'[^\w\- ]','',h.lower()).replace(' ','-')
+anchors={slug(m.group(1)) for m in re.finditer(r'(?m)^#{1,4} (.+)$',s)}
+print('broken:',[l for l in re.findall(r'\]\(#([^)]+)\)',s) if l not in anchors])
+```
 
 ## Context to load when resuming
 
-- `spec.md`: the outline. Each section's one sentence is its charter.
-- `plans/clean-room/plan.md`: the decisions (D1 onward) and open questions.
-- `plans/clean-room/research/`: research notes behind specific chapters.
-- `para-design-v4.md` (on `main` until Phase 2, and always at the `poc-final` tag): the PoC design,
-  background only. Where it disagrees with a decision, the decision wins.
-- `bd show para-a1b.2`: the Phase 1 issue.
+- `spec.md`: the outline and drafted sections. Each undrafted section's one sentence is its charter.
+- `plans/clean-room/plan.md`: decisions D1–D24, open questions, and design inputs.
+- `plans/clean-room/research/labeling.md`: research behind chapter 6.
+- `para-design-v4.md` (on `main` until Phase 2, always at `poc-final`): PoC design, background only. Decisions win where they disagree.
+- `bd show para-a1b.2`: progress notes.
 
 ## The loop
 
 1. **Go.** The human says go, naming a section or taking the next one in outline order.
-2. **Draft.** Write the section in `spec.md` under its header, from its charter and the decisions.
-3. **Humanize.** Run the draft through the humanizer skill.
-4. **Review, round 1.** Three subagents review the draft in parallel, one lens each (below). They
-   report findings only and never edit.
-5. **Fix.** Check each finding and dismiss any that do not hold up, saying why. Fix every reject,
-   blocker and major. Fix a minor only if the fix is clean and small.
-6. **Review, round 2.** The same three lenses review the revised draft.
-   - Only minors left: fix the clean ones, humanize the changed text, then go to human review.
-   - Any reject, blocker or major left: stop and escalate to the human, who decides whether to
-     continue.
-7. **Human review.** The human reads the section and gives feedback; iterate until approved.
-8. **Commit.** One commit per approved section.
+2. **Draft.** Write the section in `spec.md` under its header, from its charter and the decisions. Check facts against sources before writing (as §0.2 did with Forte's article).
+3. **Humanize.** Apply the humanizer skill's rules (load it with the Skill tool in a fresh session): no dashes, no "not X but Y", no one-line closers, no padding.
+4. **Review, round 1.** Three fresh `general-purpose` subagents in parallel, in the background, one lens each (template below). They report only.
+5. **Fix.** Wait for all three, then show the human a table of findings and actions. Dismiss findings that do not hold up, saying why. Fix every reject, blocker and major; fix minors that are clean and small.
+6. **Review, round 2.** Send the revised draft to the same three agents with `SendMessage` (they keep their context), listing what changed.
+   - Only minors left: fix the clean ones, then go to human review.
+   - Any reject, blocker or major left: apply a clean fix if there is one, and escalate to the human, saying so.
+7. **Human review.** Show the full section text and what the reviews changed. Iterate until approved.
+8. **Commit.** One commit per approved section (`docs(spec): write X.Y Title`), then `bd update para-a1b.2 --append-notes "..."` and `bd dolt push`.
 
-At most two review rounds per section.
+At most two review rounds per section, unless the human asks for another.
+
+**When a review raises a design question** (as `remove` did in §0.3), stop and ask the human. If the choice is hard, run three subagents through user lenses (a person using the CLI, an AI agent in the tree, scripts and maintainers) to compare the options, then recommend. Record the answer as the next D-number in the plan.
+
+**If a reviewer's report does not arrive** after its completion notice, ask it to resend with `SendMessage`.
 
 ## Severities
 
@@ -52,25 +69,38 @@ At most two review rounds per section.
 | Major | A gap or ambiguity that would mislead a reader or an implementer | Must fix |
 | Minor | Wording, ordering or small clarity issues | Fix if clean and small |
 
-Each finding gives: location, severity, the problem, and a suggested fix.
-
 ## Review lenses
 
 The reader-clarity lens carries the most weight.
 
-1. **Reader clarity and less is more** (primary). Could a newcomer, human or agent, understand it
-   with only the spec? Flags undefined terms, hidden assumptions, sentences with two readings,
-   explanation mixed into rules, and anything repeated, padded or unnecessary.
-2. **Consistency and scope.** Agrees with every decision and every other section's charter; stays
-   inside its own charter and covers all of it; uses terms as the glossary defines them; carries
-   nothing the decisions reversed (paths as addresses, skills, `CLAUDE.md` generation, `resource`
-   as a kind).
-3. **Implementation and edge cases.** Read as the engineer who must build and test it. Flags
-   statements too vague to test, missing edge cases (empty tree, merge collision, hand edit,
-   symlink), unhandled failures, security rules (path climbing, label loosening), and examples
-   that disagree with each other or with Appendix A.
+1. **Reader clarity and less is more** (primary). Could a newcomer, human or agent, understand it with only the spec? Flags undefined terms, hidden assumptions, two readings, padding, repetition of earlier sections, anything that could be shorter.
+2. **Consistency and scope.** Agrees with every decision and every other section's charter; stays inside its own charter and covers all of it; uses terms as defined (D17); carries nothing the decisions reversed (paths as addresses, skills, `CLAUDE.md` generation, `resource` as a kind); link anchors resolve; for sections about outside sources, fidelity to the source.
+3. **Implementation and edge cases.** Read as the engineer who must build and test it. Flags promises that cannot be kept or tested, missing edge cases (empty tree, merge collision, hand edit, symlink, case-insensitive filesystem, partial failure), and security rules. Does not demand detail that belongs to later chapters.
 
-## Progress
+### Reviewer prompt template
 
-Track the current section in `para-a1b.2`'s notes (`bd update para-a1b.2 --append-notes "..."`), so
-a new session knows where to pick up.
+> You are reviewing one drafted section of a software specification. Report findings only; do not edit any file.
+>
+> **Project.** `para` is a Go CLI that deterministically manages the structure and metadata of a PARA file tree. The spec is written section by section in `/Users/maxdunn/dev/colchuck-ai/para/spec.md`; undrafted sections are one-sentence charters. Conventions: cross-references are Markdown links to heading anchors (no § sign); one line per paragraph; the tool is `para` in backticks.
+>
+> **Section under review:** §X.Y "Title" (from `### X.Y` to the next header). Charter: "…". Earlier sections are approved; don't re-review them, but flag repetition or mismatch.
+>
+> **Context:** decisions in `plans/clean-room/plan.md`; severities in `plans/clean-room/section-drafting-process.md`; (lens-specific background files).
+>
+> **Your lens: …** (lens description, plus the section's riskiest claims or edge cases to probe).
+>
+> **Severities:** Reject, Blocker, Major, Minor. **Output:** numbered list; each: location (quote), severity, problem (1–2 sentences), concrete fix. Say so if nothing is above Minor. Don't invent problems. Under 350 words.
+
+## Notes carried forward to later sections
+
+Commitments made while drafting chapter 0 that later sections must honour:
+
+- **Every managed folder has a `.para/`**: the root (holding `tree.toml`), buckets, archive buckets, containers and entities (§0.3). Storage (§3) and the model (§2.1, §2.2) must keep this true.
+- **Provenance records live in `.para/`** (§0.3). Chapter 6 may refine how, not where.
+- **Collision rule** (§0.3): refuse rather than overwrite or merge, except that an existing README or `AGENTS.md` gets `para`'s part added and adoption adds a `.para/` to an existing folder. Adoption (§2.4) and migration (§9.1) must follow it; files a v0 `para` wrote count as `para`'s side.
+- **Damaged block markers**: `para` must refuse to rewrite rather than guess, so it never overwrites the user's text. Belongs in §5.2.
+- **Case-insensitive filesystems** (`README.md` vs `readme.md`): collisions resolve as the filesystem sees them. Belongs in §8.1.
+- **Partial failure**: validation happens before any write; what happens if a write fails partway (including `remove` reruns, D22) belongs in §8.1.
+- **`doctor`** reports a `.para/` that `para` did not create, and references to removed ids (§8.2).
+- **Determinism** (§0.1): output and changes depend only on the tree, arguments and current time, apart from new ids. Config must therefore come from inside the tree (§3.6), or §0.1 needs revisiting.
+- **README frontmatter**: `para` writes only its own keys (D24); §5.3 defines them.
