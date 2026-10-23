@@ -41,6 +41,7 @@ The next revision starts from one unified spec, and new code is written against 
 | D23 | **Generated files live in `.para/`.** `ACTIVITY.md` and `MEASUREMENTS.csv` are written inside the entity's `.para/`, and `para`'s README block links to them. The only visible files `para` writes in are a README and `AGENTS.md` (root, buckets and archive buckets), and only inside its blocks. On `remove`, the parent's README block is regenerated and the removal is recorded in the parent's journal, so the parent's history says what became of the child. `AGENTS.md` is unaffected by `remove`. |
 | D24 | **`para` owns only its own keys in README frontmatter.** Keys you add (Obsidian `tags`, `aliases` and so on) are content: `para` adds, updates and removes only the keys it writes and keeps yours. |
 | D25 | **Every refusal says why and what to do instead.** It names the rule, the offending id or path, and a remedy: a command to run, or, when content is in the way, the user's own files to move. This makes the right path the easy one (§0.4); §7.10 defines how the remedy appears in text and JSON output. |
+| D26 | **`para` never runs git or requires a repository.** It writes files and leaves committing, merging and syncing to you, so it works the same in any tree and never commits for you. §3.8 says how its files behave in a repository (whether it reads `.git/` or writes `.gitattributes` is settled there). Carried from the PoC (v4 §9). |
 
 ## What leaves with skills
 

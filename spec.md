@@ -52,7 +52,15 @@ The commands make the right path the easy one. Every change to the structure is 
 Within that framework, agents are free to create, edit and organize content with any tool ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)).
 
 ### 0.5 Scope and non-goals
-What `para` does not do, such as distribute skills, so features outside it are refused for a stated reason.
+
+These are outside `para`'s scope, and a feature that falls under one is declined for the reason given.
+
+- **Skills and tool-specific files**: `para` does not distribute skills (instructions packaged for an agent) or generate files for one agent tool, such as Cursor rules or `CLAUDE.md`. Distributing skills is its own problem, tool-specific files differ from tool to tool, and other tools can layer both on a tree. `para` writes only its own block in `AGENTS.md`, a file many agent tools read and that you may also use for your own instructions ([`AGENTS.md`](#56-agentsmd)). [`para migrate`](#91-migrating-a-v0-tree) removes the `CLAUDE.md` blocks an earlier version wrote.
+- **Version control**: `para` never runs git or requires a repository, so it works the same in any tree and never commits for you. [Git](#38-git) covers how its files behave in a repository.
+- **Interpreting content**: `para` never judges a file by what it says, and calls no AI model. A model's answer would make commands nondeterministic, so a file's label and provenance come from what a person or agent records and from the tree's rules.
+- **Reaching outside the tree**: `para` never fetches or sends anything over a network, which keeps every command [deterministic](#01-what-para-is). A [link](#110-links) points to something outside the tree and is flagged when it is due to be checked or updated, and outside values enter only as [recorded measurements](#42-recording-measurements).
+- **Running on its own**: `para` has no background process, schedule or notifications, so nothing changes the tree unless someone runs a command. [`review`](#77-review) is how to ask what needs attention.
+- **Access control**: `para` does not encrypt files or set file permissions. A [sensitivity label](#112-sensitivity-labels) records how far content may travel, but `para` cannot stop a readable file being copied. [What para does with labels](#65-what-para-does-with-labels) covers what it does instead.
 
 ### 0.6 Principles
 The few rules every design decision follows, so new questions can be answered without redesigning.
