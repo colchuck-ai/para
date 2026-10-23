@@ -29,7 +29,7 @@ In `para`, each category is a top-level [bucket](#12-buckets) of the tree.
 
 The tree's structure and metadata belong to `para`. They are:
 
-- every folder `para` manages (the folder itself, not what you put in it): the root, the buckets and archive buckets, containers such as `objectives/`, and every entity. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
+- every folder `para` manages (the folder itself, not what you put in it): the root, the buckets and archive buckets, containers such as `objectives/`, archive stubs, and every entity. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
 - everything inside each `.para/`: state, config (including sensitivity rules), the journal, provenance records and the files `para` generates, such as `ACTIVITY.md` ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
 - the keys `para` writes in README frontmatter, its marked blocks in `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
 
@@ -89,7 +89,7 @@ Every example starts from the tree in Appendix A unless it names another startin
 
 A tree is a root directory and everything in it. The root's `.para/state.toml` has `kind = "root"`, which marks the tree, and records the tree's schema version and the prefix of its ids ([`state.toml`](#32-statetoml)). [`init`](#73-init) creates a tree, and every command that works on a tree finds it by checking the current directory and then each parent for a `.para/state.toml` with `kind = "root"` ([the walk](#36-the-walk)). A v0 tree is marked by `tree.toml` instead, and only [`migrate`](#91-migrating-a-v0-tree) works on it.
 
-Under the root are the four [buckets](#12-buckets), and `archive/` holds archive buckets that mirror the other three ([archive](#17-archive)). Within the buckets are the entities, directories of the kinds `para` tracks by id, such as projects, areas and dirs ([kinds and containment](#22-kinds-and-containment)). Some entities group their children in a container, such as a project's `objectives/`. Every managed folder, entity or not, has a `.para/` whose `state.toml` records its kind, and each except the root sits directly inside another. The root, buckets, archive buckets and containers have no id and are not entities.
+Under the root are the four [buckets](#12-buckets), and `archive/` holds archive buckets that mirror the other three ([archive](#17-archive)). Within the buckets are the entities, directories of the kinds `para` tracks by id, such as projects, areas and dirs ([kinds and containment](#22-kinds-and-containment)). Some entities group their children in a container, such as a project's `objectives/`. Every managed folder, entity or not, has a `.para/` whose `state.toml` records its kind, and each except the root sits directly inside another. The root, buckets, archive buckets, containers and archive [stubs](#17-archive) have no id and are not entities.
 
 ```text
 brain/                     the root
@@ -116,7 +116,21 @@ The sketch is abridged; [the example tree](#appendix-a-example-tree) is complete
 Every entity has an id made of the tree's prefix and a short random code, such as `brain-7k2q`, and commands name entities only by id ([addressing](#23-addressing)). `para` never reuses an id. A git merge or a hand copy of an entity's folder can still duplicate one; [`doctor`](#82-doctor-findings) reports it, and [repair](#83-repair) gives all but one holder a new id, the only time an id changes.
 
 ### 1.2 Buckets
-The four top-level folders, which are the first sorting decision for anything filed.
+
+The four buckets are the top-level folders of a tree, one for each PARA category: `projects/`, `areas/`, `resources/` and `archive/`. [`init`](#73-init) creates them, with the archive buckets and the measurement library, and their names are fixed. Filing anything starts with choosing its bucket, the most actionable one that fits ([the PARA method](#02-the-para-method)).
+
+Each bucket directly holds:
+
+| Bucket | Holds |
+| --- | --- |
+| `projects/` | [projects](#13-projects) |
+| `areas/` | [areas](#14-areas) |
+| `resources/` | [dirs](#111-dirs), and the [measurement library](#15-measurement) in `measurement/` ([resources](#16-resources)) |
+| `archive/` | the archive buckets `projects/`, `areas/` and `resources/` |
+
+Each archive bucket holds the projects, areas or dirs archived from the matching bucket, and the [stubs](#17-archive) that stand in for a live ancestor so an archived entity keeps its path.
+
+Besides those, every bucket and archive bucket holds its `.para/`, a `README.md` and an `AGENTS.md`. `para` writes its own block in each of the last two, and anything you write outside the block is yours ([para-owned blocks](#52-para-owned-blocks)). Anything else put directly in a bucket or archive bucket, such as a file or a folder with no `.para/`, stays content that `para` never moves or deletes, but [`doctor`](#82-doctor-findings) reports it and says to move it into an entity, or to [adopt](#24-adopting-existing-directories) a folder as one.
 
 ### 1.3 Projects
 Work with a finish line, the main unit people and agents act on.
