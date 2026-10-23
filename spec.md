@@ -143,10 +143,26 @@ A project holds its [objectives](#131-objectives) in `objectives/`, each with it
 A project stays in `projects/` whatever its status until you [archive](#17-archive) it, which moves it to `archive/projects/`.
 
 #### 1.3.1 Objectives
-What a project is trying to achieve, with objectives and key results (OKRs) explained from scratch here, since they exist only inside projects.
+
+Objectives and key results (OKRs) are a goal-setting method. An objective says in words what you want to achieve, such as making the website easy to find. Its key results say how you will know: each is a number with a target and a due date, such as 200 weekly visitors from search by 30 June.
+
+In `para`, objectives exist only inside projects. Besides its `.para/` and README, an objective holds only its key results, in `key-results/`, and any content of your own ([kinds and containment](#22-kinds-and-containment)). It has a [status](#114-status) from the same set as a project and may have a due date. Its key results show whether it is being met but never change its status, so a person or agent decides when it is `done`. Areas have a matching pair for ongoing upkeep, [standards](#141-standards) and [indicators](#142-indicators).
 
 #### 1.3.2 Key results
-An analytic held to a target by a due date, showing whether an objective is met, which makes progress checkable.
+
+A key result holds an [analytic](#151-analytics) (the number tracked, such as weekly visitors from search) to a target by its due date. Every key result has its own due date, required when it is created, which separates it from an [indicator](#142-indicators) and its rolling window. The analytic computes its value from [metrics](#152-metrics), where each raw value is recorded once, so any key result or indicator can use it ([measurement](#15-measurement)). Each key result is a folder in its objective's `key-results/` and holds no other entities. Together, an objective's key results show whether it is met.
+
+Apart from `dropped`, which you set, its status is computed from the analytic, the target, the due date and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#57-what-is-never-stored)). The first row that applies wins:
+
+| Status | Means |
+| --- | --- |
+| `dropped` | you set it for a key result you no longer pursue; clearing it returns the computed status |
+| `achieved` | the analytic has reached the target |
+| `missed` | the due date has passed without reaching the target |
+| `at-risk` | progress is too slow to reach the target by the due date |
+| `on-track` | none of the above |
+
+Before the due date, status follows the latest value, so a key result that falls back short of its target is no longer `achieved`. Once the due date has passed, status uses the latest value dated on or before it, so later readings do not change it.
 
 ### 1.4 Areas
 Ongoing responsibilities with no end date, which hold standards rather than deadlines.
@@ -257,7 +273,7 @@ How dated values are recorded against a metric, the only place raw data enters t
 How a target is set on an analytic, by a due date or over a rolling window, so goals and standards are measured the same way.
 
 ### 4.4 Derived status
-How on track, behind or breached is worked out, so nobody has to set it by hand.
+How key result and indicator statuses are worked out from an analytic, a target and the time, so nobody has to set them by hand.
 
 ### 4.5 Staleness
 When something counts as neglected, which is the main signal review gives.
