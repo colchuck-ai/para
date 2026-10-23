@@ -18,13 +18,25 @@ The next revision starts from one unified spec, and new code is written against 
 | --- | --- |
 | D1 | **The code is rewritten from the new spec, test first.** The PoC is reference material. A package may be ported, but only as a deliberate, reviewed step that brings its tests along. Nothing is bulk-copied. |
 | D2 | **Same repo, fresh start.** Tag the PoC, then replace `main`'s tree. History and the module path (`github.com/colchuck-ai/para`) are kept. |
-| D3 | **Existing trees keep working in place.** The next revision reads a v0 tree (e.g. `~/brain`) with no migration step. Skills are the only exception (D4). |
+| D3 | **Existing trees keep their data.** A v0 tree (e.g. `~/brain`) is upgraded by one explicit `para migrate` (D14), never by hand. Skills are the only exception (D4). |
 | D4 | **Skills are removed, with no migration.** Distributing skills is a separate problem that para keeps out of scope. Skills can be layered on top of a para tree by other tools. |
-| D5 | **`AGENTS.md` and `CLAUDE.md` stay** as marker-scoped generated blocks. `CLAUDE.md` loses its rule imports. |
+| D5 | **`AGENTS.md` stays** as marker-scoped generated blocks. `CLAUDE.md` is no longer generated (D21). |
 | D6 | **`skill` and `skills` are ordinary names again.** Both leave the reserved-word list. |
-| D7 | **The tree format stays at its current version, `schema = 1`** (what `~/brain` and the code use). `schema = 2` and `para migrate` were designed in §30.5 but never built. |
+| D7 | **`para migrate` moves a tree from `schema = 1` to `schema = 2`**, adding an id and a stored `kind` to every entity in one pass. v0.8.0 reads and writes only schema 2. (Reverses the earlier "stay at schema 1".) |
 | D8 | **The first clean-room release is `v0.8.0`.** |
-| D9 | **Managed Directories and sensitivity labels are designed as part of the new spec** and ship in `v0.8.0`. Storing `kind` in `state.toml` was the first step toward them. The design is worked through together, chapter by chapter, in Phase 1. |
+| D9 | **Dirs and sensitivity labels are designed as part of the new spec** and ship in `v0.8.0`. Storing `kind` in `state.toml` was the first step toward them. The design is worked through together, chapter by chapter, in Phase 1. |
+| D10 | **Addressing is by a generated, stored id, not by path.** The id is the key and survives moves and re-parenting; it resolves to the thing's name and path for people. Design details are settled in Phase 1 (§2.3 of `spec.md`). |
+| D11 | **Commands take an id only.** Names and paths are not accepted as addresses; an id is looked up first (with `list`), so every output shows ids. |
+| D12 | **Ids are a tree prefix plus a short random code**, like beads (`brain-7k2q`). The code grows longer as the number of ids grows, to keep collisions unlikely. The scaling rule follows a study of beads. |
+| D13 | **Id rules.** Code is random (not a content hash) over lowercase `0-9a-z`; at least 4 characters; length chosen so the chance of any collision stays at or below 1%, counting every id ever issued in the tree, so lengths only grow (4 up to ~180 ids, 5 up to ~1,100, 6 up to ~6,600). Prefix is letters and digits, no hyphen. No child ids. Local collisions are retried at creation; `doctor` reports duplicate ids, which only a merge can produce. Studied from beads; see the Phase 1 notes. |
+| D14 | **`para migrate` upgrades a tree explicitly.** It assigns ids to a v0 tree (and runs any later format change). Other commands refuse an unmigrated tree and name the command. Amends D3. |
+| D15 | **Sensitivity is an inheritance tree of entities.** Each entity's `config.toml` sets its sensitivity and may name paths beneath it, including unmanaged ones, that need a stricter label. A path rule never reaches into a child entity: the child classifies everything inside itself, so two configs never claim the same file. A child entity may only match or tighten its parent's label, never lower it. Path rules are relative to their own directory and may not climb out of it: no `..` segments, no absolute paths, and no symlink whose target resolves outside the directory. |
+| D16 | **Entities form an unbroken chain from the root.** Every entity's parent is itself managed by para (the root, a bucket, a container such as `objectives/`, or another entity), so an unmanaged directory can never hold an entity. Commands refuse to create a gap, and `doctor` reports one made by hand (the PoC's `orphan` finding). Adopting an existing folder therefore works from the top down. |
+| D17 | **Terms.** An *entity* is any directory para manages: a project, area, objective, key result, standard, indicator, analytic, metric, term, link or dir. A *dir* is the basic kind of entity (D18). *Directory* stays an ordinary word for any folder on disk. *Component* means anything in the spec's tour (chapter 1). |
+| D18 | **What a dir is.** It carries a journal, notes, links, `ACTIVITY.md` and a README with frontmatter, plus sensitivity and provenance; it has no status. It sits in the resources bucket or inside a project, area or another dir, never directly in the projects or areas bucket, and never contains a project or area. **Resource is no longer a kind:** the resources bucket is a hierarchy of dirs, and `para migrate` converts each `kind = "resource"` to `dir`. A dir can be archived on its own, the same way as anything else: it moves to the archive bucket at a path that mirrors where it came from. To tighten one subfolder's label, use a path rule; make the subfolder a dir only when it needs more than a label. |
+| D19 | **Areas have standards and indicators**, mirroring projects' objectives and key results. A standard is the qualitative bar an area keeps up. Both are optional: an area may have no standards, and a standard may have no indicators. But an indicator always sits under a standard, never directly under an area. An indicator holds an analytic to a target over a rolling window (a KPI, or an SLI with its SLO) and has a computed status (D20). |
+| D20 | **The measurement library.** Analytics, metrics and terms are kinds that live in one fixed place, `resources/measurement/{analytics,metrics,terms}`; para creates it, and `measurement` is a reserved name. An *analytic* is a computation over metrics, with no target of its own. A *metric* is a single measurement point; its dated values are the measurements, which belong only to metrics. A *term* is a shared definition that scopes metrics. These relationships are many-to-many, so they are references by id, not nesting. A *key result* holds an analytic to a target by a due date; an *indicator* holds an analytic to a target over a rolling window. One analytic may serve any number of key results and indicators across projects and areas. |
+| D21 | **Para no longer generates `CLAUDE.md`**, and the `emit.claude` key is retired. Claude Code reads `AGENTS.md` itself since 2.1.277 (root and parents at start, subfolders on first use). `para migrate` removes para's block from existing `CLAUDE.md` files and deletes any left empty. Because any `CLAUDE.md` or `CLAUDE.local.md` in or above the tree turns off Claude Code's `AGENTS.md` reading, `doctor` reports one that does not import `@AGENTS.md`. |
 
 ## What leaves with skills
 
@@ -46,10 +58,10 @@ D4 removes more than one noun. Everything below exists only because skills did:
 
 - It never walks `.agents/`, `.claude/` or `.cursor/`. A `kind = "skill"` `state.toml` in there is
   invisible to it.
-- `emit.cursor` and `emit.claude-skills` in `config.toml` are read as **retired keys**: ignored,
+- `emit.cursor`, `emit.claude-skills` and `emit.claude` in `config.toml` are read as **retired keys**: ignored,
   with one `doctor` note saying they can be removed.
-- The first `rebuild` rewrites the `CLAUDE.md` block without the `@.agents/rules/…` imports. This
-  is the only v0 file the next revision changes as a result of D4.
+- `para migrate` removes para's block from every `CLAUDE.md`, rule imports included, and deletes a
+  file left empty (D21).
 - Old journal events about skills are still valid lines, but the next revision does not render them.
 - Cleaning up the leftover files by hand is the user's job. The compat chapter (below) lists them.
 
@@ -75,29 +87,22 @@ This is the bulk of the thinking. The spec is written **before** any new code ex
 
 ```
 README.md                    what para is, install, a five-minute walkthrough
+spec.md                      the whole specification: tour, detail, examples, glossary
 docs/
-  spec/                      normative: what para does, present tense
-    00-principles.md
-    01-model.md              tree shapes, kinds, containment, addressing
-    02-storage.md            tree.toml, state.toml, journals, config, git posture
-    03-projections.md        README frontmatter, ACTIVITY.md, MEASUREMENTS.csv, AGENTS.md, CLAUDE.md
-    04-cli.md                grammar, verbs, fields, filters, output, exit codes
-    05-review-doctor.md      review groups, doctor findings, rebuild
-    06-features.md           key results and measurements, suppression, links
-    07-managed-dirs.md       Managed Directories and sensitivity labels (new)
-    08-compat.md             reading a v0 tree; retired keys and files
-    examples/                worked examples, which are also the acceptance suite
-  glossary.md                one definition per term
   decisions/                 short ADRs, current decisions only
   release-process.md
 AGENTS.md / CLAUDE.md        contributor and agent orientation for this repo
 ```
 
+The spec is one file so it can be read and written as a whole. Its chapters are listed in
+`spec.md` itself. The glossary is its Appendix C, and the worked examples (Appendix B) are also
+the acceptance suite.
+
 ### 1.2 Where each existing document goes
 
 | Today | Goes to |
 | --- | --- |
-| `para-design-v4.md` §0–§10, §13–§24, §26, §28–§30 | Rewritten into `spec/`, with amendments folded into their topic chapter |
+| `para-design-v4.md` §0–§10, §13–§24, §26, §28–§30 | Rewritten into `spec.md`, with amendments folded into their topic chapter |
 | `para-design-v4.md` §5, §6.1 skill parts, §6.2 | Dropped (D4) |
 | `para-design-v4.md` §11, §25 (decision logs) | Harvested into `decisions/` for decisions still in force |
 | `para-design-v4.md` §12, §24 (reversals, scale across drafts) | Dropped. Kept in history at `poc-final` |
@@ -116,25 +121,19 @@ AGENTS.md / CLAUDE.md        contributor and agent orientation for this repo
 - **Stable anchors, not line numbers.** Tests and ADRs cite spec sections by anchor.
 - **Every feature re-earns its place.** Rewriting each chapter is the moment to cut, not just to
   copy. Section 1.4 lists the candidates.
-- **One term, one meaning.** `glossary.md` is written first and the chapters use its words.
+- **One term, one meaning.** The glossary (Appendix C) is written first and the chapters use its words.
 
 ### 1.4 Questions to settle while writing the spec
 
-1. **Feature cuts.** These are candidates to argue, not decisions: `migrate` (is there anything left
-   for it to do?), `path`, the `log` / `activity` split, filter flags versus `--where`.
-2. **Stored kind in a `schema = 1` tree.** Managed Directories (D9) need a stored `kind`, and
-   §30.5 planned a schema bump to 2 plus `para migrate` to fill it in. D7 rules out the bump. The
-   likely answer: a missing `kind` means the kind its position implies, and `add` writes `kind`
-   for every new directory. Settle this in `01-model.md`.
-3. **`emit.claude`.** With no rule imports, the block is `@AGENTS.md` plus a note. Is
-   `emit.claude` still worth a config key, or is `CLAUDE.md` always written?
-4. **Managed Directory.** Its word, where it may sit, its address form (including the ambiguous
-   chain that §30.2 flags), and how it appears in projections, `review` and `doctor`.
-5. **Sensitivity labels.** Which directories can carry a label, the default, how a label
+1. **Feature cuts.** These are candidates to argue, not decisions: `path`, the `log` / `activity` split, filter flags versus `--where`.
+2. **Dir.** Where it may sit, and how it appears in projections, `review` and `doctor`.
+3. **Sensitivity labels.** Which directories can carry a label, the default, how a label
    reaches files beneath it, what para does with a label (does it show it, check it, or put it in
-   `AGENTS.md`?), and how a v0 tree with no labels reads.
+   `AGENTS.md`?), and how a tree with no labels behaves.
+4. **Ids in practice.** Where the "every id ever issued" count lives without causing merge
+   conflicts, and how `list` makes looking up an id easy (D11).
 
-Done when: every `spec/` chapter is reviewed, every question in 1.4 has an answer recorded in
+Done when: every `spec.md` chapter is reviewed, every question in 1.4 has an answer recorded in
 `decisions/`, and nothing in `docs/` contradicts anything else.
 
 ## Phase 2: Fresh start on main
@@ -157,8 +156,8 @@ Done when: `main` holds the spec, the release machinery and a stub binary, and C
   the spec's worked examples transcribed into `testscript` before the code that runs them.
 - **The compat fixture is written early.** It is a synthetic v0 tree that has every v0 artifact,
   skills, rules and mirrors included, built from the PoC's own output. No personal data from
-  `~/brain`. The tests check that the new binary reads it, `doctor` reports only the retired-key
-  note, and `rebuild` changes nothing except the `CLAUDE.md` block.
+  `~/brain`. The tests check that `para migrate` upgrades it (ids, stored kinds, resources to dirs,
+  `CLAUDE.md` blocks removed), and that `doctor` afterwards reports only retired-key notes.
 - **Port policy.** The low-level PoC packages (`ptoml`, `mdfile`, `journal`, `ptime`, `csvfile`,
   `tagexpr`) are the likely candidates. Each port is its own beads issue. It cites the spec section
   it satisfies and brings or rewrites its tests. Anything that does not fit the spec's model is
@@ -176,8 +175,8 @@ Done when: every spec example passes as a script test, and the compat fixture pa
 
 ## Design inputs
 
-- **The Managed Directory kind.** `para-design-v4.md` §30 (Sep 3) moved `kind` into `state.toml`
-  so that a "Managed Directory" could exist: a directory that holds files at a natural,
+- **The dir kind** (v4 called it a "Managed Directory"). `para-design-v4.md` §30 (Sep 3)
+  moved `kind` into `state.toml` so that this kind could exist: a directory that holds files at a natural,
   user-chosen path such as `areas/relationships/people` or `projects/acme/evidence`, where the
   position implies no kind. §30.2 leaves the kind "deliberately unbuilt": it has no word, no
   containment row and no chain shape, and no code exists for it. Its follow-up issue was probably
@@ -185,7 +184,7 @@ Done when: every spec example passes as a script test, and the compat fixture pa
   only exists to support it. The PR for `para-sxt` (#15) says the feature that needed it was
   `para-5ul.1`, at a path like `projects/entra/evidence`. That issue is lost too, and nothing
   else records what it was.
-- **Sensitivity scoped by Managed Directory.** A classification set in a Managed Directory's
+- **Sensitivity scoped by entity.** A classification set in an entity's
   `.para/` applies to every file beneath it, so no file carries its own label. Nothing in the
   repo records this pairing yet. The labelling rules from the Oct 20 brain session carry over:
   TLP 2.0 labels (CLEAR, GREEN, AMBER, AMBER+STRICT, RED); a nested directory may tighten its
@@ -194,6 +193,8 @@ Done when: every spec example passes as a script test, and the compat fixture pa
   reading for its rules: the noun narrows lookup before an ambiguity check, the subject is
   the only bare argument, and relations are flags named after their kind. Para's v4 grammar has
   the same `verb noun` shape.
+
+- **Provenance per file.** Where each file came from, tracked at the file level, as metadata para manages. Builds on the Oct 20 brain session's record / trusted / untrusted model. Design in Phase 1.
 
 ## Not in scope
 
