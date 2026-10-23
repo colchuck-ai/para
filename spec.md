@@ -56,7 +56,7 @@ Within that framework, agents are free to create, edit and organize content with
 These are outside `para`'s scope, and a feature that falls under one is declined for the reason given.
 
 - **Skills and tool-specific files**: `para` does not distribute skills (instructions packaged for an agent) or generate files for one agent tool, such as Cursor rules or `CLAUDE.md`. Distributing skills is its own problem, and tool-specific files differ from tool to tool. Other tools can layer both on a tree, and layering skills on top is the intended way to customize how agents work with it. `para` writes only its own block in `AGENTS.md`, a file many agent tools read and that you may also use for your own instructions ([`AGENTS.md`](#56-agentsmd)). [`para migrate`](#91-migrating-a-v0-tree) removes the `CLAUDE.md` blocks an earlier version wrote.
-- **Version control**: `para` never runs git or requires a repository, so it works the same in any tree and never commits for you. [Git](#38-git) covers how its files behave in a repository.
+- **Version control**: `para` never runs git or requires a repository, so it works the same in any tree and never commits for you. [Git](#37-git) covers how its files behave in a repository.
 - **Interpreting content**: `para` never judges a file by what it says, and calls no AI model. A model's answer would make commands nondeterministic, so a file's label and provenance come from what a person or agent records and from the tree's rules.
 - **Reaching outside the tree**: `para` never fetches or sends anything over a network, which keeps every command [deterministic](#01-what-para-is). A [link](#110-links) points to something outside the tree and is flagged when it is due to be checked or updated, and outside values enter only as [recorded measurements](#42-recording-measurements).
 - **Running on its own**: `para` has no background process, schedule or notifications, so nothing changes the tree unless someone runs a command. [`review`](#77-review) is how to ask what needs attention.
@@ -86,7 +86,34 @@ Every example starts from the tree in Appendix A unless it names another startin
 ## 1. Components
 
 ### 1.1 The tree
-The root directory and the entities in it (every directory `para` manages, each with its own id), because every other component lives inside one tree.
+
+A tree is a root directory and everything in it. The root's `.para/state.toml` has `kind = "root"`, which marks the tree, and records the tree's schema version and the prefix of its ids ([`state.toml`](#32-statetoml)). [`init`](#73-init) creates a tree, and every command that works on a tree finds it by checking the current directory and then each parent for a `.para/state.toml` with `kind = "root"` ([the walk](#36-the-walk)). A v0 tree is marked by `tree.toml` instead, and only [`migrate`](#91-migrating-a-v0-tree) works on it.
+
+Under the root are the four [buckets](#12-buckets), and `archive/` holds archive buckets that mirror the other three ([archive](#17-archive)). Within the buckets are the entities, directories of the kinds `para` tracks by id, such as projects, areas and dirs ([kinds and containment](#22-kinds-and-containment)). Some entities group their children in a container, such as a project's `objectives/`. Every managed folder, entity or not, has a `.para/` whose `state.toml` records its kind, and each except the root sits directly inside another. The root, buckets, archive buckets and containers have no id and are not entities.
+
+```text
+brain/                     the root
+├── .para/state.toml       holds kind = "root"
+├── AGENTS.md
+├── projects/              a bucket
+│   ├── .para/
+│   └── launch-website/    a project, id brain-7k2q
+│       ├── .para/
+│       ├── README.md
+│       ├── notes.md       content
+│       └── objectives/    a container
+│           └── .para/
+├── areas/
+├── resources/
+└── archive/               a bucket
+    ├── projects/          an archive bucket
+    ├── areas/
+    └── resources/
+```
+
+The sketch is abridged; [the example tree](#appendix-a-example-tree) is complete.
+
+Every entity has an id made of the tree's prefix and a short random code, such as `brain-7k2q`, and commands name entities only by id ([addressing](#23-addressing)). `para` never reuses an id. A git merge or a hand copy of an entity's folder can still duplicate one; [`doctor`](#82-doctor-findings) reports it, and [repair](#83-repair) gives all but one holder a new id, the only time an id changes.
 
 ### 1.2 Buckets
 The four top-level folders, which are the first sorting decision for anything filed.
@@ -179,25 +206,22 @@ How things move into and out of the archive, so finishing work never loses histo
 ### 3.1 Truth and projection
 Which files are authoritative and which are derived, so every fact has exactly one home.
 
-### 3.2 `tree.toml`
-The file that marks a tree's root and version, so `para` can find and trust a tree.
+### 3.2 `state.toml`
+The file in every `.para/` that is the one home of that folder's facts, including its kind, written only by the commands that make each fact true, never by `para config`; the root's (`kind = "root"`) also marks the tree and records its schema version and id prefix.
 
-### 3.3 `state.toml`
-The file that holds each thing's facts, the one source of truth `para` reads and writes.
-
-### 3.4 The journal
+### 3.3 The journal
 The format and rules of the event history, so history can be appended safely and read back.
 
-### 3.5 Time and the clock
+### 3.4 Time and the clock
 How times are recorded and compared, so dates mean the same thing everywhere.
 
-### 3.6 Config
-Settings and how they pass down the tree, so behaviour can be tuned in one place.
+### 3.5 Config
+The settings a person chooses with `para config`, stored in each `.para/config.toml`, which change only what `para` does from then on (within the limits of [how labels flow](#64-how-labels-flow)), and how they pass down the tree, so behaviour is set once and inherited below.
 
-### 3.7 The walk
-How `para` finds everything in a tree, so every command sees the same set of things.
+### 3.6 The walk
+How `para` finds a tree's root and everything in it, and what it does outside any tree, inside a nested tree and in an unmigrated v0 tree, which every command but `migrate` refuses, so every command sees the same set of things.
 
-### 3.8 Git
+### 3.7 Git
 How `para` behaves inside a git repository, since most trees are versioned and merged.
 
 ## 4. Progress and attention
@@ -312,10 +336,10 @@ How each finding is fixed, so diagnosis always leads to a remedy.
 ## 9. Compatibility
 
 ### 9.1 Migrating a v0 tree
-What `para migrate` does to an older tree, such as assigning ids, so upgrading is one explicit step that never strands data.
+What `para migrate` does to a v0 (schema 1) tree, such as assigning ids and moving `tree.toml` into the root's `state.toml`, so upgrading is one explicit step that never strands data.
 
 ### 9.2 Retired keys and files
-What `para` now ignores, such as skills and the `emit.*` keys, so leftovers are understood and not misread.
+What `para` now ignores, such as skills, the `emit.*` keys and a leftover `tree.toml`, so leftovers are understood and not misread.
 
 ### 9.3 Schema version
 What schema 2 is and how `para` treats other versions, so the format can evolve through `para migrate` and never silently.

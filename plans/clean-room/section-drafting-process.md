@@ -6,15 +6,18 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local only (not pushed). `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete).
-- **Next:** §1.1 The tree. Then continue in outline order.
-- **Decisions:** D1–D27 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree.
+- **Next:** §1.2 Buckets. Then continue in outline order.
+- **Decisions:** D1–D30 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
   - D25: every refusal says why and what to do instead. D13 amended: a hand copy (`cp -r`) can also duplicate ids.
   - D26: `para` never runs git or requires a repository.
   - D27: only a person lowers a label or raises trust, through an interactive confirmation with no non-interactive path.
+  - D28: every `.para/` holds a `state.toml` with its kind; the root's has `kind = "root"`, schema version and id prefix, replacing `tree.toml`. The `tree.toml` section was removed, and §3.3–§3.8 became §3.2–§3.7.
+  - D29: state holds facts (changing one would make a record false), config holds choices; the id prefix is state, fixed when the tree is created or migrated, and ids are never re-indexed.
+  - D30: repair resolves a duplicate id by giving one entity a new id, the person choosing which keeps it; the only time an id changes.
 
 ## Priorities
 
@@ -39,7 +42,7 @@ print('broken:',[l for l in re.findall(r'\]\(#([^)]+)\)',s) if l not in anchors]
 ## Context to load when resuming
 
 - `spec.md`: the outline and drafted sections. Each undrafted section's one sentence is its charter.
-- `plans/clean-room/plan.md`: decisions D1–D27, open questions, and design inputs.
+- `plans/clean-room/plan.md`: decisions D1–D30, open questions, and design inputs.
 - `plans/clean-room/research/labeling.md`: research behind chapter 6.
 - `para-design-v4.md` (on `main` until Phase 2, always at `poc-final`): PoC design, background only. Decisions win where they disagree.
 - `bd show para-a1b.2`: progress notes.
@@ -98,7 +101,7 @@ The reader-clarity lens carries the most weight.
 
 Commitments made while drafting chapter 0 that later sections must honour:
 
-- **Every managed folder has a `.para/`**: the root (holding `tree.toml`), buckets, archive buckets, containers and entities (§0.3). Storage (§3) and the model (§2.1, §2.2) must keep this true.
+- **Every managed folder has a `.para/`**: the root (its `state.toml` has `kind = "root"`, D28), buckets, archive buckets, containers and entities (§0.3). Storage (§3) and the model (§2.1, §2.2) must keep this true.
 - **Provenance records live in `.para/`** (§0.3). Chapter 6 may refine how, not where.
 - **Collision rule** (§0.3): refuse rather than overwrite or merge, except that an existing README or `AGENTS.md` gets `para`'s part added and adoption adds a `.para/` to an existing folder. Adoption (§2.4) and migration (§9.1) must follow it; files a v0 `para` wrote count as `para`'s side.
 - **Damaged block markers**: `para` must refuse to rewrite rather than guess, so it never overwrites the user's text. Belongs in §5.2.
@@ -107,19 +110,28 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Concurrent commands**: §0.4 says agents, people and scripts share a tree; what happens when two `para` commands run at once belongs in §8.1.
 - **Mid-write conditions** (a destination appearing mid-run, a full disk) are partial failures under §8.1, not refusals; §0.4 promises refusal only before anything is written.
 - **Ids in README frontmatter**: §0.4 says file tools can find any entity and its main facts, and commands take only ids (D11), so §5.3 must make the id a frontmatter key.
-- **Journaling outside entities**: §0.4 says each entity's journal shows what happened to it; §1.8 or §3.4 must say whether changes at the root and buckets (such as `AGENTS.md` blocks, D21's `CLAUDE.md` cleanup) are journaled, for example in the root's `.para/`.
+- **Journaling outside entities**: §0.4 says each entity's journal shows what happened to it; §1.8 or §3.3 must say whether changes at the root and buckets (such as `AGENTS.md` blocks, D21's `CLAUDE.md` cleanup) are journaled, for example in the root's `.para/`.
 - **A command for every structural change** (§0.4): every change §0.3 lists (create, move, rename, re-parent, archive, unarchive, remove, adopt) has a command, ideally one per change; check chapter 7's charters against this list.
 - **Refusals and remedies** (D25): every refusal gives the rule, the offending id or path, and what to do instead, which may be the user's own files to move; §7.10 defines the output.
 - **Hand changes `doctor` must catch** (§8.2): `mv` of an entity (possibly to a place its kind may not sit), `rm -r` of an entity, a hand edit to a `para` frontmatter key, and `cp -r` of an entity, which duplicates its id (D13). Decide whether a plain folder directly in `projects/` or `areas/` is a finding, since §0.3 calls it content.
-- **Git** (§3.8): §0.5 says `para` never runs git or requires a repository. §3.8 must settle whether `para` reads `.git/` and whether it writes `.gitattributes` (the PoC did; D23 allows only README and `AGENTS.md` as visible files).
+- **Git** (§3.7): §0.5 says `para` never runs git or requires a repository. §3.7 must settle whether `para` reads `.git/` and whether it writes `.gitattributes` (the PoC did; D23 allows only README and `AGENTS.md` as visible files).
 - **Time-dependent values in generated files** (§5.3): derived status depends on the current time, and generated files change only when a command runs (§0.5, §0.6 principle 4), so §5.3 must show such values with an as-of date or leave them out.
 - **Who may loosen a label or raise trust** (§6.4, D27): an interactive confirmation with no non-interactive path. This is the one exception to the non-interactive-confirmation note below.
 - **Commands given a duplicated id** (§8.2): after a merge or `cp -r` (D13), what a command does with an id held by two entities.
-- **Test hooks for the clock and ids** (§3.5, §2.3, Appendix B): §0.7 says Appendix B tells how tests fix the clock and new ids, so each must define a documented mechanism (such as an environment variable) and say whether users may rely on it.
+- **Test hooks for the clock and ids** (§3.4, §2.3, Appendix B): §0.7 says Appendix B tells how tests fix the clock and new ids, so each must define a documented mechanism (such as an environment variable) and say whether users may rely on it.
 - **Test output conditions** (§7.10, Appendix B): tests check output exactly (§0.7), so §7.10 must fix colour, width, locale, prompt text, JSON key order and `/` as the path separator, both with and without a terminal. A D27 confirmation needs a terminal, so the Phase 3 harness needs pseudo-terminal support; §6.4 should say whether an agent allocating its own pseudo-terminal is an accepted limit of D27.
 - **Example starting points** (Appendix A, B): Appendix A or each example must define the v0 tree and the "example tree with a stated change" form that `migrate` and `doctor` examples start from.
 - **Tour coverage** (chapter 1): §0.7 says chapter 1 tours the whole tool, but no tour section yet leads to the command line, `doctor`, `migrate` or config (chapters 7 to 9). Add one or link them from existing sections.
+- **Kinds of non-entities** (§2.1, §2.2, D28): the root, buckets, archive buckets and containers each have a kind in `state.toml` (`root` and others to be named), so §2.1 or §2.2 must list them beside the entity kinds.
+- **Entities moved between trees** (§2.3, §2.4, D29): an entity brought in from another tree carries that tree's prefix. Decide whether it keeps its id or gets a new one, and how a wrong-tree id is refused (D25). A new id here would need §1.1 and D30 amended, since repair is otherwise the only time an id changes.
+- **Top of the label chain** (§6.3, D15, D28): any `.para/` may hold a `config.toml`. Decide whether the root's or a bucket's config can set sensitivity, or whether inheritance starts at entities.
+- **Prefix validation** (§3.2, D13): a hand-edited prefix ends up in every new id, so `state.toml` reading must validate it.
+- **Repairing a duplicate id** (§8.3, D30, D11): repair must name one holder of a shared id (a path, as a stated exception to D11, or similar), give the choice a non-interactive form for agents, handle three or more holders, and re-id a copied subtree together so the keeper is chosen per subtree.
+- **Finding the tree** (§3.6): §1.1 says every command but `init` looks upward from the current directory for the nearest root (D28). §3.6 must settle a start outside any tree, inside a `.para/`, in a tree nested in another tree's content, under a symlinked root, and whether the PoC's `$PARA_HOME` override survives. Also: an ancestor `state.toml` that cannot be read (skip or refuse), an entity's `state.toml` hand-edited to `kind = "root"` (silently a nested tree; `doctor`?), the downward walk stopping at a nested root, and a v0 `tree.toml` recognised so every command but `migrate` refuses with the `para migrate` remedy (D14).
+- **Targeting folders without ids** (§2.3): the root, buckets and containers have no id (§1.1), so §2.3 must say how a command names one as a parent, such as creating a dir directly in `resources/` (D18).
+- **Issued-id record** (§2.3 or §3.2): §1.1 says `para` never reuses an id (and D30 repair issues new ids into the same record), so a per-tree record of issued ids must outlive `remove` (D22) and merge cleanly (plan §1.4 item 4).
+- **`init` where something exists** (§7.3): `init` inside an existing tree or in a folder that already holds content follows the collision rule (§0.3).
 - **Non-interactive confirmation**: agents confirm results from JSON output and exit codes (§0.4), so every confirmation prompt, such as `remove`'s (D22), needs a non-interactive path with JSON output (§7.10).
 - **`doctor`** reports a `.para/` that `para` did not create, and references to removed ids (§8.2).
-- **Determinism** (§0.1): output and changes depend only on the tree, arguments and current time, apart from new ids. Config must therefore come from inside the tree (§3.6), or §0.1 needs revisiting.
+- **Determinism** (§0.1): output and changes depend only on the tree, arguments and current time, apart from new ids. Config must therefore come from inside the tree (§3.5), or §0.1 needs revisiting.
 - **README frontmatter**: `para` writes only its own keys (D24); §5.3 defines them.
