@@ -5,19 +5,24 @@ Status: **outline.** One sentence per section: what it holds, and why it is here
 ## 0. About para
 
 ### 0.1 What para is
-A CLI tool that manages the structure and metadata of a PARA file tree deterministically, so people, agents and scripts can rely on it while the files inside stay theirs.
+
+`para` is a command-line tool that manages the structure and metadata of a PARA file tree: a directory with four buckets (projects, areas, resources and archive), organized by [the PARA method](#02-the-para-method).
+
+The **structure** is which entities (the projects, areas, dirs and other things `para` manages) exist, what kind each one is and where it sits. The **metadata** is the facts `para` records about entities, such as ids, status, history and measurements. Both are meant to change only through `para`'s commands ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)). Each command is deterministic: for the same tree, arguments and current time, it gives the same output and makes the same change, apart from any new ids it generates. [Safety guarantees](#81-safety-guarantees) states what `para` promises when a command fails or is interrupted.
+
+Apart from `para`'s own files ([storage](#3-storage)) and the parts of generated files that `para` owns ([para-owned blocks](#52-para-owned-blocks)), everything in the tree is content. People, AI agents and scripts create and edit it freely, inside a structure they can rely on.
 
 ### 0.2 The PARA method
 Projects, areas, resources and archive explained from scratch, so the spec needs no outside reading, with a link to the method's authoritative source, [The PARA Method](https://fortelabs.com/blog/para/).
 
 ### 0.3 Structure is para's, content is yours
-Structure and metadata change only through para's commands, which are the easiest way for a person or an agent to make those changes, while content is edited freely by anyone; every command and generated file depends on this line.
+Structure and metadata change only through `para`'s commands, which are the easiest way for a person or an agent to make those changes, while content is edited freely by anyone; every command and generated file depends on this line.
 
 ### 0.4 Why deterministic structure helps agents
 Why a simple, predictable framework with reliable commands lets agents act safely, while leaving them free to manage the files inside it.
 
 ### 0.5 Scope and non-goals
-What para does not do, such as distribute skills, so features outside it are refused for a stated reason.
+What `para` does not do, such as distribute skills, so features outside it are refused for a stated reason.
 
 ### 0.6 Principles
 The few rules every design decision follows, so new questions can be answered without redesigning.
@@ -28,7 +33,7 @@ The spec's structure (a tour of every component in chapter 1, then the detail in
 ## 1. Components
 
 ### 1.1 The tree
-The root directory and the entities in it (every directory para manages, each with its own id), because every other component lives inside one tree.
+The root directory and the entities in it (every directory `para` manages, each with its own id), because every other component lives inside one tree.
 
 ### 1.2 Buckets
 The four top-level folders, which are the first sorting decision for anything filed.
@@ -73,7 +78,7 @@ Where finished or inactive things go, so active buckets show only what is live.
 The append-only history of what happened to each thing, so nothing has to be remembered.
 
 ### 1.9 Activity
-A readable summary of recent history, so a reader sees what changed without running para.
+A readable summary of recent history, so a reader sees what changed without running `para`.
 
 ### 1.10 Links
 A loose, directional relationship to anything outside the tree (a URL, a search query, a Slack channel, an email address), so outside things stay connected and are flagged when due to be checked (an input) or updated (an output).
@@ -85,24 +90,24 @@ The basic kind of entity: a folder with its own journal, links and README but no
 How far content may travel, set on entities and inherited by everything beneath them, only ever tightening, so files never have to carry their own labels.
 
 ### 1.13 Provenance
-Where each file came from and how it was made (captured, edited by a person, or inferred by AI), from which para derives how far to trust it alongside your judgment of the source, so content can be traced and weighed by its reliability.
+Where each file came from and how it was made (captured, edited by a person, or inferred by AI), from which `para` derives how far to trust it alongside your judgment of the source, so content can be traced and weighed by its reliability.
 
 ### 1.14 Status
 Where a project, objective, key result or indicator stands in its life (other kinds have no status, and key results' and indicators' are computed), so active, blocked and done work can be told apart.
 
 ### 1.15 Review
-The question "what needs attention?", answered from the tree, which is para's main daily use.
+The question "what needs attention?", answered from the tree, which is `para`'s main daily use.
 
 ### 1.16 Suppression
 A dated, explained pause on an attention flag, so review stays useful when something is knowingly on hold.
 
 ### 1.17 Generated files
-Files para writes for readers who never run it, which are the product rather than a cache.
+Files `para` writes for readers who never run it, which are the product rather than a cache.
 
 ## 2. Model
 
 ### 2.1 Directory shapes
-The kinds of directory para recognises, so any folder can be classified the same way every time.
+The kinds of directory `para` recognises, so any folder can be classified the same way every time.
 
 ### 2.2 Kinds and containment
 Which kind may sit inside which, and that entities form an unbroken chain from the root, so the tree has one legal shape that can be checked.
@@ -111,7 +116,7 @@ Which kind may sit inside which, and that entities form an unbroken chain from t
 How a thing is named by a generated id rather than its path, the only address commands accept, so a reference survives moves and re-parenting.
 
 ### 2.4 Adopting existing directories
-How a folder that already exists becomes managed, so para can be introduced to a real tree.
+How a folder that already exists becomes managed, so `para` can be introduced to a real tree.
 
 ### 2.5 Archiving
 How things move into and out of the archive, so finishing work never loses history.
@@ -122,10 +127,10 @@ How things move into and out of the archive, so finishing work never loses histo
 Which files are authoritative and which are derived, so every fact has exactly one home.
 
 ### 3.2 `tree.toml`
-The file that marks a tree's root and version, so para can find and trust a tree.
+The file that marks a tree's root and version, so `para` can find and trust a tree.
 
 ### 3.3 `state.toml`
-The file that holds each thing's facts, the one source of truth para reads and writes.
+The file that holds each thing's facts, the one source of truth `para` reads and writes.
 
 ### 3.4 The journal
 The format and rules of the event history, so history can be appended safely and read back.
@@ -137,10 +142,10 @@ How times are recorded and compared, so dates mean the same thing everywhere.
 Settings and how they pass down the tree, so behaviour can be tuned in one place.
 
 ### 3.7 The walk
-How para finds everything in a tree, so every command sees the same set of things.
+How `para` finds everything in a tree, so every command sees the same set of things.
 
 ### 3.8 Git
-How para behaves inside a git repository, since most trees are versioned and merged.
+How `para` behaves inside a git repository, since most trees are versioned and merged.
 
 ## 4. Progress and attention
 
@@ -171,7 +176,7 @@ How a pause changes review, so a known hold never hides a real problem.
 When generated files are rewritten, so they are never out of date.
 
 ### 5.2 Para-owned blocks
-The markers that separate para's text from yours, so para never overwrites your writing.
+The markers that separate `para`'s text from yours, so `para` never overwrites your writing.
 
 ### 5.3 README frontmatter
 The generated header on each thing's README, the main place a reader sees its facts.
@@ -229,7 +234,7 @@ How to narrow and order results, so large trees stay usable.
 The commands that change a tree, each a safe, checked operation.
 
 ### 7.7 `review`
-The command that answers "what needs attention?", para's main daily use.
+The command that answers "what needs attention?", `para`'s main daily use.
 
 ### 7.8 `rebuild`
 Regenerating every derived file, which is how a tree is repaired or refreshed.
@@ -243,7 +248,7 @@ Text and JSON output and what exit codes mean, so scripts and agents can rely on
 ## 8. Integrity
 
 ### 8.1 Safety guarantees
-What para promises for changes made through its commands, such as no half-finished writes and no deleted user files, so it is safe to run; hand edits fall outside these promises.
+What `para` promises for changes made through its commands, such as no half-finished writes and no deleted user files, so it is safe to run; hand edits fall outside these promises.
 
 ### 8.2 `doctor` findings
 Every problem `doctor` can report, the safety net for hand edits and other mistakes, including a `CLAUDE.md` that stops Claude Code reading `AGENTS.md`, since nothing stops a file being edited by hand.
@@ -257,10 +262,10 @@ How each finding is fixed, so diagnosis always leads to a remedy.
 What `para migrate` does to an older tree, such as assigning ids, so upgrading is one explicit step that never strands data.
 
 ### 9.2 Retired keys and files
-What para now ignores, such as skills and the `emit.*` keys, so leftovers are understood and not misread.
+What `para` now ignores, such as skills and the `emit.*` keys, so leftovers are understood and not misread.
 
 ### 9.3 Schema version
-What schema 2 is and how para treats other versions, so the format can evolve through `para migrate` and never silently.
+What schema 2 is and how `para` treats other versions, so the format can evolve through `para migrate` and never silently.
 
 ## Appendix A. Example tree
 One complete example tree, used by every example in the spec, so readers learn one tree.

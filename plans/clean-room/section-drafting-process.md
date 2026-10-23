@@ -8,6 +8,14 @@ How each section of `spec.md` is written. Read this first when resuming the work
 spec: a person meeting para for the first time, or an AI agent dropped into a tree. Keep it simple.
 The shortest section that is complete wins.
 
+## Writing conventions
+
+- **Cross-references are Markdown links** to the section's heading anchor, such as
+  `[the PARA method](#02-the-para-method)`. Never use the § sign.
+- **One line per paragraph.** Never hard-wrap prose.
+- **The tool is always `` `para` `` in backticks.** "PARA" in capitals is the method.
+- After any renumbering, check that every `#anchor` link still resolves.
+
 ## Context to load when resuming
 
 - `spec.md`: the outline. Each section's one sentence is its charter.
