@@ -63,7 +63,17 @@ These are outside `para`'s scope, and a feature that falls under one is declined
 - **Access control**: `para` does not encrypt files or set file permissions. A [sensitivity label](#112-sensitivity-labels) records how far content may travel, but `para` cannot stop a readable file being copied. [What para does with labels](#65-what-para-does-with-labels) covers what it does instead.
 
 ### 0.6 Principles
-The few rules every design decision follows, so new questions can be answered without redesigning.
+
+Every design decision in this spec follows these rules. A new question is answered by applying them, and a change that would break one needs a recorded decision ([decision index](#appendix-d-decision-index)).
+
+1. **Structure is `para`'s, content is yours**: `para` writes only its own side of the tree and never edits or deletes content ([ownership](#03-structure-is-paras-content-is-yours)).
+2. **Deterministic**: the same tree, arguments and time give the same result, apart from new ids ([what para is](#01-what-para-is)).
+3. **One home per fact**: each fact is stored as truth in exactly one place ([truth and projection](#31-truth-and-projection)), and each event is recorded once, in the journal of the entity it happened to (or its parent's, when the entity is removed). A value that can be computed, such as a key result's status, is never stored as truth ([what is never stored](#57-what-is-never-stored)).
+4. **Generated files serve readers**: the files `para` writes for readers who never run it show facts and computed values, are updated with every change, can be rebuilt from the stored truth at any time and are never read back as truth ([generated files](#117-generated-files)).
+5. **Ids are identity**: every entity is addressed by a stored id that survives moves and renames and is never reused. Its path only says where it is now ([addressing](#23-addressing)).
+6. **The right path is the easy one**: every change to the structure is a command, and a command that cannot make a change validly and safely refuses before writing anything, saying why and what to do instead. It never guesses ([why deterministic structure helps agents](#04-why-deterministic-structure-helps-agents)).
+7. **Loosening and format changes are explicit**: a sensitivity label only tightens down the tree, and trust only falls as content is derived from other content. Only a person, with an explicit command, lowers a label or raises trust, and never a label below its parent's ([how labels flow](#64-how-labels-flow)). A tree's format changes only through `para migrate` ([schema version](#93-schema-version)).
+8. **Small and one way**: a feature is added only when managing a PARA tree needs it ([scope and non-goals](#05-scope-and-non-goals)), and each concept has one name, each kind of change one command and each value one format ([glossary](#appendix-c-glossary)).
 
 ### 0.7 How to read this spec
 The spec's structure (a tour of every component in chapter 1, then the detail in later chapters), its normative words and how its examples are tested, so a reader knows where to look and what is binding.
@@ -229,7 +239,7 @@ The rendered measurement table in a metric's `.para/`, linked from its README, s
 The file that orients an agent to the tree, which is how agents learn the framework.
 
 ### 5.7 What is never stored
-Values that are always computed, so no stored copy can go stale.
+Values that are always computed and never stored as truth, so no stored copy is trusted over a fresh computation.
 
 ## 6. Sensitivity and provenance
 

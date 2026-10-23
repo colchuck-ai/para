@@ -6,14 +6,15 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local only (not pushed). `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals.
-- **Next:** §0.6 Principles. Then continue in outline order.
-- **Decisions:** D1–D26 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles.
+- **Next:** §0.7 How to read this spec. Then continue in outline order.
+- **Decisions:** D1–D27 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
   - D25: every refusal says why and what to do instead. D13 amended: a hand copy (`cp -r`) can also duplicate ids.
   - D26: `para` never runs git or requires a repository.
+  - D27: only a person lowers a label or raises trust, through an interactive confirmation with no non-interactive path.
 
 ## Priorities
 
@@ -38,7 +39,7 @@ print('broken:',[l for l in re.findall(r'\]\(#([^)]+)\)',s) if l not in anchors]
 ## Context to load when resuming
 
 - `spec.md`: the outline and drafted sections. Each undrafted section's one sentence is its charter.
-- `plans/clean-room/plan.md`: decisions D1–D26, open questions, and design inputs.
+- `plans/clean-room/plan.md`: decisions D1–D27, open questions, and design inputs.
 - `plans/clean-room/research/labeling.md`: research behind chapter 6.
 - `para-design-v4.md` (on `main` until Phase 2, always at `poc-final`): PoC design, background only. Decisions win where they disagree.
 - `bd show para-a1b.2`: progress notes.
@@ -111,6 +112,9 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Refusals and remedies** (D25): every refusal gives the rule, the offending id or path, and what to do instead, which may be the user's own files to move; §7.10 defines the output.
 - **Hand changes `doctor` must catch** (§8.2): `mv` of an entity (possibly to a place its kind may not sit), `rm -r` of an entity, a hand edit to a `para` frontmatter key, and `cp -r` of an entity, which duplicates its id (D13). Decide whether a plain folder directly in `projects/` or `areas/` is a finding, since §0.3 calls it content.
 - **Git** (§3.8): §0.5 says `para` never runs git or requires a repository. §3.8 must settle whether `para` reads `.git/` and whether it writes `.gitattributes` (the PoC did; D23 allows only README and `AGENTS.md` as visible files).
+- **Time-dependent values in generated files** (§5.3): derived status depends on the current time, and generated files change only when a command runs (§0.5, §0.6 principle 4), so §5.3 must show such values with an as-of date or leave them out.
+- **Who may loosen a label or raise trust** (§6.4, D27): an interactive confirmation with no non-interactive path. This is the one exception to the non-interactive-confirmation note below.
+- **Commands given a duplicated id** (§8.2): after a merge or `cp -r` (D13), what a command does with an id held by two entities.
 - **Non-interactive confirmation**: agents confirm results from JSON output and exit codes (§0.4), so every confirmation prompt, such as `remove`'s (D22), needs a non-interactive path with JSON output (§7.10).
 - **`doctor`** reports a `.para/` that `para` did not create, and references to removed ids (§8.2).
 - **Determinism** (§0.1): output and changes depend only on the tree, arguments and current time, apart from new ids. Config must therefore come from inside the tree (§3.6), or §0.1 needs revisiting.
