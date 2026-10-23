@@ -27,18 +27,19 @@ In `para`, each category is a top-level [bucket](#12-buckets) of the tree.
 
 ### 0.3 Structure is para's, content is yours
 
-`para` owns everything it writes:
+The tree's structure and metadata belong to `para`. They are:
 
-- its own files: `tree.toml` at the root and the `.para/` folder in each folder it manages, holding state, config, the journal, records about content such as sensitivity rules and provenance, and the files it generates whole, such as `ACTIVITY.md` ([storage](#3-storage));
-- its marked blocks inside the two visible files it writes in, a README and `AGENTS.md` ([para-owned blocks](#52-para-owned-blocks)).
+- every folder `para` manages (the folder itself, not what you put in it): the root, the buckets and archive buckets, containers such as `objectives/`, and every entity. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
+- everything inside each `.para/`: state, config (including sensitivity rules), the journal, provenance records and the files `para` generates, such as `ACTIVITY.md` ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
+- the keys `para` writes in README frontmatter, its marked blocks in `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
 
-Change these, and create, move, rename, archive or remove entities, only through `para`'s commands. The commands are designed to be the easiest way for a person or an agent to make these changes, and `para` validates each change and refuses an invalid one before writing anything.
+Change these only through `para`'s commands, including creating, moving, renaming, archiving and removing entities. The commands are designed to be the easiest way for a person or an agent to make these changes. `para` validates each change before writing anything and refuses an invalid one.
 
-Everything else is content: notes, documents, data, folders without a `.para/`, and your text around `para`'s blocks. Anyone may create and edit content. `para` never edits or deletes it. It moves content only along with the entity that holds it, removing an entity leaves its content in place, and if content already sits where `para` needs to put a file of its own or move an entity, `para` refuses rather than overwrite or merge it.
+Everything else is content: notes, documents, data, other folders, and your own text and frontmatter keys in READMEs and `AGENTS.md`. Anyone may create and edit content. `para` never edits or deletes it, even when removing an entity, and moves it only along with the entity that holds it. Where a README or `AGENTS.md` already exists, `para` adds its part and keeps yours, and adopting a folder adds a `.para/` and keeps everything already there ([adopting existing directories](#24-adopting-existing-directories)). In every other case, if content already sits where `para` needs to create a folder or move an entity, `para` refuses rather than overwrite or merge it.
 
-Hand edits to anything on `para`'s side are possible but unsupported. Text written in a file `para` generates whole, or inside one of its blocks, is replaced the next time `para` rewrites it. `para`'s [safety guarantees](#81-safety-guarantees) cover only changes made through its commands, and [`doctor`](#82-doctor-findings) reports hand edits that leave the tree inconsistent.
+Changing `para`'s side by hand, such as moving a managed folder or editing a file in `.para/`, is possible but unsupported, and text written inside `para`'s files or blocks is overwritten the next time `para` rewrites them. `para`'s [safety guarantees](#81-safety-guarantees) cover only changes made through its commands, and [`doctor`](#82-doctor-findings) reports hand changes that leave the tree inconsistent, including a `.para/` that `para` did not create.
 
-Every command and generated file depends on this split: commands write only `para`'s side, and generated files show it to readers who never run `para`.
+Every command depends on this split: it writes only `para`'s side.
 
 ### 0.4 Why deterministic structure helps agents
 Why a simple, predictable framework with reliable commands lets agents act safely, while leaving them free to manage the files inside it.
