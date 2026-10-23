@@ -13,7 +13,17 @@ The **structure** is which entities (the projects, areas, dirs and other things 
 Apart from `para`'s own files ([storage](#3-storage)) and the parts of generated files that `para` owns ([para-owned blocks](#52-para-owned-blocks)), everything in the tree is content. People, AI agents and scripts create and edit it freely, inside a structure they can rely on.
 
 ### 0.2 The PARA method
-Projects, areas, resources and archive explained from scratch, so the spec needs no outside reading, with a link to the method's authoritative source, [The PARA Method](https://fortelabs.com/blog/para/).
+
+PARA, created by Tiago Forte, organizes information by how actionable it is rather than by subject. His [The PARA Method](https://fortelabs.com/blog/para/) is the authoritative description. Everything goes into one of four categories:
+
+- **Projects**: efforts taken on with a goal in mind, which end when the goal is met or dropped, such as launching a website.
+- **Areas**: parts of work and life that need ongoing attention and never finish, such as health, finances or filing taxes each year.
+- **Resources**: topics you are interested in or learning about, such as a programming language.
+- **Archive** (Forte's "Archives"): anything from the other three that is finished or inactive but worth keeping, such as a completed project.
+
+Following the method's focus on actionability, something that fits more than one category goes in the most actionable one (projects first, then areas, then resources), so material gathered for a project goes with that project.
+
+In `para`, each category is a top-level [bucket](#12-buckets) of the tree.
 
 ### 0.3 Structure is para's, content is yours
 Structure and metadata change only through `para`'s commands, which are the easiest way for a person or an agent to make those changes, while content is edited freely by anyone; every command and generated file depends on this line.
