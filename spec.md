@@ -245,7 +245,12 @@ Every managed folder except a stub has an `ACTIVITY.md` in its `.para/`, linked 
 `para` rewrites it from its journal whenever the journal changes ([write-through](#51-write-through)), so an edit to it is lost, and [`rebuild`](#78-rebuild) regenerates it ([`ACTIVITY.md`](#54-activitymd)).
 
 ### 1.10 Links
-A loose, directional relationship to anything outside the tree (a URL, a search query, a Slack channel, an email address), so outside things stay connected and are flagged when due to be checked (an input) or updated (an output).
+
+A link points to something outside the tree, such as a URL, a search query, a Slack channel or an email address, so [review](#115-review) can flag it when it is due to be checked or updated. Only projects, areas and [dirs](#111-dirs) hold links, any number each, in their `links/` container, and a link holds no entities ([kinds and containment](#22-kinds-and-containment)).
+
+A link records a `type` you choose, such as `slack-channel` or `rss-feed`; a `ref` the type gives meaning to, such as a channel name or a URL; and a `direction`, `input` (check it for news) or `output` (keep it updated). The type and direction are fixed when the link is created: your own scripts and agents act on the type, and the direction says whether attention on the link means a check or an update. The ref can change, as when a URL moves. `para` never interprets the type or ref and never contacts what a link points to ([scope and non-goals](#05-scope-and-non-goals)). A two-way channel, both watched and posted to, is two links, one for each direction.
+
+Review flags a link through ordinary [staleness](#45-staleness): you record each check or update as a note marked as attention, and `link.stale-after` sets how long a link may go without one. [`init`](#73-init) writes no such setting, so links are never flagged until one is set in [config](#35-config).
 
 ### 1.11 Dirs
 The basic kind of entity: a folder with its own journal, links and README but no status, living in the resources bucket or inside a project, area or another dir, so any folder can be managed.
