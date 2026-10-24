@@ -175,10 +175,23 @@ An area holds its [standards](#141-standards) in `standards/`, each with its [in
 An area stays live until you [archive](#17-archive) it, for example when you sell the house it was about. Archiving moves it, with everything beneath it, to the matching path in `archive/areas/`.
 
 #### 1.4.1 Standards
-What an area must keep up, the qualitative bar its indicators are measured against.
+
+A standard says in words what an area must keep up, such as keeping the house in good repair or getting enough sleep. It is the area's counterpart to an objective, with no status or due date. Besides its `.para/` and README, a standard holds only its indicators, in `indicators/`, and any content of your own ([kinds and containment](#22-kinds-and-containment)). Its indicators show whether it is held.
 
 #### 1.4.2 Indicators
-An analytic held to a target over a rolling window (what others call a KPI, or an SLI with its SLO), showing whether a standard is held, which makes upkeep checkable.
+
+An indicator holds an [analytic](#151-analytics) to a target over a rolling window, such as average nightly sleep over the last 28 days staying at or above seven hours. Others call an indicator a key performance indicator (KPI), or a service level indicator (SLI) with its service level objective (SLO). It is the area's counterpart to a key result, with a window in place of a due date. Each indicator is a folder in its standard's `indicators/` and holds no other entities.
+
+Its status is computed from the analytic over the window, the target, the margin and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#57-what-is-never-stored)). The first row that applies wins:
+
+| Status | Means |
+| --- | --- |
+| `no-data` | the analytic has no value over the window, such as when a metric it uses has no measurements inside it |
+| `breached` | the analytic over the window misses the target |
+| `at-risk` | the analytic meets the target but is within a margin of missing it |
+| `healthy` | none of the above |
+
+The margin is a setting with a default that passes down the tree, where a nearer setting replaces a farther one ([config](#35-config)), and [derived status](#44-derived-status) defines how it applies. You never set an indicator's status; to stop tracking one, remove it, or [archive](#17-archive) the area it belongs to.
 
 ### 1.5 Measurement
 The shared library in `resources/measurement/`, defined once and used by any key result or indicator, so the same number is never defined twice.
