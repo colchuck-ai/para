@@ -68,7 +68,7 @@ Every design decision in this spec follows these rules. A new question is answer
 
 1. **Structure is `para`'s, content is yours**: `para` writes only its own side of the tree and never edits or deletes content ([ownership](#03-structure-is-paras-content-is-yours)).
 2. **Deterministic**: the same tree, arguments and time give the same result, apart from new ids ([what para is](#01-what-para-is)).
-3. **One home per fact**: each fact is stored as truth in exactly one place ([truth and projection](#31-truth-and-projection)), and each event is recorded once, in the journal of the entity it happened to (or its parent's, when the entity is removed). A value that can be computed, such as a key result's status, is never stored as truth ([what is never stored](#57-what-is-never-stored)).
+3. **One home per fact**: each fact is stored as truth in exactly one place ([truth and projection](#31-truth-and-projection)), and each event is recorded once, in the journal of the folder it happened to, where a child arriving or leaving is its parent's event. A value that can be computed, such as a key result's status, is never stored as truth ([what is never stored](#57-what-is-never-stored)).
 4. **Generated files serve readers**: the files `para` writes for readers who never run it show facts and computed values, are updated with every change, can be rebuilt from the stored truth at any time and are never read back as truth ([generated files](#117-generated-files)).
 5. **Ids are identity**: every entity is addressed by a stored id that survives moves and renames and is never reused. Its path only says where it is now ([addressing](#23-addressing)).
 6. **The right path is the easy one**: every change to the structure is a command, and a command that cannot make a change validly and safely refuses before writing anything, saying why and what to do instead. It never guesses ([why deterministic structure helps agents](#04-why-deterministic-structure-helps-agents)).
@@ -230,7 +230,12 @@ When something is archived from inside a live entity, `para` puts a stub at each
 The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first. Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
 ### 1.8 Notes and the journal
-The append-only history of what happened to each thing, so nothing has to be remembered.
+
+Every managed folder except a stub keeps a journal in its `.para/`, the history of what happened to it. Each time a command changes what the folder is or holds, `para` appends a dated event, such as a project's status changing, a child being added, moved, archived or removed, or a note. `para` only ever appends to a journal and never edits an event in it, so anyone arriving later can read what happened and when without having to remember it ([the journal](#33-the-journal)).
+
+Each event goes to the folder it happened to; a child arriving or leaving is its parent's event, so a move gives the old and new parent one each ([principles](#06-principles)). [Removing](#76-writing) an entity deletes its journal, and its parent's journal records the removal (a stub, having none, records nothing).
+
+A note is a short dated entry in an entity's journal, such as "waiting on the design review", not a notes file of your own, and only entities take notes. You add one with its own command, and any command that changes an entity can carry one to say why. An entity's attention, which keeps it from going [stale](#45-staleness), is its newest note that you marked as attention, as when you record work you did, or else its creation; for a metric, a new measurement counts too. Nothing else counts, not a status change or a child's note, so working notes and reasons never make neglected work look tended.
 
 ### 1.9 Activity
 A readable summary of recent history, so a reader sees what changed without running `para`.
