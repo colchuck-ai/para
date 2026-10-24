@@ -6,9 +6,9 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local only (not pushed). `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal.
-- **Next:** §1.9 Activity. Then continue in outline order.
-- **Decisions:** D1–D55 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity.
+- **Next:** §1.10 Links. Then continue in outline order.
+- **Decisions:** D1–D56 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -44,6 +44,7 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D53: every managed folder but a stub keeps a journal; one home per event.
   - D54: a note counts as attention only when marked (opt in), for notes and reasons alike; `migrate` marks v0 notes that counted.
   - D55: attention is the entity's own newest marked note, or its creation; a metric's measurements count; nothing on a child counts.
+  - D56: `ACTIVITY.md` is the full history, for every folder with a journal.
 
 ## Priorities
 
@@ -68,7 +69,7 @@ print('broken:',[l for l in re.findall(r'\]\(#([^)]+)\)',s) if l not in anchors]
 ## Context to load when resuming
 
 - `spec.md`: the outline and drafted sections. Each undrafted section's one sentence is its charter.
-- `plans/clean-room/plan.md`: decisions D1–D55, open questions, and design inputs.
+- `plans/clean-room/plan.md`: decisions D1–D56, open questions, and design inputs.
 - `plans/clean-room/research/labeling.md`: research behind chapter 6.
 - `para-design-v4.md` (on `main` until Phase 2, always at `poc-final`): PoC design, background only. Decisions win where they disagree.
 - `bd show para-a1b.2`: progress notes.
@@ -178,6 +179,7 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Archived references** (§1.5, §4.4, D50, D51): a live key result or analytic that uses an archived analytic or metric, which can take no new measurements; whether its status still computes from the archived data, and whether a new reference may name an archived entity.
 - **Journal rules** (§3.3, §3.4, §8.2): how rotation, `migrate` and D30 re-iding treat existing events, and whether `doctor` reports hand edits to a journal; for move, archive and unarchive, which journals record what (old parent, new parent, the entity itself, which is read-only once archived, D50), and where the event goes when the parent is a stub (no journal, D53); whether measurements are journal events (the PoC's design; §1.5.2 and D22 leave it open) and whether `config` changes are journaled; whether a command that changes nothing but carries a note records the note; notes are added to entities (§1.8), so say whether a container takes one; §3.3 must keep "`para` never edits an event" true under `migrate` and D30 re-iding, or state the exceptions; a wrong note is corrected by appending, as for measurements; ordering by timestamp under clock skew and equal times.
 - **Attention marks** (§3.3, §4.5, §5.6, §9.1, D54): the flag's name; whether measurements still count as attention for a metric; that `AGENTS.md` tells agents to mark a note as attention only when the person says the upkeep happened; `migrate` turning v0 notes without `--no-attention` into marked ones; whether `review` shows the latest unmarked note, so a false stale flag is quick to clear. D55 names what resets the clock (a marked note, a metric's measurement, else creation); §4.5 must say whether unarchive restarts it. A mark cannot be added later (the journal is append-only), so the remedy is a new marked note; §3.3/§3.4 must say whether a note's date can be set, since a backdated mark claims past upkeep.
+- **`ACTIVITY.md` details** (§3.4, §3.7, §5.4, §6.4, §7.8, D56): the day boundary (the PoC used UTC days) and order within a day; the exact sentence for every event kind, including a removed child rendered from the event alone; the cost of rewriting full history for busy root and bucket files, and whether `doctor` keeps the PoC's full-fidelity check; git merges of newest-first files (resolve the journal, then `rebuild`); whether a bucket's or root's file may show a more sensitive child's title or a reason under a lower label; `rebuild` rewriting files under `archive/` (see Read-only archive exceptions).
 - **Indicator computation** (§4.3, §4.4, §3.5): how the window is set and measured (days, calendar periods, the time zone), how the margin is expressed (a fraction of the target, an absolute amount) and its default, targets that go down (latency), whether `no-data` also counts toward staleness (§4.5), whether the analytic combines every measurement in the window or uses the latest, a partial window (an indicator created today), measurements dated in the future, the boundaries of `at-risk` (exactly at the target, the edge of the margin), a target as a value plus a comparison (at or above, at or below), and that the window and target are state (defining facts set by command) while the margin is config.
 - **Finding the tree** (§3.6): §1.1 says every command but `init` looks upward from the current directory for the nearest root (D28). §3.6 must settle a start outside any tree, inside a `.para/`, in a tree nested in another tree's content, under a symlinked root, and whether the PoC's `$PARA_HOME` override survives. Also: an ancestor `state.toml` that cannot be read (skip or refuse), an entity's `state.toml` hand-edited to `kind = "root"` (silently a nested tree; `doctor`?), the downward walk stopping at a nested root, and a v0 `tree.toml` recognised so every command but `migrate` refuses with the `para migrate` remedy (D14).
 - **Targeting folders without ids** (§2.3): the root, buckets and containers have no id (§1.1), so §2.3 must say how a command names one as a parent, such as creating a dir directly in `resources/` (D18).

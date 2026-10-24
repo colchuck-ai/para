@@ -95,6 +95,7 @@ Under the root are the four [buckets](#12-buckets), and `archive/` holds archive
 brain/                     the root
 ├── .para/state.toml       holds kind = "root"
 ├── AGENTS.md
+├── README.md
 ├── projects/              a bucket
 │   ├── .para/
 │   └── launch-website/    a project, id brain-7k2q
@@ -238,7 +239,10 @@ Each event goes to the folder it happened to; a child arriving or leaving is its
 A note is a short dated entry in an entity's journal, such as "waiting on the design review", not a notes file of your own, and only entities take notes. You add one with its own command, and any command that changes an entity can carry one to say why. An entity's attention, which keeps it from going [stale](#45-staleness), is its newest note that you marked as attention, as when you record work you did, or else its creation; for a metric, a new measurement counts too. Nothing else counts, not a status change or a child's note, so working notes and reasons never make neglected work look tended.
 
 ### 1.9 Activity
-A readable summary of recent history, so a reader sees what changed without running `para`.
+
+Every managed folder except a stub has an `ACTIVITY.md` in its `.para/`, linked from its README, so its history can be read in any Markdown viewer, such as GitHub, without running `para`. It lists every event in that folder's own journal in plain sentences, grouped by day with the newest day first. So the `projects/` bucket's file shows projects arriving, moving and being archived, and a project's file shows its own status changes and notes, not what happens inside its objectives.
+
+`para` rewrites it from its journal whenever the journal changes ([write-through](#51-write-through)), so an edit to it is lost, and [`rebuild`](#78-rebuild) regenerates it ([`ACTIVITY.md`](#54-activitymd)).
 
 ### 1.10 Links
 A loose, directional relationship to anything outside the tree (a URL, a search query, a Slack channel, an email address), so outside things stay connected and are flagged when due to be checked (an input) or updated (an output).
@@ -339,7 +343,7 @@ The markers that separate `para`'s text from yours, so `para` never overwrites y
 The generated header on each thing's README, the main place a reader sees its facts.
 
 ### 5.4 `ACTIVITY.md`
-The rendered history file in `.para/`, linked from the README, so recent changes are readable without the CLI.
+The rendered history file in `.para/`, linked from the README, so a folder's history is readable without the CLI.
 
 ### 5.5 `MEASUREMENTS.csv`
 The rendered measurement table in a metric's `.para/`, linked from its README, so data opens in any spreadsheet.
