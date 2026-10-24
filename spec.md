@@ -29,7 +29,7 @@ In `para`, each category is a top-level [bucket](#12-buckets) of the tree.
 
 The tree's structure and metadata belong to `para`. They are:
 
-- every folder `para` manages (the folder itself, not what you put in it): the root, the buckets and archive buckets, containers such as `objectives/`, archive stubs, and every entity. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
+- every folder `para` manages (the folder itself, not what you put in it): the root, the buckets and archive buckets, archive stubs, and every entity, including containers such as `objectives/`. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
 - everything inside each `.para/`: state, config (including sensitivity rules), the journal, provenance records and the files `para` generates, such as `ACTIVITY.md` ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
 - the keys `para` writes in README frontmatter, its marked blocks in READMEs and `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
 
@@ -89,7 +89,7 @@ Every example starts from the tree in Appendix A unless it names another startin
 
 A tree is a root directory and everything in it. The root's `.para/state.toml` has `kind = "root"`, which marks the tree, and records the tree's schema version and the prefix of its ids ([`state.toml`](#32-statetoml)). [`init`](#73-init) creates a tree, and every command that works on a tree finds it by checking the current directory and then each parent for a `.para/state.toml` with `kind = "root"` ([the walk](#36-the-walk)). A v0 tree is marked by `tree.toml` instead, and only [`migrate`](#91-migrating-a-v0-tree) works on it.
 
-Under the root are the four [buckets](#12-buckets), and `archive/` holds archive buckets that mirror the other three ([archive](#17-archive)). Within the buckets are the entities, directories of the kinds `para` tracks by id, such as projects, areas and dirs ([kinds and containment](#22-kinds-and-containment)). Some entities group their children in a container, such as a project's `objectives/`. Every managed folder, entity or not, has a `.para/` whose `state.toml` records its kind, and each except the root sits directly inside another. The root, buckets, archive buckets, containers and archive [stubs](#17-archive) have no id and are not entities.
+Under the root are the four [buckets](#12-buckets), and `archive/` holds archive buckets that mirror the other three ([archive](#17-archive)). Within the buckets are the entities, directories of the kinds `para` tracks by id, such as projects, areas and dirs ([kinds and containment](#22-kinds-and-containment)). Children of one kind are grouped in a container, an entity with a reserved name, such as a project's `objectives/`, which `para` creates when the first child arrives. Every managed folder, entity or not, has a `.para/` whose `state.toml` records its kind, and each except the root sits directly inside another. The root, buckets, archive buckets and archive [stubs](#17-archive) have no id and are not entities.
 
 ```text
 brain/                     the root
@@ -191,11 +191,11 @@ Its status is computed from the analytic over the window, the target, the margin
 | `at-risk` | the analytic meets the target but is within a margin of missing it |
 | `healthy` | none of the above |
 
-The margin is a setting with a default that passes down the tree, where a nearer setting replaces a farther one ([config](#35-config)), and [derived status](#44-derived-status) defines how it applies. You never set an indicator's status; to stop tracking one, remove it, or [archive](#17-archive) the area it belongs to.
+The margin is a setting with a default that passes down the tree, where a nearer setting replaces a farther one ([config](#35-config)), and [derived status](#44-derived-status) defines how it applies. You never set an indicator's status; to stop tracking one, remove or [archive](#17-archive) it.
 
 ### 1.5 Measurement
 
-The measurement library in `resources/measurement/` defines each number that key results and indicators track, so the same number is never defined twice. It has three containers, `analytics/`, `metrics/` and `terms/`. `para` creates the library and each container when you add the first analytic, metric or term that needs it, and the name `measurement` is reserved in `resources/` before then. Each analytic, metric and term is a folder directly in its container and holds no entities, only its `.para/`, README and any content of your own.
+The measurement library in `resources/measurement/` defines each number that key results and indicators track, so the same number is never defined twice. `measurement/` is a container that holds three more, `analytics/`, `metrics/` and `terms/`. `para` creates the library and each container when you add the first analytic, metric or term that needs it, and the name `measurement` is reserved in `resources/` before then. Each analytic, metric and term is a folder directly in its container and holds no entities, only its `.para/`, README and any content of your own.
 
 Each refers by id to what it uses. A [key result](#132-key-results) or [indicator](#142-indicators) names one analytic, an analytic names the metrics it computes from, and a metric names the terms it uses ([analytics, metrics and terms](#41-analytics-metrics-and-terms)). So one metric can feed many analytics, and one analytic can serve many key results and indicators. Commands refuse a reference to a missing id or to the wrong kind, [`show`](#74-reading) lists what each one uses and what uses it, and [`doctor`](#82-doctor-findings) reports a reference whose target has since been removed.
 
@@ -220,7 +220,14 @@ A resource is not a commitment, so it has no [status](#114-status) or due date, 
 A resource can be [archived](#17-archive) even when it is nested in another resource that stays live. It moves, with everything beneath it, to the matching path in `archive/resources/`.
 
 ### 1.7 Archive
-Where finished or inactive things go, so active buckets show only what is live.
+
+The archive is where finished or inactive things go, so `projects/`, `areas/` and `resources/` show only what is live. `archive/` holds an archive bucket for each of them, and an archived entity sits at the path that mirrors where it was, so `projects/launch-website/` becomes `archive/projects/launch-website/`.
+
+You can [archive](#25-archiving) any entity except a container, whatever its status, and everything beneath it goes too. Archiving changes where it is and none of its fields, so its status still says how it ended.
+
+When something is archived from inside a live entity, `para` puts a stub at each mirrored ancestor path the archive does not already hold. A stub is a managed folder that records the id of the live entity it stands for, with no id of its own, and holds only archived entities and other stubs. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs; `para` refuses only if two archived entities would share a path.
+
+The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first. Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
 ### 1.8 Notes and the journal
 The append-only history of what happened to each thing, so nothing has to be remembered.
