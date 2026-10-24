@@ -6,9 +6,9 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local only (not pushed). `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms.
-- **Next:** §1.6 Resources. Then continue in outline order.
-- **Decisions:** D1–D44 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources.
+- **Next:** §1.7 Archive. Then continue in outline order.
+- **Decisions:** D1–D46 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -33,6 +33,8 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D42: the measurement library is flat; analytics, metrics and terms hold no entities.
   - D43: a term is a README definition that metrics reference by id; every library reference is checked by kind, listed both ways by `show`, and reported by `doctor` once dangling.
   - D44: the measurement library and each of its containers are created on first use, not by `init`; `measurement` stays reserved.
+  - D45: staleness is a per-kind `<kind>.stale-after` (dir, analytic, metric and term included), off unless set, inherited from anywhere, root included.
+  - D46: `init` writes starter `project.stale-after` and `area.stale-after` into the root's config; no hidden defaults.
 
 ## Priorities
 
@@ -57,7 +59,7 @@ print('broken:',[l for l in re.findall(r'\]\(#([^)]+)\)',s) if l not in anchors]
 ## Context to load when resuming
 
 - `spec.md`: the outline and drafted sections. Each undrafted section's one sentence is its charter.
-- `plans/clean-room/plan.md`: decisions D1–D44, open questions, and design inputs.
+- `plans/clean-room/plan.md`: decisions D1–D46, open questions, and design inputs.
 - `plans/clean-room/research/labeling.md`: research behind chapter 6.
 - `para-design-v4.md` (on `main` until Phase 2, always at `poc-final`): PoC design, background only. Decisions win where they disagree.
 - `bd show para-a1b.2`: progress notes.
@@ -152,13 +154,15 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Simple key results** (§4.1, §4.3): a key result must hold an analytic (D20), so counting one metric needs a metric and an analytic; an analytic can be one metric's latest value (§1.5.1); decide whether `para` offers a shortcut that creates a metric and that analytic in one command.
 - **Dropped and archived key results and indicators** (§1.14, §2.5): whether a dropped key result still counts toward its objective, and what a key result's or indicator's status is once it is archived, and whether `review` still reports it.
 - **Key result computation** (§4.3, §4.4): define the start value and start date, the at-risk threshold, a target below the start (such as latency, where reaching means crossing downward), a yes/no target with no pace, the status with no measurements yet, a due date already past at creation, and a key result due after its objective. Also when a due date counts as passed (through the end of that day, in which time zone, §3.4), and whether a measurement may be backdated to on or before a passed due date, which would change a settled result.
-- **Reserved container names** (§2.2, §2.4, §8.2, D20, D39): every container name is reserved in its parent, like `measurement`. Define the rule once: `para` refuses to create or adopt anything under a reserved name, adopting refuses when a plain folder already has one (D25), and `doctor` reports content found there. The tour (§1.3, §1.4) leaves this to §2.2.
+- **Reserved container names** (§2.2, §2.4, §8.2, D20, D39): every container name is reserved in its parent, like `measurement`. Define the rule once: `para` refuses to create or adopt anything under a reserved name, adopting refuses when a plain folder already has one (D25), and `doctor` reports content found there. The tour (§1.3, §1.4) leaves this to §2.2. Say the depth: `measurement` is reserved only directly in `resources/` (D44), so `resources/cooking/measurement/` is allowed.
 - **Staleness of nested areas** (§4.5): whether activity in a sub-area keeps its parent from going stale, so a parent like `health/` with no work of its own is not flagged forever.
 - **Moving into a descendant** (§2.2, §7.6): moving an area (or dir) under its own descendant must be refused (D25).
 - **Dangling measurement references** (§4.4, §7.6, §8.2, D22, D43): the status of a key result or indicator whose analytic or metric was removed; whether `remove` names what depends on the entity in its confirmation; `doctor` findings for a reference to the wrong kind, to an id never issued, or to another tree's prefix after a copy. References point downward by kind, so §4.1 should say no cycle is possible.
 - **Measurement values** (§4.1, §4.2, D41): the number domain (NaN, infinities, huge values), date precision and time zone, two measurements at the same time (which decides "latest"), correcting or deleting a wrong measurement, division by zero, and an analytic whose metric has no measurements.
 - **Labels on computed values** (§6.4, §6.5): a metric under a confidential path can feed a status and value shown in a public project's README; say whether a computed value is content derived from its metrics.
 - **`MEASUREMENTS.csv` edits** (§5.5): it is a projection, so say whether hand edits are overwritten or reported.
+- **Staleness per kind** (§3.5, §4.5, D45): list every `<kind>.stale-after` key; say what the clock is for kinds with no measurements (analytic, term, dir), and whether a `dir.stale-after` on a project or area is the expected way to cover its dirs. Also: the starter values `init` writes (D46); a value meaning "never" so a nearer setting can switch off a farther one (a root `dir.stale-after` reaching `resources/`); whether settings pass into `archive/`, or review simply ignores archived entities, and what happens to a `config.toml` that moves with an archived entity; links use their own check and update dates (§1.10) and have no `stale-after`; and whether activity in a nested dir keeps its parent fresh, as for nested areas.
+- **v0 resources** (§9.1, D18): how `migrate` converts `kind = "resource"` folders outside `resources/`, nested ones, and ones inside projects.
 - **Indicator computation** (§4.3, §4.4, §3.5): how the window is set and measured (days, calendar periods, the time zone), how the margin is expressed (a fraction of the target, an absolute amount) and its default, targets that go down (latency), whether `no-data` also counts toward staleness (§4.5), whether the analytic combines every measurement in the window or uses the latest, a partial window (an indicator created today), measurements dated in the future, the boundaries of `at-risk` (exactly at the target, the edge of the margin), a target as a value plus a comparison (at or above, at or below), and that the window and target are state (defining facts set by command) while the margin is config.
 - **Finding the tree** (§3.6): §1.1 says every command but `init` looks upward from the current directory for the nearest root (D28). §3.6 must settle a start outside any tree, inside a `.para/`, in a tree nested in another tree's content, under a symlinked root, and whether the PoC's `$PARA_HOME` override survives. Also: an ancestor `state.toml` that cannot be read (skip or refuse), an entity's `state.toml` hand-edited to `kind = "root"` (silently a nested tree; `doctor`?), the downward walk stopping at a nested root, and a v0 `tree.toml` recognised so every command but `migrate` refuses with the `para migrate` remedy (D14).
 - **Targeting folders without ids** (§2.3): the root, buckets and containers have no id (§1.1), so §2.3 must say how a command names one as a parent, such as creating a dir directly in `resources/` (D18).

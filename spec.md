@@ -168,7 +168,7 @@ Before the due date, status follows the latest value, so a key result that falls
 
 An area is a part of work or life you keep up with no end date, such as health or a home, the second of the [PARA categories](#02-the-para-method). Its standards say what good upkeep looks like, and its indicators show whether the area meets them.
 
-Each live area is a folder directly in `areas/` or directly in another area, so areas nest to any depth (health can hold fitness and sleep), and nothing else holds one. An area has no [status](#114-status) and no due date, because it never finishes; [review](#115-review) reports it when it has gone too long without attention ([staleness](#45-staleness)). As for a project, `para` keeps an area's facts in [`.para/state.toml`](#32-statetoml), copies them into the README's frontmatter and keeps its own block there ([projects](#13-projects)).
+Each live area is a folder directly in `areas/` or directly in another area, so areas nest to any depth (health can hold fitness and sleep), and nothing else holds one. An area has no [status](#114-status) and no due date, because it never finishes; [review](#115-review) reports it when it has gone without attention for longer than its staleness setting, which [`init`](#73-init) writes into the root's config for every new tree ([staleness](#45-staleness)). As for a project, `para` keeps an area's facts in [`.para/state.toml`](#32-statetoml), copies them into the README's frontmatter and keeps its own block there ([projects](#13-projects)).
 
 An area holds its [standards](#141-standards) in `standards/`, each with its [indicators](#142-indicators) in `indicators/`, and its [links](#110-links) in `links/`. It can also hold sub-areas, [dirs](#111-dirs) and any content of your own ([kinds and containment](#22-kinds-and-containment)). Standards are optional, and so are a standard's indicators, but every indicator sits under a standard.
 
@@ -212,7 +212,12 @@ A metric is one thing you measure, such as visitors from search in a week or hou
 A term defines a word that metrics share, such as what counts as a critical bug, so every metric that counts critical bugs counts the same thing. The definition is the text of the term's README, which `para` never interprets.
 
 ### 1.6 Resources
-The resources bucket, a hierarchy of dirs holding reference material on a topic, kept apart from commitments so it never looks like work.
+
+A resource, the third of the [PARA categories](#02-the-para-method), is reference material on a topic, such as cooking or a programming language. Each resource is a [dir](#111-dirs) in `resources/`, since a resource has no kind of its own, and dirs nest to any depth, so cooking can hold baking. `resources/` also holds the [measurement library](#15-measurement) once you add the first analytic, metric or term.
+
+A resource is not a commitment, so it has no [status](#114-status) or due date, and [review](#115-review) never reports it as stale unless you set a staleness period for dirs in [config](#35-config), on it or on a folder above it ([staleness](#45-staleness)).
+
+A resource can be [archived](#17-archive) even when it is nested in another resource that stays live. It moves, with everything beneath it, to the matching path in `archive/resources/`.
 
 ### 1.7 Archive
 Where finished or inactive things go, so active buckets show only what is live.
