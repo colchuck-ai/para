@@ -117,7 +117,7 @@ Every entity has an id made of the tree's prefix and a short random code, such a
 
 ### 1.2 Buckets
 
-The four buckets are the top-level folders of a tree, one for each PARA category: `projects/`, `areas/`, `resources/` and `archive/`. [`init`](#73-init) creates them, with the archive buckets and the measurement library, and their names are fixed. Filing anything starts with choosing its bucket, the most actionable one that fits ([the PARA method](#02-the-para-method)).
+The four buckets are the top-level folders of a tree, one for each PARA category: `projects/`, `areas/`, `resources/` and `archive/`. [`init`](#73-init) creates them with the archive buckets, and their names are fixed. Filing anything starts with choosing its bucket, the most actionable one that fits ([the PARA method](#02-the-para-method)).
 
 Each bucket directly holds:
 
@@ -194,16 +194,22 @@ Its status is computed from the analytic over the window, the target, the margin
 The margin is a setting with a default that passes down the tree, where a nearer setting replaces a farther one ([config](#35-config)), and [derived status](#44-derived-status) defines how it applies. You never set an indicator's status; to stop tracking one, remove it, or [archive](#17-archive) the area it belongs to.
 
 ### 1.5 Measurement
-The shared library in `resources/measurement/`, defined once and used by any key result or indicator, so the same number is never defined twice.
+
+The measurement library in `resources/measurement/` defines each number that key results and indicators track, so the same number is never defined twice. It has three containers, `analytics/`, `metrics/` and `terms/`. `para` creates the library and each container when you add the first analytic, metric or term that needs it, and the name `measurement` is reserved in `resources/` before then. Each analytic, metric and term is a folder directly in its container and holds no entities, only its `.para/`, README and any content of your own.
+
+Each refers by id to what it uses. A [key result](#132-key-results) or [indicator](#142-indicators) names one analytic, an analytic names the metrics it computes from, and a metric names the terms it uses ([analytics, metrics and terms](#41-analytics-metrics-and-terms)). So one metric can feed many analytics, and one analytic can serve many key results and indicators. Commands refuse a reference to a missing id or to the wrong kind, [`show`](#74-reading) lists what each one uses and what uses it, and [`doctor`](#82-doctor-findings) reports a reference whose target has since been removed.
 
 #### 1.5.1 Analytics
-A computation over metrics, such as a ratio, with no target of its own, so one analytic can serve many goals and standards.
+
+An analytic is a computation over one or more metrics, as simple as one metric's latest value or as involved as visitors from search divided by all visitors. It has no target of its own, because the key results and indicators that use it set their own. Its value at any time is computed from its metrics' measurements and is never stored ([what is never stored](#57-what-is-never-stored)). [Analytics, metrics and terms](#41-analytics-metrics-and-terms) defines what an analytic can compute.
 
 #### 1.5.2 Metrics
-A single thing measured, whose dated values (measurements) are the raw data everything else is computed from.
+
+A metric is one thing you measure, such as visitors from search in a week or hours slept in a night. Its measurements are dated numbers, recorded with a command and kept in the metric's `.para/` ([recording measurements](#42-recording-measurements)). The computed statuses of key results and indicators come from them. `para` also writes them to `MEASUREMENTS.csv` in the same `.para/`, linked from the metric's README, so they open in any spreadsheet ([`MEASUREMENTS.csv`](#55-measurementscsv)).
 
 #### 1.5.3 Terms
-A shared definition that scopes metrics, such as what counts as "critical", so metrics that use a word mean the same thing.
+
+A term defines a word that metrics share, such as what counts as a critical bug, so every metric that counts critical bugs counts the same thing. The definition is the text of the term's README, which `para` never interprets.
 
 ### 1.6 Resources
 The resources bucket, a hierarchy of dirs holding reference material on a topic, kept apart from commitments so it never looks like work.
