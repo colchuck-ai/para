@@ -253,7 +253,14 @@ A link records a `type` you choose, such as `slack-channel` or `rss-feed`; a `re
 Review flags a link through ordinary [staleness](#45-staleness): you record each check or update as a note marked as attention, and `link.stale-after` sets how long a link may go without one. [`init`](#73-init) writes no such setting, so links are never flagged until one is set in [config](#35-config).
 
 ### 1.11 Dirs
-The basic kind of entity: a folder with its own journal, links and README but no status, living in the resources bucket or inside a project, area or another dir, so any folder can be managed.
+
+A dir is the basic kind of entity, a managed folder for material of any kind, such as a [resource](#16-resources) on cooking or a project's `designs/`. It has no status, due date or target.
+
+Each live dir sits directly in `resources/`, a project, an area or another dir, and nowhere else; an archived one sits at its mirrored path in `archive/` ([archive](#17-archive)). A dir holds other dirs, its [links](#110-links) in its `links/` container and any content of your own, and no other entities ([kinds and containment](#22-kinds-and-containment)).
+
+Like a project or area, a dir has a journal that takes [notes](#18-notes-and-the-journal), an [`ACTIVITY.md`](#19-activity) and a README whose frontmatter and [block](#52-para-owned-blocks) `para` keeps, and it can carry its own [sensitivity label](#112-sensitivity-labels). [Review](#115-review) reports a dir as stale only when a `dir.stale-after` setting reaches it ([staleness](#45-staleness)).
+
+A plain folder in a project, area or dir is content and needs nothing from `para`. Make it a dir when it needs notes, links or staleness of its own; to give it only a stricter label, a path rule in its entity's config is enough ([where labels are set](#63-where-labels-are-set)). [Adopting](#24-adopting-existing-directories) such a folder makes it a dir and keeps everything in it; a folder inside a plain folder can be adopted only once that folder is a dir.
 
 ### 1.12 Sensitivity labels
 How far content may travel, set on entities and inherited by everything beneath them, only ever tightening, so files never have to carry their own labels.
