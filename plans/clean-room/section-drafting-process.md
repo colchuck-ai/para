@@ -6,15 +6,15 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local only (not pushed). `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs.
-- **Next:** §1.12 Sensitivity labels. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
-- **Decisions:** D1–D57 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels.
+- **Next:** §1.13 Provenance. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
+- **Decisions:** D1–D69 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
   - D25: every refusal says why and what to do instead. D13 amended: a hand copy (`cp -r`) can also duplicate ids.
   - D26: `para` never runs git or requires a repository.
-  - D27: only a person lowers a label or raises trust, through an interactive confirmation with no non-interactive path.
+  - D27: only a person lowers a label or raises trust, through an interactive confirmation (amended by D69: `--force` skips it).
   - D28: every `.para/` holds a `state.toml` with its kind; the root's has `kind = "root"`, schema version and id prefix, replacing `tree.toml`. The `tree.toml` section was removed, and §3.3–§3.8 became §3.2–§3.7.
   - D29: state holds facts (changing one would make a record false), config holds choices; the id prefix is state, fixed when the tree is created or migrated, and ids are never re-indexed.
   - D30: repair resolves a duplicate id by giving one entity a new id, the person choosing which keeps it; the only time an id changes.
@@ -46,6 +46,17 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D55: attention is the entity's own newest marked note, or its creation; a metric's measurements count; nothing on a child counts.
   - D56: `ACTIVITY.md` is the full history, for every folder with a journal.
   - D57: links sit in `links/` of projects, areas and dirs; opaque type and ref, input or output; type and direction fixed; flagged by `link.stale-after`.
+  - D58: labels are TLP 2.0 (`CLEAR`, `GREEN`, `AMBER`, `AMBER+STRICT`, `RED`), loosest to strictest.
+  - D59: a label can be set on the root, a bucket, an archive bucket or any entity but a container; amends D15.
+  - D60: unlabelled means no rule; no default label.
+  - D61, D62: a move (archive and unarchive included) refuses when a covering label would fall.
+  - D63: the covering label shows in README frontmatter, `show`, `list`; `AGENTS.md` says what each allows.
+  - D64: a label is never looser than the one above it; refuse what would cause it (chosen over strictest-wins).
+  - D65: losing a label is a fall.
+  - D66: path rules may sit in any config that can hold a label.
+  - D67: tightening is allowed anywhere, the archive included (amends D50; §1.7 amended).
+  - D68: a label can be removed; it is a loosening when the label above is looser or absent.
+  - D69: loosening confirms by default, `--force` skips it, journaled either way (reverses D27's no-non-interactive rule; principle 7 amended).
 
 ## Priorities
 
@@ -144,10 +155,10 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Hand changes `doctor` must catch** (§8.2): `mv` of an entity (possibly to a place its kind may not sit), `rm -r` of an entity, a hand edit to a `para` frontmatter key, and `cp -r` of an entity, which duplicates its id (D13). Anything directly in a bucket other than its entities and `para`'s files is a finding (D31), though §0.3 still calls it content that `para` never moves; decide whether OS and tool files (`.DS_Store`, `.gitkeep`, `Thumbs.db`) are exempt.
 - **Git** (§3.7): §0.5 says `para` never runs git or requires a repository. §3.7 must settle whether `para` reads `.git/` and whether it writes `.gitattributes` (the PoC did; D23 allows only README and `AGENTS.md` as visible files).
 - **Time-dependent values in generated files** (§5.3): derived status depends on the current time, and generated files change only when a command runs (§0.5, §0.6 principle 4), so §5.3 must show such values with an as-of date or leave them out.
-- **Who may loosen a label or raise trust** (§6.4, D27): an interactive confirmation with no non-interactive path. This is the one exception to the non-interactive-confirmation note below.
+- **Who may loosen a label or raise trust** (§6.4, D27, D69): a confirmation by default, skipped by `--force`; journaled either way, saying whether forced. §6.4 should say the prompt is a nudge, not a security boundary, and the confirmation should name the result ("`brain-x9f2` and everything beneath it go from `RED` to `GREEN`").
 - **Commands given a duplicated id** (§8.2): after a merge or `cp -r` (D13), what a command does with an id held by two entities.
 - **Test hooks for the clock and ids** (§3.4, §2.3, Appendix B): §0.7 says Appendix B tells how tests fix the clock and new ids, so each must define a documented mechanism (such as an environment variable) and say whether users may rely on it.
-- **Test output conditions** (§7.10, Appendix B): tests check output exactly (§0.7), so §7.10 must fix colour, width, locale, prompt text, JSON key order and `/` as the path separator, both with and without a terminal. A D27 confirmation needs a terminal, so the Phase 3 harness needs pseudo-terminal support; §6.4 should say whether an agent allocating its own pseudo-terminal is an accepted limit of D27.
+- **Test output conditions** (§7.10, Appendix B): tests check output exactly (§0.7), so §7.10 must fix colour, width, locale, prompt text, JSON key order and `/` as the path separator, both with and without a terminal. Interactive confirmations need a terminal, so the Phase 3 harness needs pseudo-terminal support.
 - **Example starting points** (Appendix A, B): Appendix A or each example must define the v0 tree and the "example tree with a stated change" form that `migrate` and `doctor` examples start from.
 - **Tour coverage** (chapter 1): §0.7 says chapter 1 tours the whole tool, but no tour section yet leads to the command line, `doctor`, `migrate` or config (chapters 7 to 9). Add one or link them from existing sections.
 - **Kinds of non-entities** (§2.1, §2.2, D28): the root, buckets, archive buckets and stubs each have a kind in `state.toml` (`root`, `stub` and others to be named), so §2.1 or §2.2 must list them beside the entity kinds.
@@ -191,3 +202,5 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **`doctor`** reports a `.para/` that `para` did not create, and references to removed ids (§8.2).
 - **Determinism** (§0.1): output and changes depend only on the tree, arguments and current time, apart from new ids. Config must therefore come from inside the tree (§3.5), or §0.1 needs revisiting.
 - **README frontmatter**: `para` writes only its own keys (D24); §5.3 defines them.
+- **Path rules and adoption** (§2.4, §6.3, §8.2, D15, D66): adopting a folder a path rule covers turns the rule into one inside a child entity; decide whether adoption carries the rule's label onto the new entity or refuses. `doctor` should report path rules that match nothing (such as after a hand rename).
+- **Hand-made loosening** (§6.4, §8.2, D64, D69): a hand edit to `config.toml` that loosens a label breaks no ordering; decide whether `doctor` reports a label looser than its journaled history.

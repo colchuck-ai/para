@@ -72,7 +72,7 @@ Every design decision in this spec follows these rules. A new question is answer
 4. **Generated files serve readers**: the files `para` writes for readers who never run it show facts and computed values, are updated with every change, can be rebuilt from the stored truth at any time and are never read back as truth ([generated files](#117-generated-files)).
 5. **Ids are identity**: every entity is addressed by a stored id that survives moves and renames and is never reused. Its path only says where it is now ([addressing](#23-addressing)).
 6. **The right path is the easy one**: every change to the structure is a command, and a command that cannot make a change validly and safely refuses before writing anything, saying why and what to do instead. It never guesses ([why deterministic structure helps agents](#04-why-deterministic-structure-helps-agents)).
-7. **Loosening and format changes are explicit**: a sensitivity label only tightens down the tree, and trust only falls as content is derived from other content. Only a person, with an explicit command, lowers a label or raises trust, and never a label below its parent's ([how labels flow](#64-how-labels-flow)). A tree's format changes only through `para migrate` ([schema version](#93-schema-version)).
+7. **Loosening and format changes are explicit**: a sensitivity label only tightens down the tree, and trust only falls as content is derived from other content. Only an explicit command lowers a label or raises trust, asking for confirmation unless forced, and never a label below its parent's ([how labels flow](#64-how-labels-flow)). A tree's format changes only through `para migrate` ([schema version](#93-schema-version)).
 8. **Small and one way**: a feature is added only when managing a PARA tree needs it ([scope and non-goals](#05-scope-and-non-goals)), and each concept has one name, each kind of change one command and each value one format ([glossary](#appendix-c-glossary)).
 
 ### 0.7 How to read this spec
@@ -228,7 +228,7 @@ You can [archive](#25-archiving) any entity except a container, whatever its sta
 
 When something is archived from inside a live entity, `para` puts a stub at each mirrored ancestor path the archive does not already hold. A stub is a managed folder that records the id of the live entity it stands for, with no id of its own, and holds only archived entities and other stubs. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs; `para` refuses only if two archived entities would share a path.
 
-The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first. Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
+The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [label](#112-sensitivity-labels). Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
 ### 1.8 Notes and the journal
 
@@ -263,7 +263,16 @@ Like a project or area, a dir has a journal that takes [notes](#18-notes-and-the
 A plain folder in a project, area or dir is content and needs nothing from `para`. Make it a dir when it needs notes, links or staleness of its own; to give it only a stricter label, a path rule in its entity's config is enough ([where labels are set](#63-where-labels-are-set)). [Adopting](#24-adopting-existing-directories) such a folder makes it a dir and keeps everything in it; a folder inside a plain folder can be adopted only once that folder is a dir.
 
 ### 1.12 Sensitivity labels
-How far content may travel, set on entities and inherited by everything beneath them, only ever tightening, so files never have to carry their own labels.
+
+A sensitivity label says how far content may travel. `para` uses the five labels of [TLP 2.0](https://www.first.org/tlp/), from loosest to strictest: `CLEAR` (anyone), `GREEN` (your community, but not public channels), `AMBER` (your organization and its clients, as they need it), `AMBER+STRICT` (your organization only) and `RED` (only the people it was given to). [Sensitivity labels](#61-sensitivity-labels) defines each one.
+
+A label is set in the [config](#35-config) of the root, a bucket, an archive bucket or an entity other than a container, and covers everything beneath it, so no file has to carry a label in itself. A config can also hold path rules, each giving a stricter label to a file or plain folder beneath that folder, though never to anything inside a child entity, which sets its own ([where labels are set](#63-where-labels-are-set)).
+
+A label is never looser than the one above it, and `para` refuses a change that would break this, such as setting `RED` on an area whose sub-area is labelled `AMBER`, until the sub-area is tightened first. A label can also be removed, so the folder takes the one above it. Loosening a label, or removing one when the label above is looser or there is none, asks for confirmation unless run with `--force`, and is journaled either way ([how labels flow](#64-how-labels-flow)).
+
+A command that moves an entity, archiving and unarchiving included, refuses if the label covering it would become looser or none at all, as when an unlabelled dir in a `RED` area moves to a `resources/` labelled `GREEN`, or if any label it carries, its own or one set beneath it, would end up looser than the one above it. The remedy is to tighten the entity's label, or one inside it, and run the command again; a label can be tightened even in the read-only archive.
+
+Content no label covers is shown as `unlabelled`, and `para` assumes nothing about it, so labels are optional; to label everything, set one on the root ([unlabelled content](#66-unlabelled-content)). An entity's README frontmatter, [`show`](#74-reading) and [`list`](#74-reading) give the label that covers it, and `AGENTS.md` tells agents what each label allows ([what para does with labels](#65-what-para-does-with-labels)).
 
 ### 1.13 Provenance
 Where each file came from and how it was made (captured, edited by a person, or inferred by AI), from which `para` derives how far to trust it alongside your judgment of the source, so content can be traced and weighed by its reliability.
@@ -375,10 +384,10 @@ The label set and what each label allows, so a label has one meaning.
 What a file's source record holds and the trust levels it can have, so origin and reliability are recorded one way.
 
 ### 6.3 Where labels are set
-How each entity's `config.toml` sets its own sensitivity and tightens it for paths beneath it, without reaching into a child entity, and where provenance is recorded, so every fact has exactly one home.
+How the `config.toml` of the root, a bucket, an archive bucket or an entity sets its sensitivity and tightens it for paths beneath it, without reaching into a child entity, and where provenance is recorded, so every fact has exactly one home.
 
 ### 6.4 How labels flow
-How labels reach the files beneath and the content derived from them (sensitivity only tightens, trust only falls, and only a person reverses either), so nothing is loosened or trusted by accident.
+How labels reach the files beneath and the content derived from them (sensitivity only tightens, trust only falls, and only an explicit, confirmed command reverses either), so nothing is loosened or trusted by accident.
 
 ### 6.5 What para does with labels
 How labels appear in outputs and checks, so a label has visible effect.
