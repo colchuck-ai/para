@@ -6,9 +6,9 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local only (not pushed). `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels.
-- **Next:** §1.13 Provenance. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
-- **Decisions:** D1–D69 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance.
+- **Next:** §1.14 Status. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
+- **Decisions:** D1–D91 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -57,6 +57,22 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D67: tightening is allowed anywhere, the archive included (amends D50; §1.7 amended).
   - D68: a label can be removed; it is a loosening when the label above is looser or absent.
   - D69: loosening confirms by default, `--force` skips it, journaled either way (reverses D27's no-non-interactive rule; principle 7 amended).
+  - D70: no folder defaults for provenance; files are recorded explicitly.
+  - D71, D78: sources are a library kind in `resources/sources/` (reserved), grade in config.
+  - D72: trust is computed when read; removed, changed or unrecorded inputs and removed sources count as the lowest grade.
+  - D73, D79: provenance is state in the holding entity's `state.toml` (files inside entities only); recording, contributing and vouching are journal events.
+  - D74: sensitivity and reliability scales are configurable in root config (TLP 2.0 and A–F by default); the creation method is not.
+  - D75: `para` never writes content; recording is its own command per file.
+  - D76: a recorded file is a primary (fixed, hashed, names its source) or a derived work (living, names its inputs).
+  - D77: RFC 8693 `sub` and nested `act`; identities taken as given.
+  - D80, D89: a source starts at the lowest grade; setting or raising a grade confirms unless forced, even at creation.
+  - D81: inputs are named by entity id and path.
+  - D82, D85, D86: people and agents are sources; an agent's source is its model and harness; a derived work counts its people, actors and inputs.
+  - D83, D88: a vouch confirms unless forced, counts only with no `act`, and replaces every actor's grade for work recorded before it.
+  - D84: a source's grade can be lowered in the archive.
+  - D87: each act records model id, harness version and session, ungraded.
+  - D90: a primary's reliability is its source's grade alone.
+  - D91: attribution by flags or `PARA_*` variables, flag wins; no `sub` refuses.
 
 ## Priorities
 
@@ -204,3 +220,7 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **README frontmatter**: `para` writes only its own keys (D24); §5.3 defines them.
 - **Path rules and adoption** (§2.4, §6.3, §8.2, D15, D66): adopting a folder a path rule covers turns the rule into one inside a child entity; decide whether adoption carries the rule's label onto the new entity or refuses. `doctor` should report path rules that match nothing (such as after a hand rename).
 - **Hand-made loosening** (§6.4, §8.2, D64, D69): a hand edit to `config.toml` that loosens a label breaks no ordering; decide whether `doctor` reports a label looser than its journaled history.
+- **Provenance details** (§6.2, §8.2, D76–D84): recording when the accountable person is not yet a source (refuse, or count as lowest); cycles in `from`; whether a vouch stores a hash so later edits show as "edited since vouch"; an input in a removed entity; hand renames and files moved by hand between entities; inputs outside the tree refused.
+- **Provenance storage** (§3.7, §8.1, D79): many per-file tables in one `state.toml` conflict when two branches record in the same entity; a raw-byte hash flags every primary after a git CRLF conversion.
+- **Labels through derivation** (§6.4): whether a derived work takes the strictest label of its inputs (the `from` chain makes it possible); the §6.4 charter names it, no decision yet.
+- **Attribution input** (§7.1, §7.2, D91): define `--sub`, `--act`, `--model`, `--harness`, `--session` and their `PARA_*` variables, flag over variable, and say the variables stand in for flags so §0.1's "arguments" covers them; tests must fix them like the clock.

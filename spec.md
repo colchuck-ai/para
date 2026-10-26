@@ -30,7 +30,7 @@ In `para`, each category is a top-level [bucket](#12-buckets) of the tree.
 The tree's structure and metadata belong to `para`. They are:
 
 - every folder `para` manages (the folder itself, not what you put in it): the root, the buckets and archive buckets, archive stubs, and every entity, including containers such as `objectives/`. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
-- everything inside each `.para/`: state, config (including sensitivity rules), the journal, provenance records and the files `para` generates, such as `ACTIVITY.md` ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
+- everything inside each `.para/`: state (including each recorded file's provenance), config (including sensitivity rules), the journal and the files `para` generates, such as `ACTIVITY.md` ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
 - the keys `para` writes in README frontmatter, its marked blocks in READMEs and `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
 
 Change these only through `para`'s commands, including creating, moving, renaming, archiving and removing entities. The commands are designed to be the easiest way for a person or an agent to make these changes. `para` validates each change before writing anything and refuses an invalid one.
@@ -57,7 +57,7 @@ These are outside `para`'s scope, and a feature that falls under one is declined
 
 - **Skills and tool-specific files**: `para` does not distribute skills (instructions packaged for an agent) or generate files for one agent tool, such as Cursor rules or `CLAUDE.md`. Distributing skills is its own problem, and tool-specific files differ from tool to tool. Other tools can layer both on a tree, and layering skills on top is the intended way to customize how agents work with it. `para` writes only its own block in `AGENTS.md`, a file many agent tools read and that you may also use for your own instructions ([`AGENTS.md`](#56-agentsmd)). [`para migrate`](#91-migrating-a-v0-tree) removes the `CLAUDE.md` blocks an earlier version wrote.
 - **Version control**: `para` never runs git or requires a repository, so it works the same in any tree and never commits for you. [Git](#37-git) covers how its files behave in a repository.
-- **Interpreting content**: `para` never judges a file by what it says, and calls no AI model. A model's answer would make commands nondeterministic, so a file's label and provenance come from what a person or agent records and from the tree's rules.
+- **Interpreting content**: `para` never judges a file by what it says, and calls no AI model. A model's answer would make commands nondeterministic, so a file's provenance comes from what a person or agent records, its label from the tree's rules, and its trust is computed from those records, the grades a person sets and their vouches.
 - **Reaching outside the tree**: `para` never fetches or sends anything over a network, which keeps every command [deterministic](#01-what-para-is). A [link](#110-links) points to something outside the tree and is flagged when it is due to be checked or updated, and outside values enter only as [recorded measurements](#42-recording-measurements).
 - **Running on its own**: `para` has no background process, schedule or notifications, so nothing changes the tree unless someone runs a command. [`review`](#77-review) is how to ask what needs attention.
 - **Access control**: `para` does not encrypt files or set file permissions. A [sensitivity label](#112-sensitivity-labels) records how far content may travel, but `para` cannot stop a readable file being copied. [What para does with labels](#65-what-para-does-with-labels) covers what it does instead.
@@ -126,7 +126,7 @@ Each bucket directly holds:
 | --- | --- |
 | `projects/` | [projects](#13-projects) |
 | `areas/` | [areas](#14-areas) |
-| `resources/` | [dirs](#111-dirs), and the [measurement library](#15-measurement) in `measurement/` ([resources](#16-resources)) |
+| `resources/` | [dirs](#111-dirs), the [measurement library](#15-measurement) in `measurement/` and the [sources](#113-provenance) in `sources/` ([resources](#16-resources)) |
 | `archive/` | the archive buckets `projects/`, `areas/` and `resources/` |
 
 Each archive bucket holds the projects, areas or dirs archived from the matching bucket, and the [stubs](#17-archive) that stand in for a live ancestor so an archived entity keeps its path.
@@ -214,7 +214,7 @@ A term defines a word that metrics share, such as what counts as a critical bug,
 
 ### 1.6 Resources
 
-A resource, the third of the [PARA categories](#02-the-para-method), is reference material on a topic, such as cooking or a programming language. Each resource is a [dir](#111-dirs) in `resources/`, since a resource has no kind of its own, and dirs nest to any depth, so cooking can hold baking. `resources/` also holds the [measurement library](#15-measurement) once you add the first analytic, metric or term.
+A resource, the third of the [PARA categories](#02-the-para-method), is reference material on a topic, such as cooking or a programming language. Each resource is a [dir](#111-dirs) in `resources/`, since a resource has no kind of its own, and dirs nest to any depth, so cooking can hold baking. `resources/` also holds the [measurement library](#15-measurement) once you add the first analytic, metric or term, and the [sources](#113-provenance) once you add the first source.
 
 A resource is not a commitment, so it has no [status](#114-status) or due date, and [review](#115-review) never reports it as stale unless you set a staleness period for dirs in [config](#35-config), on it or on a folder above it ([staleness](#45-staleness)).
 
@@ -228,7 +228,7 @@ You can [archive](#25-archiving) any entity except a container, whatever its sta
 
 When something is archived from inside a live entity, `para` puts a stub at each mirrored ancestor path the archive does not already hold. A stub is a managed folder that records the id of the live entity it stands for, with no id of its own, and holds only archived entities and other stubs. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs; `para` refuses only if two archived entities would share a path.
 
-The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [label](#112-sensitivity-labels). Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
+The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [label](#112-sensitivity-labels) or lowering a [source's grade](#113-provenance). Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
 ### 1.8 Notes and the journal
 
@@ -264,7 +264,7 @@ A plain folder in a project, area or dir is content and needs nothing from `para
 
 ### 1.12 Sensitivity labels
 
-A sensitivity label says how far content may travel. `para` uses the five labels of [TLP 2.0](https://www.first.org/tlp/), from loosest to strictest: `CLEAR` (anyone), `GREEN` (your community, but not public channels), `AMBER` (your organization and its clients, as they need it), `AMBER+STRICT` (your organization only) and `RED` (only the people it was given to). [Sensitivity labels](#61-sensitivity-labels) defines each one.
+A sensitivity label says how far content may travel. By default `para` uses the five labels of [TLP 2.0](https://www.first.org/tlp/), from loosest to strictest: `CLEAR` (anyone), `GREEN` (your community, but not public channels), `AMBER` (your organization and its clients, as they need it), `AMBER+STRICT` (your organization only) and `RED` (only the people it was given to). The root's [config](#35-config) can define another scale, and [sensitivity labels](#61-sensitivity-labels) defines each one.
 
 A label is set in the [config](#35-config) of the root, a bucket, an archive bucket or an entity other than a container, and covers everything beneath it, so no file has to carry a label in itself. A config can also hold path rules, each giving a stricter label to a file or plain folder beneath that folder, though never to anything inside a child entity, which sets its own ([where labels are set](#63-where-labels-are-set)).
 
@@ -275,7 +275,16 @@ A command that moves an entity, archiving and unarchiving included, refuses if t
 Content no label covers is shown as `unlabelled`, and `para` assumes nothing about it, so labels are optional; to label everything, set one on the root ([unlabelled content](#66-unlabelled-content)). An entity's README frontmatter, [`show`](#74-reading) and [`list`](#74-reading) give the label that covers it, and `AGENTS.md` tells agents what each label allows ([what para does with labels](#65-what-para-does-with-labels)).
 
 ### 1.13 Provenance
-Where each file came from and how it was made (captured, edited by a person, or inferred by AI), from which `para` derives how far to trust it alongside your judgment of the source, so content can be traced and weighed by its reliability.
+
+Provenance answers two questions about a file: where it came from, and how far to trust it. `para` records the first as facts, a person grades the sources, and `para` computes trust from those two, never from what the file says ([scope and non-goals](#05-scope-and-non-goals)).
+
+A source is an entity that stands for where material comes from, such as a sender, a website, a person or an agent, and carries a reliability grade a person sets, from `A` (reliable) to `F` (cannot be judged) by default ([config](#35-config)). Sources are kept, like terms, in `resources/sources/`, created when you add the first one, and the name `sources` is reserved in `resources/` before then. A source added without a grade starts at the lowest. Setting or raising a grade asks for confirmation unless forced, as loosening a label does, and lowering one is allowed even in the archive.
+
+You record a file with a command after it exists, as a primary or a derived work. A primary is a copy of something from outside the tree, such as an email or a web page; it names its source, and `para` keeps its hash, so a later change to it is flagged. A derived work, such as notes or a summary, names the files it was made from, each by its entity's id and its path, and stays free to change. Every record names the person accountable and, when someone acted for them, such as an agent working for a person, who did the work; both are sources. An agent's source is its model and harness, and each record it makes also notes the exact model, harness version and session, given with the command, as facts that are never graded. `para` takes these names as given.
+
+Trust has two parts, computed whenever it is shown and never stored. A file's reliability is the worst grade among its sources: for a primary, its source alone; for a derived work, the people accountable for it, anyone who acted for them, and everything it was made from, through every input. A primary that changed, a source or input that is gone, or an unrecorded input, counts as the lowest grade. A file is unchecked while it, or anything it was made from, holds recorded work done for a person that they have not since vouched for. A vouch counts only when it names that person with no one acting for them, asks for confirmation unless forced, and puts the person's grade in place of every actor's for the work recorded before it. So a summary that an agent graded `B` writes for a person graded `A`, from an email graded `C`, reads `C, unchecked` until that person vouches for it, and `C` even then.
+
+A file's record sits in the `state.toml` of the entity that holds it, keyed by its path, and like a label's path rule it never covers a file inside a child entity. Each recording, change to a record and vouch is an event in that entity's journal. A file with no record is `unrecorded`, and `para` assumes nothing about it. [`show`](#74-reading) and [`list`](#74-reading) give a file's provenance and trust, and [`doctor`](#82-doctor-findings) reports a primary that changed and a record whose file is gone ([provenance and trust](#62-provenance-and-trust)).
 
 ### 1.14 Status
 Where a project, objective, key result or indicator stands in its life (other kinds have no status, and key results' and indicators' are computed), so active, blocked and done work can be told apart.
@@ -378,22 +387,22 @@ Values that are always computed and never stored as truth, so no stored copy is 
 ## 6. Sensitivity and provenance
 
 ### 6.1 Sensitivity labels
-The label set and what each label allows, so a label has one meaning.
+The default label set, how the root's config defines another scale, and what each label allows, so a label has one meaning in a tree.
 
 ### 6.2 Provenance and trust
-What a file's source record holds and the trust levels it can have, so origin and reliability are recorded one way.
+Sources and their grades, what a file's record holds (primary or derived, inputs, the accountable person and who acted for them, with the model, harness and session for an agent), how reliability and checked or unchecked are computed, and vouching, so origin and trust are recorded one way.
 
 ### 6.3 Where labels are set
-How the `config.toml` of the root, a bucket, an archive bucket or an entity sets its sensitivity and tightens it for paths beneath it, without reaching into a child entity, and where provenance is recorded, so every fact has exactly one home.
+How the `config.toml` of the root, a bucket, an archive bucket or an entity sets its sensitivity and tightens it for paths beneath it, without reaching into a child entity, so every label has exactly one home.
 
 ### 6.4 How labels flow
-How labels reach the files beneath and the content derived from them (sensitivity only tightens, trust only falls, and only an explicit, confirmed command reverses either), so nothing is loosened or trusted by accident.
+How labels reach the files beneath and the content derived from them (sensitivity only tightens, trust only falls, and only an explicit command, confirmed unless forced, reverses either), so nothing is loosened or trusted by accident.
 
 ### 6.5 What para does with labels
 How labels appear in outputs and checks, so a label has visible effect.
 
 ### 6.6 Unlabelled content
-How content with no labels behaves, so labels stay optional.
+How content with no label, or no provenance record, behaves, so labels and provenance stay optional.
 
 ## 7. Command line
 
