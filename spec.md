@@ -198,7 +198,7 @@ The margin is a setting with a default that passes down the tree, where a nearer
 
 The measurement library in `resources/measurement/` defines each number that key results and indicators track, so the same number is never defined twice. `measurement/` is a container that holds three more, `analytics/`, `metrics/` and `terms/`. `para` creates the library and each container when you add the first analytic, metric or term that needs it, and the name `measurement` is reserved in `resources/` before then. Each analytic, metric and term is a folder directly in its container and holds no entities, only its `.para/`, README and any content of your own.
 
-Each refers by id to what it uses. A [key result](#132-key-results) or [indicator](#142-indicators) names one analytic, an analytic names the metrics it computes from, and a metric names the terms it uses ([analytics, metrics and terms](#41-analytics-metrics-and-terms)). So one metric can feed many analytics, and one analytic can serve many key results and indicators. Commands refuse a reference to a missing id or to the wrong kind, [`show`](#74-reading) lists what each one uses and what uses it, and [`doctor`](#82-doctor-findings) reports a reference whose target has since been removed.
+Each refers by id to what it uses. A [key result](#132-key-results) or [indicator](#142-indicators) names one analytic, an analytic names the metrics it computes from, and a metric names the terms it uses ([analytics, metrics and terms](#41-analytics-metrics-and-terms)). So one metric can feed many analytics, and one analytic can serve many key results and indicators. Commands refuse a reference to a missing id, to the wrong kind or to an archived entity, [`show`](#74-reading) lists what each one uses and what uses it, and [`doctor`](#82-doctor-findings) reports a reference whose target has since been removed. A live entity never uses an archived one, whatever its status, so archiving an analytic, metric or term is refused while a live entity uses it, and unarchiving an entity is refused while one it uses is archived. Each refusal names those entities, so you can point them elsewhere or archive or unarchive them first.
 
 #### 1.5.1 Analytics
 
@@ -224,7 +224,7 @@ A resource can be [archived](#17-archive) even when it is nested in another reso
 
 The archive is where finished or inactive things go, so `projects/`, `areas/` and `resources/` show only what is live. `archive/` holds an archive bucket for each of them, and an archived entity sits at the path that mirrors where it was, so `projects/launch-website/` becomes `archive/projects/launch-website/`.
 
-You can [archive](#25-archiving) any entity except a container, whatever its status, and everything beneath it goes too. Archiving changes where it is and none of its fields, so its status still says how it ended.
+You can [archive](#25-archiving) any entity except a container, whatever its status, and everything beneath it goes too, unless a live entity still uses it ([measurement](#15-measurement)). Archiving changes where it is and none of its fields, so its status still says how it ended.
 
 When something is archived from inside a live entity, `para` puts a stub at each mirrored ancestor path the archive does not already hold. A stub is a managed folder that records the id of the live entity it stands for, with no id of its own, and holds only archived entities and other stubs. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs; `para` refuses only if two archived entities would share a path.
 
@@ -287,7 +287,22 @@ Trust has two parts, computed whenever it is shown and never stored. A file's re
 A file's record sits in the `state.toml` of the entity that holds it, keyed by its path, and like a label's path rule it never covers a file inside a child entity. Each recording, change to a record and vouch is an event in that entity's journal. A file with no record is `unrecorded`, and `para` assumes nothing about it. [`show`](#74-reading) and [`list`](#74-reading) give a file's provenance and trust, and [`doctor`](#82-doctor-findings) reports a primary that changed and a record whose file is gone ([provenance and trust](#62-provenance-and-trust)).
 
 ### 1.14 Status
-Where a project, objective, key result or indicator stands in its life (other kinds have no status, and key results' and indicators' are computed), so active, blocked and done work can be told apart.
+
+Status says where a piece of work stands, so active, blocked and finished work can be told apart. Only these four kinds have one:
+
+| Kind | Statuses | How |
+| --- | --- | --- |
+| [project](#13-projects), [objective](#131-objectives) | `planned` (the default), `in-progress`, `blocked`, `done`, `dropped` | set by you, in any order |
+| [key result](#132-key-results) | `dropped`, `achieved`, `missed`, `at-risk`, `on-track` | computed, except `dropped`, which you set and can clear |
+| [indicator](#142-indicators) | `no-data`, `breached`, `at-risk`, `healthy` | computed |
+
+A status you set, `dropped` included, is stored in the entity's `state.toml`, and each change is an event in its journal. Setting `blocked` needs a note saying why, so every blocker keeps its reason. A computed status is never stored: `para` works it out from the measurements and the current time whenever it is shown ([derived status](#44-derived-status)).
+
+`done` and `dropped` say how the work ended. A project is closed when its status is one of them, an objective when its own or its project's is, and a key result when it is `dropped` or its objective is closed; all other work is open. Closure is never written to the children, so reopening a project or objective reopens only the work beneath it whose own status is not `done` or `dropped`. [Review](#115-review) stops reporting closed work, and [archiving](#17-archive) it is a separate step.
+
+An open project or objective whose due date has passed is overdue, a flag review reports rather than a status, so the status you set stays as it is.
+
+An archived key result or indicator shows its status as of when it was last archived, alone or with an entity above it, so its status stops changing and an indicator's window does not run out of data. Unarchiving it computes its status at the current time again.
 
 ### 1.15 Review
 The question "what needs attention?", answered from the tree, which is `para`'s main daily use.
