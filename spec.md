@@ -228,7 +228,7 @@ You can [archive](#25-archiving) any entity except a container, whatever its sta
 
 When something is archived from inside a live entity, `para` puts a stub at each mirrored ancestor path the archive does not already hold. A stub is a managed folder that records the id of the live entity it stands for, with no id of its own, and holds only archived entities and other stubs. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs; `para` refuses only if two archived entities would share a path.
 
-The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [label](#112-sensitivity-labels) or lowering a [source's grade](#113-provenance). Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
+The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [label](#112-sensitivity-labels), lowering a [source's grade](#113-provenance) or vouching for a file. Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
 ### 1.8 Notes and the journal
 
@@ -305,7 +305,25 @@ An open project or objective whose due date has passed is overdue, a flag review
 An archived key result or indicator shows its status as of when it was last archived, alone or with an entity above it, so its status stops changing and an indicator's window does not run out of data. Unarchiving it computes its status at the current time again.
 
 ### 1.15 Review
-The question "what needs attention?", answered from the tree, which is `para`'s main daily use.
+
+Review answers "what needs attention?", and is `para`'s main daily use ([`review`](#77-review)). It reads only the tree and the current time, and changes nothing.
+
+It reports in six groups, and anything that needs attention appears in every group that applies to it ([review groups](#46-review-groups)):
+
+| Group | Reports |
+| --- | --- |
+| blocked | projects and objectives set to `blocked`, with the note saying why |
+| overdue | open projects and objectives past their due date ([status](#114-status)) |
+| key results | open key results that are `at-risk` or `missed` |
+| indicators | indicators that are `breached`, `at-risk` or `no-data` |
+| stale | entities that have gone without [attention](#18-notes-and-the-journal) for longer than their `<kind>.stale-after` setting ([staleness](#45-staleness)) |
+| unchecked | files holding work done for a person that they have not since vouched for, when the file, or any file made from it directly or through other inputs, is live and outside closed work ([provenance](#113-provenance)) |
+
+A missed key result stays listed until it is closed, archived, removed or [suppressed](#116-suppression). The unchecked group lists the files to vouch for, wherever they sit, and names the live files made from each; a file unchecked only through its inputs is not listed itself.
+
+Apart from the unchecked group, review reports nothing in the archive, and nothing that is closed or sits under a closed project or objective, including its dirs, links and files. Areas never close, so their indicators and staleness always count. To pause one flag for a known reason, such as an area left alone while you travel, suppress it.
+
+Review covers attention to the work. The tree's integrity, such as a duplicated id, a primary that changed or a record whose file is gone, is [`doctor`](#82-doctor-findings)'s to report.
 
 ### 1.16 Suppression
 A dated, explained pause on an attention flag, so review stays useful when something is knowingly on hold.
