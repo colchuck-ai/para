@@ -6,9 +6,9 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local and on `origin` (tracks `origin/clean-room-impl`); push with `git push` only when the human asks. `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review.
-- **Next:** §1.16 Suppression. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
-- **Decisions:** D1–D101 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review, §1.16 Suppression.
+- **Next:** §1.17 Generated files. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
+- **Decisions:** D1–D107 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -82,6 +82,12 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D98: review is quiet about the archive and everything closed or under closed work; areas never close.
   - D99: review and `doctor` stay separate.
   - D101: vouching is allowed in the archive (amends D50, D84; §1.7 amended).
+  - D102: only stale, key result and indicator flags can be suppressed; blocked, overdue and unchecked have their own remedies.
+  - D103: a suppression covers one flag on one entity; on a key result or indicator it holds only for the status it was set under.
+  - D104: a suppression needs an end date and a note, as does lifting it early; neither is attention; expiry writes no event.
+  - D105: review ends with the count of suppressed flags, and an option lists them.
+  - D106: a suppression is state, set by `suppress` and `unsuppress`, journaled, not inherited.
+  - D107: staleness can be suppressed ahead of time; a key result or indicator only while flagged (§1.15 amended).
 
 ## Priorities
 
@@ -151,7 +157,7 @@ The reader-clarity lens carries the most weight.
 
 > You are reviewing one drafted section of a software specification. Report findings only; do not edit any file.
 >
-> **Project.** `para` is a Go CLI that deterministically manages the structure and metadata of a PARA file tree. The spec is written section by section in `/Users/maxdunn/dev/colchuck-ai/para/spec.md`; undrafted sections are one-sentence charters. Conventions: cross-references are Markdown links to heading anchors (no § sign); one line per paragraph; the tool is `para` in backticks.
+> **Project.** `para` is a Go CLI that deterministically manages the structure and metadata of a PARA file tree. The spec is written section by section in `/home/jomadu/repos/colchuck-ai/para/spec.md`; undrafted sections are one-sentence charters. Conventions: cross-references are Markdown links to heading anchors (no § sign); one line per paragraph; the tool is `para` in backticks.
 >
 > **Section under review:** §X.Y "Title" (from `### X.Y` to the next header). Charter: "…". Earlier sections are approved; don't re-review them, but flag repetition or mismatch.
 >
@@ -235,3 +241,4 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Attribution input** (§7.1, §7.2, D91): define `--sub`, `--act`, `--model`, `--harness`, `--session` and their `PARA_*` variables, flag over variable, and say the variables stand in for flags so §0.1's "arguments" covers them; tests must fix them like the clock.
 - **Status details** (§3.3, §3.4, §4.4, §4.6, §8.2, D92–D95): the archive date an archived key result or indicator uses (D95) comes from the journal, so the journal rules must let one archived with an ancestor find the archiving that last put it there; when a due date counts as passed for overdue (day boundary, time zone), as for key results; a due date set in the past; `doctor` findings for a hand-edited `status` with an unknown value or on a kind whose status is computed; whether review reports dropped key results and archived work at all.
 - **Review details** (§4.4, §4.6, §7.7, §8.1, D97–D101): the status of a key result or indicator whose analytic or metric was removed (dangling, D43), and whether review shows it; whether review takes the tree lock or waits while a write holds it; output with nothing to report; review run from inside the archive or a closed project; D100's walk over input chains visits each file once, survives a cycle in `from` (or recording refuses one, §6.2) and stops at an input whose record or entity is gone.
+- **Suppression details** (§3.4, §3.7, §4.7, §7.6, §7.7, §8.2, D102–D107): whether the end date is inclusive, and the day boundary and time zone that decide it; whether an end date today or in the past is refused; one suppression per flag per entity, and whether suppressing again replaces it (journaled) or refuses; the status a key result or indicator suppression keeps is stored, and since it is computed from the clock, tests fix the clock (Appendix B); whether `at-risk` → `on-track` → `at-risk` before the end date stays suppressed; what review's count includes (only active suppressions hiding a flag now, not expired ones or those on closed or archived work); whether an expired suppression stays in `state.toml` or is cleared, and by what, since expiry writes no event (D104); a suppression on closed or archived work surviving reopen or unarchive; suppress is refused in the archive (not a §1.7 exception); a git merge leaving two suppressions or a conflicted `state.toml`; an early stale suppression on an entity no `<kind>.stale-after` reaches (refuse, or accept and hide nothing), and whether it starts hiding the flag once a setting arrives.

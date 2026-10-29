@@ -319,14 +319,29 @@ It reports in six groups, and anything that needs attention appears in every gro
 | stale | entities that have gone without [attention](#18-notes-and-the-journal) for longer than their `<kind>.stale-after` setting ([staleness](#45-staleness)) |
 | unchecked | files holding work done for a person that they have not since vouched for, when the file, or any file made from it directly or through other inputs, is live and outside closed work ([provenance](#113-provenance)) |
 
-A missed key result stays listed until it is closed, archived, removed or [suppressed](#116-suppression). The unchecked group lists the files to vouch for, wherever they sit, and names the live files made from each; a file unchecked only through its inputs is not listed itself.
+A missed key result stays listed, except while [suppressed](#116-suppression), until it is closed, archived or removed. The unchecked group lists the files to vouch for, wherever they sit, and names the live files made from each; a file unchecked only through its inputs is not listed itself.
 
 Apart from the unchecked group, review reports nothing in the archive, and nothing that is closed or sits under a closed project or objective, including its dirs, links and files. Areas never close, so their indicators and staleness always count. To pause one flag for a known reason, such as an area left alone while you travel, suppress it.
 
 Review covers attention to the work. The tree's integrity, such as a duplicated id, a primary that changed or a record whose file is gone, is [`doctor`](#82-doctor-findings)'s to report.
 
 ### 1.16 Suppression
-A dated, explained pause on an attention flag, so review stays useful when something is knowingly on hold.
+
+Suppression pauses one [review](#115-review) flag, an entity's place in one review group, until a date you give, with a note saying why, so review stays useful while something is knowingly on hold. Only flags in these three groups can be suppressed, because while the work waits, the only other ways to clear them are recording attention or a measurement that did not happen, or giving up work you still mean to do:
+
+| Group | Example |
+| --- | --- |
+| stale | an area left alone for a season, such as a garden in winter |
+| key results | a key result `at-risk` because a launch slipped, which you still mean to reach |
+| indicators | an indicator with `no-data` while a broken tracker is replaced |
+
+Blocked, overdue and unchecked flags cannot be suppressed, since each has its own remedy: change the status, set a new due date, or vouch for the file.
+
+A suppression leaves the entity's other flags, and everything beneath it, reported as usual. A stale flag can be suppressed before it appears, such as before a trip. A key result or indicator can be suppressed only while it is flagged, and the suppression holds only for that status: one suppressed while `at-risk` is reported again if it becomes `missed`, and one suppressed for `no-data` is reported again if it turns `breached`.
+
+`suppress` sets a suppression, with the end date and a note, and `unsuppress` lifts it early, also with a note ([writing](#76-writing)). The suppression is stored in the entity's `state.toml`, and setting or lifting it is an event in the entity's journal. Neither counts as [attention](#18-notes-and-the-journal), so a suppression never makes neglected work look tended. When the end date passes, the suppression lapses with no event, and review checks the flag as usual ([suppression](#47-suppression)).
+
+Review ends by saying how many flags are suppressed, and lists each with its note and end date when asked ([`review`](#77-review)).
 
 ### 1.17 Generated files
 Files `para` writes for readers who never run it, which are the product rather than a cache.
