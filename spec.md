@@ -29,7 +29,7 @@ In `para`, each category is a top-level [bucket](#12-buckets) of the tree.
 
 The tree's structure and metadata belong to `para`. They are:
 
-- every folder `para` manages (the folder itself, not what you put in it): the root, the buckets and archive buckets, archive stubs, and every entity, including containers such as `objectives/`. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
+- every entity, which is every folder `para` manages (the folder itself, not what you put in it): the root, the containers (the buckets, archive buckets and ones such as `objectives/`), archive stubs, and every project, area, dir and entity of another kind. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
 - everything inside each `.para/`: state (including each recorded file's provenance), config (including sensitivity rules), the journal and the files `para` generates, such as `ACTIVITY.md` ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
 - the keys `para` writes in README frontmatter, its marked blocks in READMEs and `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
 
@@ -37,7 +37,7 @@ Change these only through `para`'s commands, including creating, moving, renamin
 
 Everything else is content: notes, documents, data, other folders, and your own text and frontmatter keys in READMEs and `AGENTS.md`. Anyone may create and edit content. `para` never edits or deletes it, even when removing an entity, and moves it only along with the entity that holds it. Where a README or `AGENTS.md` already exists, `para` adds its part and keeps yours, and adopting a folder adds a `.para/` and keeps everything already there ([adopting existing directories](#24-adopting-existing-directories)). In every other case, if content already sits where `para` needs to create a folder or move an entity, `para` refuses rather than overwrite or merge it.
 
-Changing `para`'s side by hand, such as moving a managed folder or editing a file in `.para/`, is possible but unsupported, and text written inside `para`'s files or blocks is overwritten the next time `para` rewrites them. `para`'s [safety guarantees](#81-safety-guarantees) cover only changes made through its commands, and [`doctor`](#82-doctor-findings) reports hand changes that leave the tree inconsistent, including a `.para/` that `para` did not create.
+Changing `para`'s side by hand, such as moving an entity or editing a file in `.para/`, is possible but unsupported, and text written inside `para`'s files or blocks is overwritten the next time `para` rewrites them. `para`'s [safety guarantees](#81-safety-guarantees) cover only changes made through its commands, and [`doctor`](#82-doctor-findings) reports hand changes that leave the tree inconsistent, including a `.para/` that `para` did not create.
 
 Every command depends on this split: it writes only `para`'s side.
 
@@ -89,7 +89,7 @@ Every example starts from the tree in Appendix A unless it names another startin
 
 A tree is a root directory and everything in it. The root's `.para/state.toml` has `kind = "root"`, which marks the tree, and records the tree's schema version and the prefix of its ids ([`state.toml`](#32-statetoml)). [`init`](#73-init) creates a tree, and every command that works on a tree finds it by checking the current directory and then each parent for a `.para/state.toml` with `kind = "root"` ([the walk](#36-the-walk)). A v0 tree is marked by `tree.toml` instead, and only [`migrate`](#91-migrating-a-v0-tree) works on it.
 
-Under the root are the four [buckets](#12-buckets), and `archive/` holds archive buckets that mirror the other three ([archive](#17-archive)). Within the buckets are the entities, directories of the kinds `para` tracks by id, such as projects, areas and dirs ([kinds and containment](#22-kinds-and-containment)). Children of one kind are grouped in a container, an entity with a reserved name, such as a project's `objectives/`, which `para` creates when the first child arrives. Every managed folder, entity or not, has a `.para/` whose `state.toml` records its kind, and each except the root sits directly inside another. The root, buckets, archive buckets and archive [stubs](#17-archive) have no id and are not entities.
+Under the root are the four [buckets](#12-buckets), and `archive/` holds archive buckets that mirror the other three ([archive](#17-archive)). Every folder `para` manages is an entity, a directory it tracks by id: the root, the buckets and archive buckets, the projects, areas, dirs and other kinds within them, and the archive's [stubs](#17-archive) ([kinds and containment](#22-kinds-and-containment)). A container is an entity with a fixed name that groups children: each bucket and archive bucket is one, created by `init`, and so is a project's `objectives/`, created when its first child arrives. Every entity has a `.para/` whose `state.toml` records its kind, and each except the root sits directly inside another.
 
 ```text
 brain/                     the root
@@ -118,7 +118,7 @@ Every entity has an id made of the tree's prefix and a short random code, such a
 
 ### 1.2 Buckets
 
-The four buckets are the top-level folders of a tree, one for each PARA category: `projects/`, `areas/`, `resources/` and `archive/`. [`init`](#73-init) creates them with the archive buckets, and their names are fixed. Filing anything starts with choosing its bucket, the most actionable one that fits ([the PARA method](#02-the-para-method)).
+The four buckets are the top-level folders of a tree, one for each PARA category: `projects/`, `areas/`, `resources/` and `archive/`. [`init`](#73-init) creates them with the archive buckets, and their names are fixed. Each bucket and archive bucket is a container ([the tree](#11-the-tree)), and none is ever moved, renamed, archived or removed. Filing anything starts with choosing its bucket, the most actionable one that fits ([the PARA method](#02-the-para-method)).
 
 Each bucket directly holds:
 
@@ -131,7 +131,7 @@ Each bucket directly holds:
 
 Each archive bucket holds the projects, areas or dirs archived from the matching bucket, and the [stubs](#17-archive) that stand in for a live ancestor so an archived entity keeps its path.
 
-Besides those, every bucket and archive bucket holds its `.para/`, a `README.md` and an `AGENTS.md`. `para` writes its own block in each of the last two, and anything you write outside the block is yours ([para-owned blocks](#52-para-owned-blocks)). Anything else put directly in a bucket or archive bucket, such as a file or a folder with no `.para/`, stays content that `para` never moves or deletes, but [`doctor`](#82-doctor-findings) reports it and says to move it into an entity, or to [adopt](#24-adopting-existing-directories) a folder as one.
+Besides those, every bucket and archive bucket holds its `.para/`, a `README.md` and an `AGENTS.md`. `para` writes its own block in each of the last two, and anything you write outside the block is yours ([para-owned blocks](#52-para-owned-blocks)). Anything else put directly in a bucket or archive bucket, such as a file or a folder with no `.para/`, stays content that `para` never moves or deletes, but [`doctor`](#82-doctor-findings) reports it and says to move it into a project, area or dir, or to [adopt](#24-adopting-existing-directories) a folder as one.
 
 ### 1.3 Projects
 
@@ -224,23 +224,23 @@ A resource can be [archived](#17-archive) even when it is nested in another reso
 
 The archive is where finished or inactive things go, so `projects/`, `areas/` and `resources/` show only what is live. `archive/` holds an archive bucket for each of them, and an archived entity sits at the path that mirrors where it was, so `projects/launch-website/` becomes `archive/projects/launch-website/`.
 
-You can [archive](#25-archiving) any entity except a container, whatever its status, and everything beneath it goes too, unless a live entity still uses it ([measurement](#15-measurement)). Archiving changes where it is and none of its fields, so its status still says how it ended.
+You can [archive](#25-archiving) any entity except the root, a container or a stub, whatever its status, and everything beneath it goes too, unless a live entity still uses it ([measurement](#15-measurement)). Archiving changes where it is and none of its fields, so its status still says how it ended.
 
-When something is archived from inside a live entity, `para` puts a stub at each mirrored ancestor path the archive does not already hold. A stub is a managed folder that records the id of the live entity it stands for, with no id of its own, and holds only archived entities and other stubs. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs; `para` refuses only if two archived entities would share a path.
+When something is archived from inside a live entity, `para` puts a stub at each mirrored ancestor path the archive does not already hold. A stub is an entity that records the id of the live entity it stands for and holds only archived entities and other stubs. Stubs are `para`'s alone, so only `show` and `list` take a stub's id. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs; `para` refuses only if two archived entities would share a path.
 
 The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [label](#112-sensitivity-labels), lowering a [source's grade](#113-provenance) or vouching for a file. Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
 ### 1.8 Notes and the journal
 
-Every managed folder except a stub keeps a journal in its `.para/`, the history of what happened to it. Each time a command changes what the folder is or holds, `para` appends a dated event, such as a project's status changing, a child being added, moved, archived or removed, or a note. `para` only ever appends to a journal and never edits an event in it, so anyone arriving later can read what happened and when without having to remember it ([the journal](#33-the-journal)).
+Every entity except a stub keeps a journal in its `.para/`, the history of what happened to it. Each time a command changes what the folder is or holds, `para` appends a dated event, such as a project's status changing, a child being added, moved, archived or removed, or a note. `para` only ever appends to a journal and never edits an event in it, so anyone arriving later can read what happened and when without having to remember it ([the journal](#33-the-journal)).
 
 Each event goes to the folder it happened to; a child arriving or leaving is its parent's event, so a move gives the old and new parent one each ([principles](#06-principles)). [Removing](#76-writing) an entity deletes its journal, and its parent's journal records the removal (a stub, having none, records nothing).
 
-A note is a short dated entry in an entity's journal, such as "waiting on the design review", not a notes file of your own, and only entities take notes. You add one with its own command, and any command that changes an entity can carry one to say why. An entity's attention, which keeps it from going [stale](#45-staleness), is its newest note that you marked as attention, as when you record work you did, or else its creation; for a metric, a new measurement counts too. Nothing else counts, not a status change or a child's note, so working notes and reasons never make neglected work look tended.
+A note is a short dated entry in an entity's journal, such as "waiting on the design review", not a notes file of your own, and every entity that keeps a journal takes them. You add one with its own command, and any command that changes an entity can carry one to say why. An entity's attention, which keeps it from going [stale](#45-staleness), is its newest note that you marked as attention, as when you record work you did, or else its creation; for a metric, a new measurement counts too. Nothing else counts, not a status change or a child's note, so working notes and reasons never make neglected work look tended.
 
 ### 1.9 Activity
 
-Every managed folder except a stub has an `ACTIVITY.md` in its `.para/`, linked from its README, so its history can be read in any Markdown viewer, such as GitHub, without running `para`. It lists every event in that folder's own journal in plain sentences, grouped by day with the newest day first. So the `projects/` bucket's file shows projects arriving, moving and being archived, and a project's file shows its own status changes and notes, not what happens inside its objectives.
+Every entity except a stub has an `ACTIVITY.md` in its `.para/`, linked from its README, so its history can be read in any Markdown viewer, such as GitHub, without running `para`. It lists every event in that folder's own journal in plain sentences, grouped by day with the newest day first. So the `projects/` bucket's file shows projects arriving, moving and being archived, and a project's file shows its own status changes and notes, not what happens inside its objectives.
 
 `para` rewrites it from its journal whenever the journal changes ([write-through](#51-write-through)), so an edit to it is lost, and [`rebuild`](#78-rebuild) regenerates it ([`ACTIVITY.md`](#54-activitymd)).
 
@@ -254,7 +254,7 @@ Review flags a link through ordinary [staleness](#45-staleness): you record each
 
 ### 1.11 Dirs
 
-A dir is the basic kind of entity, a managed folder for material of any kind, such as a [resource](#16-resources) on cooking or a project's `designs/`. It has no status, due date or target.
+A dir is the basic kind of entity, a folder for material of any kind, such as a [resource](#16-resources) on cooking or a project's `designs/`. It has no status, due date or target.
 
 Each live dir sits directly in `resources/`, a project, an area or another dir, and nowhere else; an archived one sits at its mirrored path in `archive/` ([archive](#17-archive)). A dir holds other dirs, its [links](#110-links) in its `links/` container and any content of your own, and no other entities ([kinds and containment](#22-kinds-and-containment)).
 
@@ -266,7 +266,7 @@ A plain folder in a project, area or dir is content and needs nothing from `para
 
 A sensitivity label says how far content may travel. By default `para` uses the five labels of [TLP 2.0](https://www.first.org/tlp/), from loosest to strictest: `CLEAR` (anyone), `GREEN` (your community, but not public channels), `AMBER` (your organization and its clients, as they need it), `AMBER+STRICT` (your organization only) and `RED` (only the people it was given to). The root's [config](#35-config) can define another scale, and [sensitivity labels](#61-sensitivity-labels) defines each one.
 
-A label is set in the [config](#35-config) of the root, a bucket, an archive bucket or an entity other than a container, and covers everything beneath it, so no file has to carry a label in itself. A config can also hold path rules, each giving a stricter label to a file or plain folder beneath that folder, though never to anything inside a child entity, which sets its own ([where labels are set](#63-where-labels-are-set)).
+A label is set in the [config](#35-config) of any entity except a stub, the root and buckets included, and covers everything beneath it, so no file has to carry a label in itself. A config can also hold path rules, each giving a stricter label to a file or plain folder beneath that folder, though never to anything inside a child entity, which sets its own ([where labels are set](#63-where-labels-are-set)).
 
 A label is never looser than the one above it, and `para` refuses a change that would break this, such as setting `RED` on an area whose sub-area is labelled `AMBER`, until the sub-area is tightened first. A label can also be removed, so the folder takes the one above it. Loosening a label, or removing one when the label above is looser or there is none, asks for confirmation unless run with `--force`, and is journaled either way ([how labels flow](#64-how-labels-flow)).
 
@@ -284,7 +284,7 @@ You record a file with a command after it exists, as a primary or a derived work
 
 Trust has two parts, computed whenever it is shown and never stored. A file's reliability is the worst grade among its sources: for a primary, its source alone; for a derived work, the people accountable for it, anyone who acted for them, and everything it was made from, through every input. A primary that changed, a source or input that is gone, or an unrecorded input, counts as the lowest grade. A file is unchecked while it, or anything it was made from, holds recorded work done for a person that they have not since vouched for. A vouch counts only when it names that person with no one acting for them, asks for confirmation unless forced, and puts the person's grade in place of every actor's for the work recorded before it. So a summary that an agent graded `B` writes for a person graded `A`, from an email graded `C`, reads `C, unchecked` until that person vouches for it, and `C` even then.
 
-A file's record sits in the `state.toml` of the entity that holds it, keyed by its path, and like a label's path rule it never covers a file inside a child entity. Each recording, change to a record and vouch is an event in that entity's journal. A file with no record is `unrecorded`, and `para` assumes nothing about it. [`show`](#74-reading) and [`list`](#74-reading) give a file's provenance and trust, and [`doctor`](#82-doctor-findings) reports a primary that changed and a record whose file is gone ([provenance and trust](#62-provenance-and-trust)).
+A file's record sits in the `state.toml` of the entity that holds it, which is never the root, a container or a stub, keyed by its path, and like a label's path rule it never covers a file inside a child entity. Each recording, change to a record and vouch is an event in that entity's journal. A file with no record is `unrecorded`, and `para` assumes nothing about it. [`show`](#74-reading) and [`list`](#74-reading) give a file's provenance and trust, and [`doctor`](#82-doctor-findings) reports a primary that changed and a record whose file is gone ([provenance and trust](#62-provenance-and-trust)).
 
 ### 1.14 Status
 
@@ -349,7 +349,7 @@ Review ends by saying how many flags are suppressed, and lists each with its not
 
 | File | Where | `para`'s part | Shows |
 | --- | --- | --- | --- |
-| `README.md` | every managed folder except a stub | its block, plus its frontmatter keys on an entity's README | an entity's main facts, such as its id, kind, set status and label; the folder's children and links to its other generated files |
+| `README.md` | every entity except a stub | its frontmatter keys and its block | the entity's main facts, such as its id, kind, set status and label; its children and links to its other generated files |
 | `AGENTS.md` | the root, each bucket and each archive bucket | its block | the tree's rules and what each label allows, for agents |
 | `ACTIVITY.md` | every `.para/` except a stub's | the whole file | the folder's journal in plain sentences ([activity](#19-activity)) |
 | `MEASUREMENTS.csv` | a metric's `.para/` | the whole file | the metric's measurements as a table ([metrics](#152-metrics)) |
@@ -361,7 +361,26 @@ Generated files show only values that a command alone can change. Values that ch
 ## 2. Model
 
 ### 2.1 Directory shapes
-The kinds of directory `para` recognises, so any folder can be classified the same way every time.
+
+Every directory in a tree has one of four shapes, and `para` tells them apart the same way every time:
+
+| Shape | Recognised by | Owner |
+| --- | --- | --- |
+| entity | it holds a `.para/` whose `state.toml` gives a known kind | `para`, though what you put in it is [yours](#03-structure-is-paras-content-is-yours) |
+| damaged folder | it holds something named `.para`, but its kind cannot be read | `para`, though what you put in it is yours |
+| `.para/` | its name | `para`, with everything in it, which is never classified further |
+| plain folder | anything else | you, as content |
+
+An entity's kind is the `kind` in its `state.toml`, matched exactly, case included, and recorded nowhere else ([`state.toml`](#32-statetoml)). `para` never works out a kind from a folder's name or where it sits. Having read the kind, `para` checks that it may sit there and, for a container, that its name is one fixed for a container where it sits, so its name and parent say which container it is ([kinds and containment](#22-kinds-and-containment)). An archived entity keeps its kind, since being archived is a matter of where it sits.
+
+| Kind | What it is |
+| --- | --- |
+| `root` | the top of the tree ([the tree](#11-the-tree)) |
+| `container` | a bucket (`projects/`, `areas/`, `resources/`, `archive/`), an archive bucket (`projects/`, `areas/` or `resources/` in `archive/`), or one of `objectives/`, `key-results/`, `standards/`, `indicators/`, `links/`, `measurement/`, `analytics/`, `metrics/`, `terms/` and `sources/` |
+| `stub` | a stand-in, at the mirrored path in `archive/`, for a live ancestor of an archived entity ([archive](#17-archive)) |
+| `project`, `objective`, `key-result`, `area`, `standard`, `indicator`, `analytic`, `metric`, `term`, `source`, `link`, `dir` | the other kinds toured in [chapter 1](#1-components) |
+
+A damaged folder, such as one whose `state.toml` is missing, has no `kind` or names an unknown kind such as `Project`, or whose `.para` is a file, is never guessed at. A command that would change it or anything beneath it refuses, naming the folder and pointing to [`doctor`](#82-doctor-findings), which reports it; [`show`](#74-reading), [`list`](#74-reading) and [`review`](#77-review) leave it and everything beneath it out and warn that they did. A v0 tree is not classified this way, since only [`migrate`](#91-migrating-a-v0-tree) works on it.
 
 ### 2.2 Kinds and containment
 Which kind may sit inside which, and that entities form an unbroken chain from the root, so the tree has one legal shape that can be checked.
@@ -370,7 +389,7 @@ Which kind may sit inside which, and that entities form an unbroken chain from t
 How a thing is named by a generated id rather than its path, the only address commands accept, so a reference survives moves and re-parenting.
 
 ### 2.4 Adopting existing directories
-How a folder that already exists becomes managed, so `para` can be introduced to a real tree.
+How a folder that already exists becomes an entity, so `para` can be introduced to a real tree.
 
 ### 2.5 Archiving
 How things move into and out of the archive, so finishing work never loses history.
@@ -453,7 +472,7 @@ The default label set, how the root's config defines another scale, and what eac
 Sources and their grades, what a file's record holds (primary or derived, inputs, the accountable person and who acted for them, with the model, harness and session for an agent), how reliability and checked or unchecked are computed, and vouching, so origin and trust are recorded one way.
 
 ### 6.3 Where labels are set
-How the `config.toml` of the root, a bucket, an archive bucket or an entity sets its sensitivity and tightens it for paths beneath it, without reaching into a child entity, so every label has exactly one home.
+How the `config.toml` of any entity but a stub sets its sensitivity and tightens it for paths beneath it, without reaching into a child entity, so every label has exactly one home.
 
 ### 6.4 How labels flow
 How labels reach the files beneath and the content derived from them (sensitivity only tightens, trust only falls, and only an explicit command, confirmed unless forced, reverses either), so nothing is loosened or trusted by accident.
