@@ -69,7 +69,7 @@ Every design decision in this spec follows these rules. A new question is answer
 1. **Structure is `para`'s, content is yours**: `para` writes only its own side of the tree and never edits or deletes content ([ownership](#03-structure-is-paras-content-is-yours)).
 2. **Deterministic**: the same tree, arguments and time give the same result, apart from new ids ([what para is](#01-what-para-is)).
 3. **One home per fact**: each fact is stored as truth in exactly one place ([truth and projection](#31-truth-and-projection)), and each event is recorded once, in the journal of the folder it happened to, where a child arriving or leaving is its parent's event. A value that can be computed, such as a key result's status, is never stored as truth ([what is never stored](#57-what-is-never-stored)).
-4. **Generated files serve readers**: the files `para` writes for readers who never run it show facts and computed values, are updated with every change, can be rebuilt from the stored truth at any time and are never read back as truth ([generated files](#117-generated-files)).
+4. **Generated files serve readers**: the files `para` writes for readers who never run it show facts and the values computed from them that only a command can change; they are updated with every change, can be rebuilt from the stored truth at any time and are never read back as truth ([generated files](#117-generated-files)).
 5. **Ids are identity**: every entity is addressed by a stored id that survives moves and renames and is never reused. Its path only says where it is now ([addressing](#23-addressing)).
 6. **The right path is the easy one**: every change to the structure is a command, and a command that cannot make a change validly and safely refuses before writing anything, saying why and what to do instead. It never guesses ([why deterministic structure helps agents](#04-why-deterministic-structure-helps-agents)).
 7. **Loosening and format changes are explicit**: a sensitivity label only tightens down the tree, and trust only falls as content is derived from other content. Only an explicit command lowers a label or raises trust, asking for confirmation unless forced, and never a label below its parent's ([how labels flow](#64-how-labels-flow)). A tree's format changes only through `para migrate` ([schema version](#93-schema-version)).
@@ -344,7 +344,19 @@ A suppression leaves the entity's other flags, and everything beneath it, report
 Review ends by saying how many flags are suppressed, and lists each with its note and end date when asked ([`review`](#77-review)).
 
 ### 1.17 Generated files
-Files `para` writes for readers who never run it, which are the product rather than a cache.
+
+`para` writes some files for people and tools that read the tree without running `para`, such as someone browsing it on GitHub or an agent using ordinary file tools. They are part of what `para` delivers, meant to stay in the tree for anyone to read. `para` never reads them as truth: it works only from the state, config and journals in each `.para/`, and reads a README or `AGENTS.md` only to find its own part ([truth and projection](#31-truth-and-projection)).
+
+| File | Where | `para`'s part | Shows |
+| --- | --- | --- | --- |
+| `README.md` | every managed folder except a stub | its block, plus its frontmatter keys on an entity's README | an entity's main facts, such as its id, kind, set status and label; the folder's children and links to its other generated files |
+| `AGENTS.md` | the root, each bucket and each archive bucket | its block | the tree's rules and what each label allows, for agents |
+| `ACTIVITY.md` | every `.para/` except a stub's | the whole file | the folder's journal in plain sentences ([activity](#19-activity)) |
+| `MEASUREMENTS.csv` | a metric's `.para/` | the whole file | the metric's measurements as a table ([metrics](#152-metrics)) |
+
+A command that changes a fact rewrites every generated file that shows it in the same run ([write-through](#51-write-through)), and [`rebuild`](#78-rebuild) rewrites them all from the state, config and journals, as after a git merge or a hand edit. Your own text outside `para`'s part is content and is kept, and anything written inside it is replaced at the next rewrite ([para-owned blocks](#52-para-owned-blocks)).
+
+Generated files show only values that a command alone can change. Values that change without one are left out: whether a project or objective is overdue and whether anything is stale, which follow the clock, and trust, which follows the contents of files. Computed statuses are left out too, so any status a file shows is one you set. [`show`](#74-reading), [`list`](#74-reading) and [review](#115-review) give all of these. So a generated file goes out of date only through a change made outside `para`, such as a hand edit or a git merge, and `rebuild` in the same version of `para` writes the same files on any day and on any machine.
 
 ## 2. Model
 
