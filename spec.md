@@ -89,7 +89,7 @@ Every example starts from the tree in Appendix A unless it names another startin
 
 A tree is a root directory and everything in it. The root's `.para/state.toml` has `kind = "root"`, which marks the tree, and records the tree's schema version and the prefix of its ids ([`state.toml`](#32-statetoml)). [`init`](#73-init) creates a tree, and every command that works on a tree finds it by checking the current directory and then each parent for a `.para/state.toml` with `kind = "root"` ([the walk](#36-the-walk)). A v0 tree is marked by `tree.toml` instead, and only [`migrate`](#91-migrating-a-v0-tree) works on it.
 
-Under the root are the four [buckets](#12-buckets), and `archive/` holds archive buckets that mirror the other three ([archive](#17-archive)). Every folder `para` manages is an entity, a directory it tracks by id: the root, the buckets and archive buckets, the projects, areas, dirs and other kinds within them, and the archive's [stubs](#17-archive) ([kinds and containment](#22-kinds-and-containment)). A container is an entity with a fixed name that groups children: each bucket and archive bucket is one, created by `init`, and so is a project's `objectives/`, created when its first child arrives. Every entity has a `.para/` whose `state.toml` records its kind, and each except the root sits directly inside another.
+Under the root are the four [buckets](#12-buckets), and `archive/` holds archive buckets that mirror the other three ([archive](#17-archive)). Every folder `para` manages is an entity, a directory it tracks by id: the root, the buckets and archive buckets, the projects, areas, dirs and other kinds within them, and the archive's [stubs](#17-archive) ([kinds and containment](#22-kinds-and-containment)). A container is an entity with a fixed name that groups children: each bucket is one, created by `init`, and so is each archive bucket and a project's `objectives/`, created when its first child arrives. Every entity has a `.para/` whose `state.toml` records its kind, and each except the root sits directly inside another.
 
 ```text
 brain/                     the root
@@ -118,7 +118,7 @@ Every entity has an id made of the tree's prefix and a short random code, such a
 
 ### 1.2 Buckets
 
-The four buckets are the top-level folders of a tree, one for each PARA category: `projects/`, `areas/`, `resources/` and `archive/`. [`init`](#73-init) creates them with the archive buckets, and their names are fixed. Each bucket and archive bucket is a container ([the tree](#11-the-tree)), and none is ever moved, renamed, archived or removed. Filing anything starts with choosing its bucket, the most actionable one that fits ([the PARA method](#02-the-para-method)).
+The four buckets are the top-level folders of a tree, one for each PARA category: `projects/`, `areas/`, `resources/` and `archive/`. [`init`](#73-init) creates them, each archive bucket appears the first time something is archived into it, and their names are fixed. Each bucket and archive bucket is a container ([the tree](#11-the-tree)), and none is ever moved, renamed, archived or removed. Filing anything starts with choosing its bucket, the most actionable one that fits ([the PARA method](#02-the-para-method)).
 
 Each bucket directly holds:
 
@@ -129,7 +129,7 @@ Each bucket directly holds:
 | `resources/` | [dirs](#111-dirs), the [measurement library](#15-measurement) in `measurement/` and the [sources](#113-provenance) in `sources/` ([resources](#16-resources)) |
 | `archive/` | the archive buckets `projects/`, `areas/` and `resources/` |
 
-Each archive bucket holds the projects, areas or dirs archived from the matching bucket, and the [stubs](#17-archive) that stand in for a live ancestor so an archived entity keeps its path.
+Each archive bucket holds the projects, areas or dirs archived from the matching bucket, and the [stubs](#17-archive) that stand in for an ancestor so an archived entity keeps its path.
 
 Besides those, every bucket and archive bucket holds its `.para/`, a `README.md` and an `AGENTS.md`. `para` writes its own block in each of the last two, and anything you write outside the block is yours ([para-owned blocks](#52-para-owned-blocks)). Anything else put directly in a bucket or archive bucket, such as a file or a folder with no `.para/`, stays content that `para` never moves or deletes, but [`doctor`](#82-doctor-findings) reports it and says to move it into a project, area or dir, or to [adopt](#24-adopting-existing-directories) a folder as one.
 
@@ -226,7 +226,7 @@ The archive is where finished or inactive things go, so `projects/`, `areas/` an
 
 You can [archive](#25-archiving) any entity except the root, a container or a stub, whatever its status, and everything beneath it goes too, unless a live entity still uses it ([measurement](#15-measurement)). Archiving changes where it is and none of its fields, so its status still says how it ended.
 
-When something is archived from inside a live entity, `para` puts a stub at each mirrored ancestor path the archive does not already hold. A stub is an entity that records the id of the live entity it stands for and holds only archived entities and other stubs. Stubs are `para`'s alone, so only `show` and `list` take a stub's id. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs; `para` refuses only if two archived entities would share a path.
+When something is archived from inside a live entity, `para` puts a stub at each mirrored ancestor path the archive does not already hold. A stub is an entity that records the id and kind of the entity it stands for and holds only archived entities and other stubs. Stubs are `para`'s alone, so only `show` and `list` take a stub's id. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs; `para` refuses only if two archived entities would share a path.
 
 The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [label](#112-sensitivity-labels), lowering a [source's grade](#113-provenance) or vouching for a file. Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
@@ -383,7 +383,44 @@ An entity's kind is the `kind` in its `state.toml`, matched exactly, case includ
 A damaged folder, such as one whose `state.toml` is missing, has no `kind` or names an unknown kind such as `Project`, or whose `.para` is a file, is never guessed at. A command that would change it or anything beneath it refuses, naming the folder and pointing to [`doctor`](#82-doctor-findings), which reports it; [`show`](#74-reading), [`list`](#74-reading) and [`review`](#77-review) leave it and everything beneath it out and warn that they did. A v0 tree is not classified this way, since only [`migrate`](#91-migrating-a-v0-tree) works on it.
 
 ### 2.2 Kinds and containment
-Which kind may sit inside which, and that entities form an unbroken chain from the root, so the tree has one legal shape that can be checked.
+
+Every entity except the root sits directly inside another entity, so entities form an unbroken chain from the root. An entity may directly hold only the entities its row lists:
+
+| Entity | May directly hold |
+| --- | --- |
+| the root | the buckets `projects/`, `areas/`, `resources/` and `archive/` |
+| `projects/` | projects |
+| `areas/` | areas |
+| `resources/` | dirs, and the containers `measurement/` and `sources/` |
+| `archive/` | the archive buckets `projects/`, `areas/` and `resources/` |
+| a project | the containers `objectives/` and `links/`, and dirs |
+| `objectives/` | objectives |
+| an objective | the container `key-results/` |
+| `key-results/` | key results |
+| an area | the containers `standards/` and `links/`, areas and dirs |
+| `standards/` | standards |
+| a standard | the container `indicators/` |
+| `indicators/` | indicators |
+| a dir | the container `links/`, and dirs |
+| `links/` | links |
+| `measurement/` | the containers `analytics/`, `metrics/` and `terms/` |
+| `analytics/`, `metrics/`, `terms/`, `sources/` | analytics, metrics, terms or sources, as its name says |
+| a key result, indicator, analytic, metric, term, source or link | no entities |
+
+The four buckets always exist. Everything else in the table is optional, so a project may have no objectives and an objective no key results, just as an area may have no standards.
+
+Besides its entities and `para`'s own files ([generated files](#117-generated-files)), an entity may hold content of your own, unless it is a container or a stub. [`doctor`](#82-doctor-findings) reports content found directly in a container or stub, and leaves it in place.
+
+The archive follows the same table. An archive bucket holds the archived entities its matching bucket may hold, and appears the first time anything is archived into it. A stub records the id and kind of the entity it stands for, and counts as that entity. It sits at that entity's mirrored path, inside an archive bucket or another stub, and holds what that entity's row lists ([archive](#17-archive)). How stubs follow renames, moves and removals is in [archiving](#25-archiving).
+
+A container's name comes from the row of the entity that holds it, such as `links/` in a dir. Inside that entity the name is reserved: `para` creates or [adopts](#24-adopting-existing-directories) nothing else under it, and refuses to create the container while something already has the name, saying to rename it first. Names compare as the filesystem compares them, so where case is ignored a plain `Links/` blocks `links/` ([safety guarantees](#81-safety-guarantees)). Elsewhere the name is free: `resources/cooking/measurement/` is an ordinary dir.
+
+A command refuses any change that breaks these rules, such as filing a dir in `projects/` or moving an entity into itself or anything beneath it ([writing](#76-writing)). `doctor` reports breaks made by hand or by a git merge:
+
+- a missing bucket
+- an entity out of place, or inside a plain folder
+- a container whose name its parent's row does not give
+- anything else under a reserved name
 
 ### 2.3 Addressing
 How a thing is named by a generated id rather than its path, the only address commands accept, so a reference survives moves and re-parenting.
