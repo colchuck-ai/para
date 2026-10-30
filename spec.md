@@ -114,7 +114,7 @@ brain/                     the root
 
 The sketch is abridged; [the example tree](#appendix-a-example-tree) is complete.
 
-Every entity has an id made of the tree's prefix and a short random code, such as `brain-7k2q`, and commands name entities only by id ([addressing](#23-addressing)). `para` never reuses an id. A git merge or a hand copy of an entity's folder can still duplicate one; [`doctor`](#82-doctor-findings) reports it, and [repair](#83-repair) gives all but one holder a new id, the only time an id changes.
+Every entity has an id made of the tree's prefix and a short random code, such as `brain-7k2q`, and commands name entities only by id ([addressing](#23-addressing)). `para` never reuses an id. A git merge or a hand copy of an entity's folder can still duplicate one; [`doctor`](#82-doctor-findings) reports it, and [repair](#83-repair) gives all but one holder a new id, the only time an id changes ([addressing](#23-addressing)).
 
 ### 1.2 Buckets
 
@@ -423,7 +423,22 @@ A command refuses any change that breaks these rules, such as filing a dir in `p
 - anything else under a reserved name
 
 ### 2.3 Addressing
-How a thing is named by a generated id rather than its path, the only address commands accept, so a reference survives moves and re-parenting.
+
+Commands name an entity only by its id, never by its path or name, so a reference stays good when the entity is renamed, moved or archived. The id is stored in the entity's [`state.toml`](#32-statetoml) and travels with its folder, and `para` finds an entity by reading the tree for its id ([the walk](#36-the-walk)).
+
+An id is the tree's prefix, a hyphen and a random code, such as `brain-7k2q`. The prefix is letters and digits, set when the tree is created or migrated and never changed ([`init`](#73-init), [migrating a v0 tree](#91-migrating-a-v0-tree)). The code is lowercase letters and digits, at least four characters long. New codes get longer as the tree issues more ids, so the chance of two ids ever matching stays at or below 1%: four characters cover about 180 ids, five about 1,100 and six about 6,600. Issuing a new id never changes an existing one. The exact rule: each new code has the shortest length L, at least 4, for which n² ÷ (2 × 36^L) ≤ 0.01, where 36 is the number of characters a code may use and n counts every id issued so far plus the new one. [Worked examples](#appendix-b-worked-examples) says how tests fix the codes `para` draws.
+
+`para` keeps a record of every id it has issued, so it never reuses one and can count them. Each id gets an empty file of that name in the root's `.para/ids/`, which is never deleted, even when the entity is gone. A code whose file already exists is drawn again, and the number of files is the n above. Branches that create entities add files with different names, so git merges the record without a conflict. If two branches draw the same code by chance, their files merge into one and two entities share the id, as below. An entity whose id has no file, such as one copied by hand from another tree with the same prefix, still answers to its id; [`doctor`](#82-doctor-findings) reports it, and [repair](#83-repair) adds the file.
+
+A command takes an id exactly as `para` prints it, never shortened. Every output names entities by id, [`list`](#74-reading) finds one by name, kind or place, and each README's frontmatter carries its entity's id ([README frontmatter](#53-readme-frontmatter)). A command refuses an id it cannot use and says why ([output and exit codes](#710-output-and-exit-codes)):
+
+- its prefix is not this tree's
+- two entities hold it
+- it no longer exists: no entity holds it, but its file is there, because its entity was removed or, for a stub, replaced by the archived entity
+- it was never issued: no entity holds it and it has no file
+- the command does not take its kind, as for a stub given to anything but `show` or `list`
+
+A git merge or a hand copy of a folder can leave two entities with one id, and a folder copied in from another tree brings ids with another prefix. `doctor` reports both, and repair gives all but one holder of a duplicated id, and every entity with another prefix, a new id from this tree. You choose which holder keeps a duplicated id. Repair is the only time an id changes. A stub's recorded id is a reference to the entity it stands for, so lookup and duplicate checks ignore it.
 
 ### 2.4 Adopting existing directories
 How a folder that already exists becomes an entity, so `para` can be introduced to a real tree.
