@@ -8,7 +8,7 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
 - **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review, §1.16 Suppression, §1.17 Generated files (chapter 1 complete), §2.1 Directory shapes, §2.2 Kinds and containment, §2.3 Addressing.
 - **Next:** §2.4 Adopting existing directories. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
-- **Decisions:** D1–D119 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Decisions:** D1–D120 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -100,6 +100,7 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D117: stubs follow renames and moves of their live entities; the move refuses when a stub's new path is taken; archiving onto a removed entity's stub refuses (amends D50).
   - D118: every issued id gets an empty file in the root's `.para/ids/`, never deleted; its count is n for id length (amends D13).
   - D119: an entity with another tree's prefix is reported by `doctor` and re-id'd by repair; commands refuse duplicated or foreign ids until then (amends D30).
+  - D120: why ids, not paths (paths change and get reused; most references are out of `para`'s reach); D11 kept with cheap lookup; stored references are the id alone; D112 kept.
 
 ## Priorities
 
@@ -192,6 +193,7 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Concurrent commands**: §0.4 says agents, people and scripts share a tree; what happens when two `para` commands run at once belongs in §8.1. Root and bucket journals (D53) are written by nearly every create, so concurrent appends and git merge conflicts concentrate there (§3.7).
 - **Mid-write conditions** (a destination appearing mid-run, a full disk) are partial failures under §8.1, not refusals; §0.4 promises refusal only before anything is written.
 - **Ids in README frontmatter**: §0.4 says file tools can find any entity and its main facts, and commands take only ids (D11), so §5.3 must make the id a frontmatter key.
+- **Cheap id lookup and id-only references** (§5.6, §7.4, §7.10, D120): `list` filters by place (such as the current folder); shell completion shows names and fills in ids; every output prints each id with its current path; `AGENTS.md` tells agents to write only the id in notes and handoffs and to run `show` to see what it names.
 - **Journaling outside entities** (§3.3, D53): settled; the root and buckets keep journals. §3.3 must list which root events exist (`init`, `migrate`, `AGENTS.md` blocks, D21's `CLAUDE.md` cleanup) and whether `config` changes are journaled anywhere.
 - **A command for every structural change** (§0.4): every change §0.3 lists (create, move, rename, re-parent, archive, unarchive, remove, adopt) has a command, ideally one per change; check chapter 7's charters against this list.
 - **Refusals and remedies** (D25): every refusal gives the rule, the offending id or path, and what to do instead, which may be the user's own files to move; §7.10 defines the output.
