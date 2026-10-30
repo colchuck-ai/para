@@ -6,9 +6,9 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local and on `origin` (tracks `origin/clean-room-impl`); push with `git push` only when the human asks. `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review, §1.16 Suppression, §1.17 Generated files (chapter 1 complete), §2.1 Directory shapes, §2.2 Kinds and containment, §2.3 Addressing.
-- **Next:** §2.4 Adopting existing directories. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
-- **Decisions:** D1–D120 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review, §1.16 Suppression, §1.17 Generated files (chapter 1 complete), §2.1 Directory shapes, §2.2 Kinds and containment, §2.3 Addressing, §2.4 Adopting existing directories.
+- **Next:** §2.5 Archiving. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
+- **Decisions:** D1–D126 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -101,6 +101,12 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D118: every issued id gets an empty file in the root's `.para/ids/`, never deleted; its count is n for id length (amends D13).
   - D119: an entity with another tree's prefix is reported by `doctor` and re-id'd by repair; commands refuse duplicated or foreign ids until then (amends D30).
   - D120: why ids, not paths (paths change and get reused; most references are out of `para`'s reach); D11 kept with cheap lookup; stored references are the id alone; D112 kept.
+  - D121: adoption carries the strictest parent path-rule label onto the new entity and moves provenance records into it.
+  - D122: `init` adopts existing bucket folders after confirmation or an acknowledging flag.
+  - D123: `adopt` takes a parent id, a kind and several folder names, all or none; no recursion.
+  - D124: a plain folder with a container's name can be adopted as that container.
+  - D125: provenance records get ids from the entity issue; paths are properties; inputs name record ids (§1.13, §2.3 amended).
+  - D126: a path rule matching nothing is a `doctor` warning of a possible loosening; path rules stay keyed by path.
 
 ## Priorities
 
@@ -247,9 +253,10 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **`doctor`** reports a `.para/` that `para` did not create, and references to removed ids (§8.2).
 - **Determinism** (§0.1): output and changes depend only on the tree, arguments and current time, apart from new ids. Config must therefore come from inside the tree (§3.5), or §0.1 needs revisiting.
 - **README frontmatter**: `para` writes only its own keys (D24); §5.3 defines them.
-- **Path rules and adoption** (§2.4, §6.3, §8.2, D15, D66): adopting a folder a path rule covers turns the rule into one inside a child entity; decide whether adoption carries the rule's label onto the new entity or refuses. `doctor` should report path rules that match nothing (such as after a hand rename).
+- **Path rules and adoption** (§2.4, §6.3, §8.2, D121, D126): settled; adoption sets the strictest covering path-rule label on the new entity and moves provenance records. §8.2 reports a path rule that matches nothing (after adoption, a hand rename or move) as a warning of a possible loosening, naming the rule and its label; remedy: fix or delete the rule, or adopt the folder as a dir where a dir may sit. Define "matches nothing": a rule whose files are now inside a child entity, an existing but empty folder, and globs. §6.3 should say labels on entities travel with them and path rules do not.
 - **Hand-made loosening** (§6.4, §8.2, D64, D69): a hand edit to `config.toml` that loosens a label breaks no ordering; decide whether `doctor` reports a label looser than its journaled history.
 - **Provenance details** (§6.2, §8.2, D76–D84): recording when the accountable person is not yet a source (refuse, or count as lowest); cycles in `from`; whether a vouch stores a hash so later edits show as "edited since vouch"; an input in a removed entity; hand renames and files moved by hand between entities; inputs outside the tree refused.
+- **Record ids** (§6.2, §7.6, §8.2, §8.3, D125): repair remaps the inputs that name a record it re-ids (foreign or duplicated); the command that repoints a record at a file's new path (and moves it between entities), refusing when the new path already has a record or lies in the archive, a bucket, a container or outside the tree; which commands take a record id (`show` at least); bare records for unrecorded inputs and how `show` presents them; `doctor` findings for a missing file and for two records naming one path; ids now issued for records grow code length faster (D13).
 - **Provenance storage** (§3.7, §8.1, D79): many per-file tables in one `state.toml` conflict when two branches record in the same entity; a raw-byte hash flags every primary after a git CRLF conversion.
 - **Labels through derivation** (§6.4): whether a derived work takes the strictest label of its inputs (the `from` chain makes it possible); the §6.4 charter names it, no decision yet.
 - **Attribution input** (§7.1, §7.2, D91): define `--sub`, `--act`, `--model`, `--harness`, `--session` and their `PARA_*` variables, flag over variable, and say the variables stand in for flags so §0.1's "arguments" covers them; tests must fix them like the clock.
