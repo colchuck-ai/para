@@ -226,7 +226,7 @@ The archive is where finished or inactive things go, so `projects/`, `areas/` an
 
 You can [archive](#25-archiving) any entity except the root, a container or a stub, whatever its status, and everything beneath it goes too, unless a live entity still uses it ([measurement](#15-measurement)). Archiving changes where it is and none of its fields, so its status still says how it ended.
 
-When something is archived from inside a live entity, `para` puts a stub at each mirrored ancestor path the archive does not already hold. A stub is an entity that records the id and kind of the entity it stands for and holds only archived entities and other stubs. Stubs are `para`'s alone, so only `show` and `list` take a stub's id. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs; `para` refuses only if two archived entities would share a path.
+When something is archived from inside a live entity, `para` puts a stub for each live ancestor that nothing in the archive stands for yet. A stub is an entity that records the id and kind of the entity it stands for and holds only archived entities and other stubs. Stubs are `para`'s alone, so only `show` and `list` take a stub's id. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs. An entity or stub arriving at a path already held gets a numbered suffix ([archiving](#25-archiving)).
 
 The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [label](#112-sensitivity-labels), lowering a [source's grade](#113-provenance) or vouching for a file. Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
@@ -377,7 +377,7 @@ An entity's kind is the `kind` in its `state.toml`, matched exactly, case includ
 | --- | --- |
 | `root` | the top of the tree ([the tree](#11-the-tree)) |
 | `container` | a bucket (`projects/`, `areas/`, `resources/`, `archive/`), an archive bucket (`projects/`, `areas/` or `resources/` in `archive/`), or one of `objectives/`, `key-results/`, `standards/`, `indicators/`, `links/`, `measurement/`, `analytics/`, `metrics/`, `terms/` and `sources/` |
-| `stub` | a stand-in, at the mirrored path in `archive/`, for a live ancestor of an archived entity ([archive](#17-archive)) |
+| `stub` | a stand-in in `archive/` for an ancestor of an archived entity, one that is live or was removed ([archiving](#25-archiving)) |
 | `project`, `objective`, `key-result`, `area`, `standard`, `indicator`, `analytic`, `metric`, `term`, `source`, `link`, `dir` | the other kinds toured in [chapter 1](#1-components) |
 
 A damaged folder, such as one whose `state.toml` is missing, has no `kind` or names an unknown kind such as `Project`, or whose `.para` is a file, is never guessed at. A command that would change it or anything beneath it refuses, naming the folder and pointing to [`doctor`](#82-doctor-findings), which reports it; [`show`](#74-reading), [`list`](#74-reading) and [`review`](#77-review) leave it and everything beneath it out and warn that they did. A v0 tree is not classified this way, since only [`migrate`](#91-migrating-a-v0-tree) works on it.
@@ -411,7 +411,7 @@ The four buckets always exist. Everything else in the table is optional, so a pr
 
 Besides its entities and `para`'s own files ([generated files](#117-generated-files)), an entity may hold content of your own, unless it is a container or a stub. [`doctor`](#82-doctor-findings) reports content found directly in a container or stub, and leaves it in place.
 
-The archive follows the same table. An archive bucket holds the archived entities its matching bucket may hold, and appears the first time anything is archived into it. A stub records the id and kind of the entity it stands for, and counts as that entity. It sits at that entity's mirrored path, inside an archive bucket or another stub, and holds what that entity's row lists ([archive](#17-archive)). How stubs follow renames, moves and removals is in [archiving](#25-archiving).
+The archive follows the same table. An archive bucket holds the archived entities its matching bucket may hold, and appears the first time anything is archived into it. A stub records the id and kind of the entity it stands for, and counts as that entity. It sits where that entity would be archived, inside an archive bucket, another stub or an archived entity, and holds what that entity's row lists ([archive](#17-archive)). How stubs follow renames, moves and removals is in [archiving](#25-archiving).
 
 A container's name comes from the row of the entity that holds it, such as `links/` in a dir. Inside that entity the name is reserved: `para` creates or [adopts](#24-adopting-existing-directories) nothing else under it, and refuses to create the container while something already has the name, saying to rename it first. Names compare as the filesystem compares them, so where case is ignored a plain `Links/` blocks `links/` ([safety guarantees](#81-safety-guarantees)). Elsewhere the name is free: `resources/cooking/measurement/` is an ordinary dir.
 
@@ -467,7 +467,43 @@ To bring in a whole tree:
 4. [Archive](#25-archiving) again what came from `archive/`, once its subfolders are adopted and its label is set, since the archive is read-only.
 
 ### 2.5 Archiving
-How things move into and out of the archive, so finishing work never loses history.
+
+Archiving moves an entity out of the live buckets into `archive/`, with its history, and unarchiving brings it back ([archive](#17-archive)).
+
+`archive` takes an entity's id and moves it, with everything beneath it, into the matching archive bucket, creating that bucket the first time. The entity lands under whatever in the archive stands for its live parent, matched by id: the parent's archived self, or a stub recording the parent's id. Where nothing does, `para` adds a stub for the parent, and so on up to the archive bucket, so an entity's archived path mirrors its live one. A stub recording the id of the entity or of anything beneath it is replaced by that entity, which keeps what the stub held and takes the stub's folder name, saying so when it differs from its own. A stub for a removed descendant has nothing to replace it, so it stays where it is, now inside an archived entity. `archive` refuses, saying why, when:
+
+- the entity is the root, a stub or already archived
+- the entity is a container, naming its entities and, where it can be archived, its parent
+- a live entity uses an analytic, metric or term that would move, unless that user moves too ([measurement](#15-measurement))
+- the label covering it would loosen, as when `projects/` is `RED` and `archive/projects/` has no label, or a label it carries would be looser than the one above it in its new place ([sensitivity labels](#112-sensitivity-labels)); tighten the archive's label or the entity's own, then run it again
+
+`unarchive` takes an archived entity's id and moves it back under its live parent, with everything beneath it, including descendants archived on their own before it. Archived ancestors it needs come back live too. Stubs stay for anything still archived, such as what sits beneath the stub of a removed descendant, which has no live place to return to. `unarchive` refuses, saying why, when:
+
+- the entity is live or a stub
+- a label would loosen, as for `archive`
+- it, or anything coming back with it, uses an archived entity that stays archived
+- an ancestor was removed, so only its stub is left, naming that ancestor; give a new parent instead
+
+A new parent is the id of a live entity to return under, such as another project for an objective. `para` files the entity in the right container under it, such as `objectives/` for an objective, creating the container if needed. A container or bucket given directly, such as `projects/` for a project, takes the entity itself. `unarchive` refuses if the entity's kind may not sit there ([kinds and containment](#22-kinds-and-containment)). Its archived ancestors stay archived.
+
+When the path an arriving entity or stub would take is already held, `para` appends `-1` to its folder name, or `-2` and so on if that is held too, and says so. Names compare as the filesystem compares them, as for [reserved names](#22-kinds-and-containment). The suffix is then part of the name, so it stays when the entity is unarchived. For example:
+
+- a new `launch-website`, archived after the first was, becomes `archive/projects/launch-website-1/`
+- unarchiving it while a live `launch-website-1` exists makes `projects/launch-website-1-1/`
+
+An entity's stubs, those recording its id, follow the live tree. Renaming or moving a live entity renames or moves its stubs to match, taking a suffix only if the new path is held, and adds stubs for new ancestors. A stub exists only while something archived sits beneath it, and `para` removes one left empty by any command. Removing a live entity leaves its stubs where they are, so what is archived beneath keeps its place and history.
+
+A container, once created, stays when its last child leaves, whether moved, archived or removed. It goes only when its parent is removed, and moves with its parent otherwise. So its id, label and journal survive, and its stubs always match it.
+
+Archiving and unarchiving are journaled like any move ([notes and the journal](#18-notes-and-the-journal)):
+
+- each entity moved on its own, the one named and any ancestors brought back, gets an event in its own journal
+- its old and new parent each get one, containers included, unless the parent is a stub, which has no journal
+- entities moved beneath it get none; [the journal](#33-the-journal) says how they find the date they were archived, which their [status](#114-status) needs
+
+A move takes the folder as it is. Symlinks inside move unchanged and are never followed, so a relative link that points outside the entity may break.
+
+Besides the user commands the [archive](#17-archive) allows, `para` itself changes the archive only by the moves and stub upkeep above, by regenerating [generated files](#117-generated-files), by [repair](#83-repair) and by [`migrate`](#91-migrating-a-v0-tree).
 
 ## 3. Storage
 
