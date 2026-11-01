@@ -367,7 +367,7 @@ Every directory in a tree has one of four shapes, and `para` tells them apart th
 | Shape | Recognised by | Owner |
 | --- | --- | --- |
 | entity | it holds a `.para/` whose `state.toml` gives a known kind | `para`, though what you put in it is [yours](#03-structure-is-paras-content-is-yours) |
-| damaged folder | it holds something named `.para`, but its kind cannot be read | `para`, though what you put in it is yours |
+| damaged folder | it holds something named `.para`, but its kind cannot be read, or its `config.toml` exists but cannot be read ([truth and projection](#31-truth-and-projection)) | `para`, though what you put in it is yours |
 | `.para/` | its name | `para`, with everything in it, which is never classified further |
 | plain folder | anything else | you, as content |
 
@@ -380,7 +380,7 @@ An entity's kind is the `kind` in its `state.toml`, matched exactly, case includ
 | `stub` | a stand-in in `archive/` for an ancestor of an archived entity, one that is live or was removed ([archiving](#25-archiving)) |
 | `project`, `objective`, `key-result`, `area`, `standard`, `indicator`, `analytic`, `metric`, `term`, `source`, `link`, `dir` | the other kinds toured in [chapter 1](#1-components) |
 
-A damaged folder, such as one whose `state.toml` is missing, has no `kind` or names an unknown kind such as `Project`, or whose `.para` is a file, is never guessed at. A command that would change it or anything beneath it refuses, naming the folder and pointing to [`doctor`](#82-doctor-findings), which reports it; [`show`](#74-reading), [`list`](#74-reading) and [`review`](#77-review) leave it and everything beneath it out and warn that they did. A v0 tree is not classified this way, since only [`migrate`](#91-migrating-a-v0-tree) works on it.
+A damaged folder, such as one whose `state.toml` is missing, has no `kind` or names an unknown kind such as `Project`, or whose `.para` is a file, or whose `config.toml` cannot be read, is never guessed at. A command that would change it or anything beneath it refuses, naming the folder and pointing to [`doctor`](#82-doctor-findings), which reports it; [`show`](#74-reading), [`list`](#74-reading) and [`review`](#77-review) leave it and everything beneath it out and warn that they did. A v0 tree is not classified this way, since only [`migrate`](#91-migrating-a-v0-tree) works on it.
 
 ### 2.2 Kinds and containment
 
@@ -508,7 +508,31 @@ Besides the user commands the [archive](#17-archive) allows, `para` itself chang
 ## 3. Storage
 
 ### 3.1 Truth and projection
-Which files are authoritative and which are derived, so every fact has exactly one home.
+
+`para` keeps its truth in a few files in its `.para/` folders. The [generated files](#117-generated-files) it writes for readers are projections of that truth, never read back as truth, so each fact has one home and a generated file that disagrees with it is out of date.
+
+The truth files are:
+
+| File | Where | Holds |
+| --- | --- | --- |
+| `state.toml` | every `.para/` | the entity's facts, such as its kind, id, set status, provenance records and suppressions; the root's also holds the schema version and id prefix ([`state.toml`](#32-statetoml)) |
+| `config.toml` | any `.para/` but a stub's, once something is set | your choices, such as a label, path rules and settings ([config](#35-config)) |
+| the journal | every `.para/` but a stub's | the entity's events, including notes and a metric's measurements, only ever appended to ([the journal](#33-the-journal)) |
+| `ids/` | the root's `.para/` | an empty file for every id issued ([addressing](#23-addressing)) |
+
+State holds what is true now, and the journal holds what happened. A command that changes a fact, such as a status, writes the new value to state and appends the change to the journal. So the value's one home is state and the change's is the journal. `para` reads current facts from state, and reads the journal for what only history gives, such as [attention](#18-notes-and-the-journal), measurements and when something was archived.
+
+If state and the journal disagree, as after a hand edit or a merge, commands go by state and never rebuild it from the journal. [`doctor`](#82-doctor-findings) reports the disagreement, and [repair](#83-repair) lets you keep state, appending an event that matches it, or set state from the journal.
+
+A folder whose kind cannot be read from its `state.toml` is [damaged](#21-directory-shapes). So is one whose `config.toml` exists but cannot be read, since going on without it would drop its labels: commands that would change it or anything beneath it refuse, and reads warn. A missing `config.toml` means nothing is set there. `doctor` reports any other fault in a truth file, such as a missing journal.
+
+An edit inside a generated file changes no fact and is replaced at the next rewrite, so a fact changes only by its command. Anything else inside a `.para/` is `para`'s but is neither truth nor generated, and `doctor` reports it.
+
+Everything outside `para`'s side is your content ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)), your own text in a README included. `para` reads it, for example to hash a recorded file or keep your text around its own part of a README, but never treats it as truth.
+
+There is no truth or config outside the tree, such as in your home folder. Apart from the new ids it draws, a command depends only on the tree, its arguments and the clock ([what para is](#01-what-para-is)). Its arguments include the current folder, any `PARA_*` variables that stand in for flags ([fields and time input](#72-fields-and-time-input)), and whether you are there to answer a confirmation, and how. The clock is set out in [time and the clock](#34-time-and-the-clock).
+
+A hand edit to a truth file changes the truth itself, outside `para`'s promises ([safety guarantees](#81-safety-guarantees)); `doctor` reports what it breaks.
 
 ### 3.2 `state.toml`
 The file in every `.para/` that is the one home of that folder's facts, including its kind, written only by the commands that make each fact true, never by `para config`; the root's (`kind = "root"`) also marks the tree and records its schema version and id prefix.
