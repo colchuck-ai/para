@@ -6,12 +6,12 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local and on `origin` (tracks `origin/clean-room-impl`); push with `git push` only when the human asks. `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review, §1.16 Suppression, §1.17 Generated files (chapter 1 complete), §2.1 Directory shapes, §2.2 Kinds and containment, §2.3 Addressing, §2.4 Adopting existing directories, §2.5 Archiving (chapter 2 complete), §3.1 Truth and projection.
-- **Next:** §3.2 `state.toml`. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
-- **For §3.2:** read the carried notes that name §3.2 (Prefix validation, Issued-id record) and Status details, Suppression details, Provenance storage and Record ids, since they say what `state.toml` holds.
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review, §1.16 Suppression, §1.17 Generated files (chapter 1 complete), §2.1 Directory shapes, §2.2 Kinds and containment, §2.3 Addressing, §2.4 Adopting existing directories, §2.5 Archiving (chapter 2 complete), §3.1 Truth and projection, §3.2 `state.toml`.
+- **Next:** §3.3 The journal. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
+- **For §3.3:** read the carried notes that name §3.3 or the journal, and D130 and D132, since measurements are journal events and state wins over the journal.
 - **Working style the human has asked for:** short sentences and one idea per paragraph (bulleted lists and numbered steps are fine); ask design questions before drafting when no decision covers them, recommending one option; record every answer as the next D-number and tag the decisions it amends; reviews may run a third round or over the whole change set when the human asks.
-- **Git:** the branch is one commit ahead of `origin` (§3.1 and this handoff); push only when asked.
-- **Decisions:** D1–D134 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Git:** the branch is two commits ahead of `origin` (§3.1, §3.2 and this handoff); push only when asked.
+- **Decisions:** D1–D138 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -119,6 +119,10 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D132: when state and the journal disagree, commands go by state; `doctor` reports it and repair offers either side.
   - D133: an unreadable `config.toml` makes a damaged folder (§2.1 amended).
   - D134: unknown files in a `.para/` are `para`'s and a `doctor` finding.
+  - D135: an optional `title` in state on any entity but a stub, separate from the folder name, set by command.
+  - D136: a `created` time in state, set once at create, adopt or migrate.
+  - D137: §3.2 defines only the file's rules and common keys; each kind's keys live with their behaviour.
+  - D138: unknown state keys are kept in place on rewrite and reported by `doctor`.
 
 ## Priorities
 
@@ -227,7 +231,8 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Kinds of non-entities** (§2.1, D112): settled; every managed folder is an entity, with kinds `root`, `container` (buckets and archive buckets included) and `stub` beside the rest.
 - **Entities moved between trees** (§2.3, D119): settled; `doctor` reports an entity with another tree's prefix and repair re-ids it; commands refuse its id until then. §8.2/§8.3 define the finding and the repair, including a whole copied subtree.
 - **Top of the label chain** (§6.3, D15, D28): any `.para/` may hold a `config.toml`. Decide whether the root's or a bucket's config can set sensitivity, or whether inheritance starts at entities.
-- **Prefix validation** (§3.2, D13): a hand-edited prefix ends up in every new id, so `state.toml` reading must validate it.
+- **Prefix validation** (§3.2, §8.3, D13): settled in §3.2: ASCII letters and digits, otherwise every command but `doctor` refuses. Still open: §8.3 repair restores it from the names in `ids/`; whether the root id must carry the prefix; prefix case and length.
+- **`state.toml` format** (Appendix A, §9.3, D135–D138): Appendix A must show the exact bytes (spacing, quoting, table layout, trailing newline, string escapes, ints and floats), since §3.2 points there; §9.3 must let `migrate` run on an older `schema` while `doctor` only names an unreadable one; each kind's section lists its keys in write order; how a title is set and cleared belongs in chapter 7.
 - **Repairing a duplicate id** (§8.3, D30, D11): repair must name one holder of a shared id (a path, as a stated exception to D11, or similar), give the choice a non-interactive form for agents, handle three or more holders, and re-id a copied subtree together so the keeper is chosen per subtree.
 - **Missing or altered buckets** (§8.2, §8.3, §3.6): a bucket or archive bucket removed or renamed by hand, `measurement/` or one of its containers removed or renamed while it still holds entities (absent is fine, D44), what happens when its last entity is removed, a loose file or plain folder directly in `analytics/`, `metrics/` or `terms/`, a bucket that is a symlink, `Projects/` on a case-insensitive filesystem, and a bucket's `README.md` or `AGENTS.md` deleted (does `para` restore it?).
 - **Archived measurement** (§1.7, §2.5, D20, D32): analytics, metrics and terms can be archived (D51), to `archive/resources/measurement/…`; see Archived references.

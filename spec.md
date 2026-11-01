@@ -535,7 +535,60 @@ There is no truth or config outside the tree, such as in your home folder. Apart
 A hand edit to a truth file changes the truth itself, outside `para`'s promises ([safety guarantees](#81-safety-guarantees)); `doctor` reports what it breaks.
 
 ### 3.2 `state.toml`
-The file in every `.para/` that is the one home of that folder's facts, including its kind, written only by the commands that make each fact true, never by `para config`; the root's (`kind = "root"`) also marks the tree and records its schema version and id prefix.
+
+Every `.para/` holds a `state.toml`, the one home of its entity's facts ([truth and projection](#31-truth-and-projection)). A fact is a value whose change would make something already recorded false, such as a kind or a status. Only commands write it: the command that makes each fact true, [repair](#83-repair) and [`migrate`](#91-migrating-a-v0-tree), never [`para config`](#79-config).
+
+These keys come first, in this order:
+
+| Key | Holds |
+| --- | --- |
+| `kind` | the entity's kind, which says how to read the rest ([directory shapes](#21-directory-shapes)) |
+| `id` | the entity's id ([addressing](#23-addressing)) |
+| `title` | a title such as `"Launch website"`, present only when set, on any entity but a stub |
+| `created` | when the entity was created, adopted or migrated, set once and never changed ([time and the clock](#34-time-and-the-clock)) |
+
+A title is one line with at least one non-space character and no control characters, separate from the folder name: renaming one leaves the other. Clearing a title removes the key, and output then shows the folder name.
+
+The root's `state.toml` also holds `schema`, the tree's schema version ([schema version](#93-schema-version)), and `prefix`, the prefix of its ids, which never changes. Having `kind = "root"` is what marks the tree ([the tree](#11-the-tree)).
+
+```toml
+# brain/.para/state.toml
+kind = "root"
+id = "brain-0a1b"
+title = "Max's brain"
+created = "2026-01-01T16:00:00Z"
+schema = 2
+prefix = "brain"
+```
+
+A stub's `state.toml` holds `kind`, `id` and `created`, then `stands-for` and `stands-for-kind`, the id and kind of the entity it stands for ([archiving](#25-archiving)).
+
+Other keys are defined with the behaviour they serve:
+
+| Facts | Kinds | Keys defined in |
+| --- | --- | --- |
+| set status and due date | projects, objectives, key results | [status](#114-status), [targets](#43-targets-key-results-and-indicators) |
+| analytic, target and window | key results, indicators | [targets](#43-targets-key-results-and-indicators) |
+| what it computes and the metrics and terms it uses | analytics, metrics | [analytics, metrics and terms](#41-analytics-metrics-and-terms) |
+| type, ref and direction | links | [links](#110-links) |
+| provenance records | every kind but the root, a container and a stub | [provenance and trust](#62-provenance-and-trust) |
+| suppressions | anything review can flag | [suppression](#47-suppression) |
+
+State never holds the entity's folder name, path or parent, since those are where its folder sits, nor anything computed ([what is never stored](#57-what-is-never-stored)) or chosen in config ([config](#35-config)).
+
+`para` writes the file the same way every time, so the same facts give the same bytes and a diff shows only what changed:
+
+- top-level keys first, in the order above, then the root's or stub's keys, then the kind's keys in the order their section gives
+- then tables, such as provenance records, in the order their sections give
+- no comments, so any written by hand are dropped
+
+[The example tree](#appendix-a-example-tree) shows the exact format, such as spacing and quoting.
+
+A key `para` does not know, such as one added by hand, is kept with its value, written in the same format. An unknown top-level key goes after `para`'s and before the first table, an unknown key inside one of `para`'s tables stays in that table, and an unknown table goes after `para`'s. A key on a kind that does not take it, such as a `status` on a dir, counts as unknown. [`doctor`](#82-doctor-findings) reports unknown keys.
+
+A `state.toml` that cannot be parsed, or whose kind cannot be read, makes a [damaged folder](#21-directory-shapes). A known key with a missing or bad value, such as a `created` that is not a time, makes each command that needs it refuse, naming the folder and pointing to `doctor`, which reports it. An entity without a valid `id` is skipped, with a warning, when a command looks for an id, and only commands that act on it refuse.
+
+The root's `prefix` must be ASCII letters and digits. Otherwise every command but `doctor` refuses, since every new id would carry it, and [repair](#83-repair) restores it from the names of the issued ids in `ids/`. How `para` treats a `schema` it does not read, letting `migrate` upgrade an older one, is in [schema version](#93-schema-version).
 
 ### 3.3 The journal
 The format and rules of the event history, so history can be appended safely and read back.
