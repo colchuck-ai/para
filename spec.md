@@ -232,7 +232,7 @@ The archive is read-only: an archived entity can be shown, listed, unarchived or
 
 ### 1.8 Notes and the journal
 
-Every entity except a stub keeps a journal in its `.para/`, the history of what happened to it. Each time a command changes what the folder is or holds, `para` appends a dated event, such as a project's status changing, a child being added, moved, archived or removed, or a note. `para` only ever appends to a journal and never edits an event in it, so anyone arriving later can read what happened and when without having to remember it ([the journal](#33-the-journal)).
+Every entity except a stub keeps a journal in its `.para/`, the history of what happened to it. Each time a command changes what the folder is or holds, `para` appends a dated event, such as a project's status changing, a child being added, moved, archived or removed, or a note. `para` only ever appends to a journal and never edits an event in it, except to bring old events up to date when [migrating](#91-migrating-a-v0-tree), so anyone arriving later can read what happened and when without having to remember it ([the journal](#33-the-journal)).
 
 Each event goes to the folder it happened to; a child arriving or leaving is its parent's event, so a move gives the old and new parent one each ([principles](#06-principles)). [Removing](#76-writing) an entity deletes its journal, and its parent's journal records the removal (a stub, having none, records nothing).
 
@@ -278,7 +278,7 @@ Content no label covers is shown as `unlabelled`, and `para` assumes nothing abo
 
 Provenance answers two questions about a file: where it came from, and how far to trust it. `para` records the first as facts, a person grades the sources, and `para` computes trust from those two, never from what the file says ([scope and non-goals](#05-scope-and-non-goals)).
 
-A source is an entity that stands for where material comes from, such as a sender, a website, a person or an agent, and carries a reliability grade a person sets, from `A` (reliable) to `F` (cannot be judged) by default ([config](#35-config)). Sources are kept, like terms, in `resources/sources/`, created when you add the first one, and the name `sources` is reserved in `resources/` before then. A source added without a grade starts at the lowest. Setting or raising a grade asks for confirmation unless forced, as loosening a label does, and lowering one is allowed even in the archive.
+A source is an entity that stands for where material comes from, such as a sender, a website, a person or an agent, and carries a reliability grade a person sets, from `A` (reliable) to `F` (cannot be judged) by default ([config](#35-config)). Sources are kept, like terms, in `resources/sources/`, which [`init`](#73-init) creates along with your own source, since every event names one ([the journal](#33-the-journal)). A source added without a grade starts at the lowest. Setting or raising a grade asks for confirmation unless forced, as loosening a label does, and lowering one is allowed even in the archive.
 
 You record a file with a command after it exists, as a primary or a derived work. A primary is a copy of something from outside the tree, such as an email or a web page; it names its source, and `para` keeps its hash, so a later change to it is flagged. A derived work, such as notes or a summary, names the files it was made from by their records' ids, and stays free to change. Naming a file that has no record gives it a bare one, which counts as unrecorded until you record it. Naming one where no record can be written, such as in the archive, is refused. Every record names the person accountable and, when someone acted for them, such as an agent working for a person, who did the work; both are sources. An agent's source is its model and harness, and each record it makes also notes the exact model, harness version and session, given with the command, as facts that are never graded. `para` takes these names as given.
 
@@ -497,7 +497,7 @@ A container, once created, stays when its last child leaves, whether moved, arch
 
 Archiving and unarchiving are journaled like any move ([notes and the journal](#18-notes-and-the-journal)):
 
-- each entity moved on its own, the one named and any ancestors brought back, gets an event in its own journal
+- each entity moved on its own, the one named and any ancestors brought back, gets an event in its own journal, as does each descendant archived on its own that `unarchive` brings back with it
 - its old and new parent each get one, containers included, unless the parent is a stub, which has no journal
 - entities moved beneath it get none; [the journal](#33-the-journal) says how they find the date they were archived, which their [status](#114-status) needs
 
@@ -591,7 +591,53 @@ A `state.toml` that cannot be parsed, or whose kind cannot be read, makes a [dam
 The root's `prefix` must be ASCII letters and digits. Otherwise every command but `doctor` refuses, since every new id would carry it, and [repair](#83-repair) restores it from the names of the issued ids in `ids/`. How `para` treats a `schema` it does not read, letting `migrate` upgrade an older one, is in [schema version](#93-schema-version).
 
 ### 3.3 The journal
-The format and rules of the event history, so history can be appended safely and read back.
+
+Each entity's journal is `.para/journal.jsonl` ([notes and the journal](#18-notes-and-the-journal)). Each line is one event: a JSON object on one line, in UTF-8, ending in a newline. Every event holds these fields, in this order:
+
+| Field | Holds |
+| --- | --- |
+| `time` | when `para` wrote it ([time and the clock](#34-time-and-the-clock)) |
+| `type` | what happened, such as `created`, `note` or `status` |
+| `sub` | the source id of the person accountable for it, missing only on events converted from a v0 tree, which carry `"v0": true` instead |
+| `act` | present only when someone acted for that person: an object with the actor's source id as its `sub`, an optional `model`, `harness` and `session`, and an optional `act` of its own for a chain ([provenance](#113-provenance)) |
+| `at` | the earlier time a backdated note or measurement claims, present only when given |
+
+The type's own fields follow, in the order given by the section that defines that behaviour, as for state keys ([`state.toml`](#32-statetoml)). [The example tree](#appendix-a-example-tree) shows the exact format.
+
+Every event names who did it, as [sources](#113-provenance), the entities that stand for people and agents:
+
+- A command takes the accountable person with `--sub` and anyone acting for them with `--act`, or `PARA_SUB` and `PARA_ACT` when the flags are absent ([fields and time input](#72-fields-and-time-input)).
+- `--act` repeats for a chain: the first acts for the `sub`, and each later one for the one before.
+- Each must name a live source, not an archived one. A command that would append an event refuses without a `sub` or with an id that is not a live source.
+- [`init`](#73-init) and [`migrate`](#91-migrating-a-v0-tree) take your name and create your source, which their own events then name.
+- `para` does not check that the people named are who they say.
+
+A note or a measurement can claim an earlier time than when it was written, such as a reading taken yesterday. The claimed time goes in `at` and can never be in the future. A note's can also not be before the entity's `created` time, so a backdated note cannot make old neglect look tended. Every other event is dated when it is written, and a command refuses `at` on it.
+
+Where order matters, such as the newest attention note or a metric's latest value, events go by their claimed time, `at` or else `time`, and file order breaks ties. After a merge or a clock change, a later line can carry an earlier time, and that is not a fault.
+
+A command appends its events only after its checks pass, in the same run as its changes to state ([safety guarantees](#81-safety-guarantees)). When one command writes to several journals, such as a move's entity and its old and new parents, its events share one `time`. Rewriting a generated file is never an event.
+
+Every change made with [`para config`](#79-config) is an event in the journal of the folder whose `config.toml` changed, with the old and new values. The root's journal also records `init` and `migrate`.
+
+An entity archived along with an ancestor gets no event of its own ([archiving](#25-archiving)). It finds the date it was archived, which its [status](#114-status) needs, like this:
+
+1. Look at the entity, then at each ancestor in turn, skipping stubs, which have no journal.
+2. In each, find the newest event recording that folder's own move, such as being moved, archived or unarchived, not a child arriving or leaving.
+3. The first folder whose newest such event is being archived gives that event's `time`.
+
+`para` never edits or removes an event, so a wrong note or measurement is corrected by appending another. There are two exceptions: `migrate` converts old events to the current format, keeping their meaning and times, and repair cleans up after a merge, as below. Giving a duplicated id a new id ([repair](#83-repair)) leaves old events as they are and appends one naming the old and new id. A journal is never trimmed, since `ACTIVITY.md` shows the whole history ([activity](#19-activity)).
+
+A line is readable when it is a JSON object with a `time` and a `type`. Problems are handled like this:
+
+- **An unreadable line**, such as a git conflict marker or half a line from an interrupted write, makes each command that reads or appends to that journal refuse, naming the folder and pointing to [`doctor`](#82-doctor-findings). `doctor` and repair still read it.
+- **A merge conflict**, from two branches that both appended: repair keeps every event from both sides and removes the markers and half lines. A line that one side repeats from the other is kept once. This cleanup appends no event.
+- **A missing journal** is created at the next append.
+- **An event of a type, or with a field, `para` does not know** is kept like any other.
+- **An event with no `sub`** that is not marked `v0` is read like any other.
+- **A journal that is a symlink** makes each command that would append to it refuse, so `para` never writes outside the tree ([safety guarantees](#81-safety-guarantees)).
+
+`doctor` reports each of these.
 
 ### 3.4 Time and the clock
 How times are recorded and compared, so dates mean the same thing everywhere.

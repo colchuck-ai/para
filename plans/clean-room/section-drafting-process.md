@@ -6,12 +6,12 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local and on `origin` (tracks `origin/clean-room-impl`); push with `git push` only when the human asks. `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review, §1.16 Suppression, §1.17 Generated files (chapter 1 complete), §2.1 Directory shapes, §2.2 Kinds and containment, §2.3 Addressing, §2.4 Adopting existing directories, §2.5 Archiving (chapter 2 complete), §3.1 Truth and projection, §3.2 `state.toml`.
-- **Next:** §3.3 The journal. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
-- **For §3.3:** read the carried notes that name §3.3 or the journal, and D130 and D132, since measurements are journal events and state wins over the journal.
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 Activity, §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review, §1.16 Suppression, §1.17 Generated files (chapter 1 complete), §2.1 Directory shapes, §2.2 Kinds and containment, §2.3 Addressing, §2.4 Adopting existing directories, §2.5 Archiving (chapter 2 complete), §3.1 Truth and projection, §3.2 `state.toml`, §3.3 The journal.
+- **Next:** §3.4 Time and the clock. Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
+- **For §3.4:** read the carried notes that name §3.4 (Suppression details, Status details, `ACTIVITY.md` details, Generated file details), and D144 and D146, since events carry a written `time` and a claimed `at`.
 - **Working style the human has asked for:** short sentences and one idea per paragraph (bulleted lists and numbered steps are fine); ask design questions before drafting when no decision covers them, recommending one option; record every answer as the next D-number and tag the decisions it amends; reviews may run a third round or over the whole change set when the human asks.
-- **Git:** the branch is two commits ahead of `origin` (§3.1, §3.2 and this handoff); push only when asked.
-- **Decisions:** D1–D138 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Git:** the branch is one commit ahead of `origin` (§3.3 and this handoff); push only when asked.
+- **Decisions:** D1–D147 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -123,6 +123,16 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D136: a `created` time in state, set once at create, adopt or migrate.
   - D137: §3.2 defines only the file's rules and common keys; each kind's keys live with their behaviour.
   - D138: unknown state keys are kept in place on rewrite and reported by `doctor`.
+  - D139: a journal is one JSON Lines file, `.para/journal.jsonl`; repair resolves merge conflicts by keeping both sides.
+  - D140: only `migrate` rewrites events; re-iding appends an event (§1.8 qualified).
+  - D141: every event names its `sub` and optional `act` chain as source ids; v0 events carry `"v0": true` instead.
+  - D142: `init` and `migrate` create your source (amends D115; §1.13 amended).
+  - D143: the who comes from `--sub`/`--act` or `PARA_SUB`/`PARA_ACT`; refuse without a sub.
+  - D144: notes and measurements may be backdated in `at`, never into the future; both times kept.
+  - D145: every `para config` change is journaled at its folder; rewriting a generated file is never an event (amends D53).
+  - D146: a measurement may claim any past time; a note not before `created` (amends D144).
+  - D147: only a live source can be named.
+  - §3.3 also gave descendants that `unarchive` brings back their own event, so the archive-date walk works (§2.5 amended).
 
 ## Priorities
 
@@ -232,6 +242,7 @@ Commitments made while drafting chapter 0 that later sections must honour:
 - **Entities moved between trees** (§2.3, D119): settled; `doctor` reports an entity with another tree's prefix and repair re-ids it; commands refuse its id until then. §8.2/§8.3 define the finding and the repair, including a whole copied subtree.
 - **Top of the label chain** (§6.3, D15, D28): any `.para/` may hold a `config.toml`. Decide whether the root's or a bucket's config can set sensitivity, or whether inheritance starts at entities.
 - **Prefix validation** (§3.2, §8.3, D13): settled in §3.2: ASCII letters and digits, otherwise every command but `doctor` refuses. Still open: §8.3 repair restores it from the names in `ids/`; whether the root id must carry the prefix; prefix case and length.
+- **Journal follow-ups** (§5.4, §7.2, §7.3, §7.6, §8.1, §8.2, §8.3, Appendix A, D139–D147): §7.3 settles `init` adopting a `resources/` that already holds a plain `sources/` folder, and what name `init` and `migrate` ask for; §7.2 lists `--sub`, `--act`, `PARA_SUB`, `PARA_ACT` and how a backdated `at` is typed, and whether a note carried by another command can be backdated; §7.6 says whether a command that changes nothing records the note it carries; §5.4 shows backdated events as such and orders them; §8.1 covers a failure partway through writing several journals; §8.2 lists the journal findings (unreadable line, missing journal, unknown type or field, missing `sub`, symlink, backdated attention); §8.3 defines the merge cleanup; Appendix A shows exact event lines; every command section must name the event types it writes and their fields.
 - **`state.toml` format** (Appendix A, §9.3, D135–D138): Appendix A must show the exact bytes (spacing, quoting, table layout, trailing newline, string escapes, ints and floats), since §3.2 points there; §9.3 must let `migrate` run on an older `schema` while `doctor` only names an unreadable one; each kind's section lists its keys in write order; how a title is set and cleared belongs in chapter 7.
 - **Repairing a duplicate id** (§8.3, D30, D11): repair must name one holder of a shared id (a path, as a stated exception to D11, or similar), give the choice a non-interactive form for agents, handle three or more holders, and re-id a copied subtree together so the keeper is chosen per subtree.
 - **Missing or altered buckets** (§8.2, §8.3, §3.6): a bucket or archive bucket removed or renamed by hand, `measurement/` or one of its containers removed or renamed while it still holds entities (absent is fine, D44), what happens when its last entity is removed, a loose file or plain folder directly in `analytics/`, `metrics/` or `terms/`, a bucket that is a symlink, `Projects/` on a case-insensitive filesystem, and a bucket's `README.md` or `AGENTS.md` deleted (does `para` restore it?).
