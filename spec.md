@@ -597,6 +597,7 @@ Each entity's journal is `.para/journal.jsonl` ([notes and the journal](#18-note
 | Field | Holds |
 | --- | --- |
 | `time` | when `para` wrote it ([time and the clock](#34-time-and-the-clock)) |
+| `id` | the event's id, eight random lowercase letters and digits, unique within its journal, so a correction can name it |
 | `type` | what happened, such as `created`, `note` or `status` |
 | `sub` | the source id of the person accountable for it, missing only on events converted from a v0 tree, which carry `"v0": true` instead |
 | `act` | present only when someone acted for that person: an object with the actor's source id as its `sub`, an optional `model`, `harness` and `session`, and an optional `act` of its own for a chain ([provenance](#113-provenance)) |
@@ -626,7 +627,18 @@ An entity archived along with an ancestor gets no event of its own ([archiving](
 2. In each, find the newest event recording that folder's own move, such as being moved, archived or unarchived, not a child arriving or leaving.
 3. The first folder whose newest such event is being archived gives that event's `time`.
 
-`para` never edits or removes an event, so a wrong note or measurement is corrected by appending another. There are two exceptions: `migrate` converts old events to the current format, keeping their meaning and times, and repair cleans up after a merge, as below. Giving a duplicated id a new id ([repair](#83-repair)) leaves old events as they are and appends one naming the old and new id. A journal is never trimmed, since `ACTIVITY.md` shows the whole history ([activity](#19-activity)).
+`para` never edits or removes an event. There are two exceptions: `migrate` converts old events to the current format, giving each an id and keeping its meaning and times, and repair cleans up after a merge, as below. Giving a duplicated entity or record id a new one ([repair](#83-repair)) leaves old events as they are and appends one naming the old and new id. A journal is never trimmed, since `ACTIVITY.md` shows the whole history ([activity](#19-activity)).
+
+A wrong note or measurement is corrected with a `correction` event in the same journal. Its `of` field names the original's `id`, and it holds one of:
+
+- `values`: every field the original may change, as corrected, under the original's field names. For a measurement that is its value and claimed time; for a note, its text, claimed time and attention mark.
+- `"withdrawn": true`, as for a reading that should never have been recorded.
+
+A corrected claimed time cannot be later than the original's `time`, and a note's cannot be before the entity's `created` time. The correction itself is dated when written, like any event but a note or measurement.
+
+Each correction replaces the original's values entirely, and the newest one wins, so a withdrawal can be undone. The journal keeps the original and every correction, and `ACTIVITY.md` shows each one. Everything else, such as attention, a metric's data and `MEASUREMENTS.csv`, uses the corrected values.
+
+Only notes and measurements can be corrected. A correction is not attention itself.
 
 A line is readable when it is a JSON object with a `time` and a `type`. Problems are handled like this:
 
@@ -635,6 +647,9 @@ A line is readable when it is a JSON object with a `time` and a `type`. Problems
 - **A missing journal** is created at the next append.
 - **An event of a type, or with a field, `para` does not know** is kept like any other.
 - **An event with no `sub`** that is not marked `v0` is read like any other.
+- **Two events with the same `id`**, which only a merge can cause, make a new correction naming that id refuse, and a correction already naming it applies to neither.
+- **A correction naming a missing id**, or an event that is not a note or measurement, is kept and changes nothing.
+- **An event with no `id`**, such as one written by hand, is read like any other but cannot be corrected.
 - **A journal that is a symlink** makes each command that would append to it refuse, so `para` never writes outside the tree ([safety guarantees](#81-safety-guarantees)).
 
 `doctor` reports each of these.
