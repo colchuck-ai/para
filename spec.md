@@ -163,7 +163,7 @@ Apart from `dropped`, which you set, its status is computed from the analytic, t
 | `at-risk` | progress is too slow to reach the target by the due date |
 | `on-track` | none of the above |
 
-Before the due date, status follows the latest value, so a key result that falls back short of its target is no longer `achieved`. Once the due date has passed, status uses the latest value dated on or before it, so later readings do not change it.
+Before the due date, status follows the latest value, so a key result that falls back short of its target is no longer `achieved`. Once the due date has passed, status uses the latest value whose claimed time is at or before it, so later readings do not change it.
 
 ### 1.4 Areas
 
@@ -339,9 +339,9 @@ Blocked, overdue and unchecked flags cannot be suppressed, since each has its ow
 
 A suppression leaves the entity's other flags, and everything beneath it, reported as usual. A stale flag can be suppressed before it appears, such as before a trip. A key result or indicator can be suppressed only while it is flagged, and the suppression holds only for that status: one suppressed while `at-risk` is reported again if it becomes `missed`, and one suppressed for `no-data` is reported again if it turns `breached`.
 
-`suppress` sets a suppression, with the end date and a note, and `unsuppress` lifts it early, also with a note ([writing](#76-writing)). The suppression is stored in the entity's `state.toml`, and setting or lifting it is an event in the entity's journal. Neither counts as [attention](#18-notes-and-the-journal), so a suppression never makes neglected work look tended. When the end date passes, the suppression lapses with no event, and review checks the flag as usual ([suppression](#47-suppression)).
+`suppress` sets a suppression, with its end and a note, and `unsuppress` lifts it early, also with a note ([writing](#76-writing)). The suppression is stored in the entity's `state.toml`, and setting or lifting it is an event in the entity's journal. Neither counts as [attention](#18-notes-and-the-journal), so a suppression never makes neglected work look tended. When the end date passes, the suppression lapses with no event, and review checks the flag as usual ([suppression](#47-suppression)).
 
-Review ends by saying how many flags are suppressed, and lists each with its note and end date when asked ([`review`](#77-review)).
+Review ends by saying how many flags are suppressed, and lists each with its note and end when asked ([`review`](#77-review)).
 
 ### 1.17 Generated files
 
@@ -530,7 +530,7 @@ An edit inside a generated file changes no fact and is replaced at the next rewr
 
 Everything outside `para`'s side is your content ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)), your own text in a README included. `para` reads it, for example to hash a recorded file or keep your text around its own part of a README, but never treats it as truth.
 
-There is no truth or config outside the tree, such as in your home folder. Apart from the new ids it draws, a command depends only on the tree, its arguments and the clock ([what para is](#01-what-para-is)). Its arguments include the current folder, any `PARA_*` variables that stand in for flags ([fields and time input](#72-fields-and-time-input)), and whether you are there to answer a confirmation, and how. The clock is set out in [time and the clock](#34-time-and-the-clock).
+There is no truth or config outside the tree, such as in your home folder. Apart from the new ids it draws, and the system time zone that [`init`](#73-init) reads to set the tree's own ([time and the clock](#34-time-and-the-clock)), a command depends only on the tree, its arguments and the clock ([what para is](#01-what-para-is)). Its arguments include the current folder, any `PARA_*` variables that stand in for flags ([fields and time input](#72-fields-and-time-input)), and whether you are there to answer a confirmation, and how. The clock is set out in [time and the clock](#34-time-and-the-clock).
 
 A hand edit to a truth file changes the truth itself, outside `para`'s promises ([safety guarantees](#81-safety-guarantees)); `doctor` reports what it breaks.
 
@@ -655,7 +655,37 @@ A line is readable when it is a JSON object with a `time` and a `type`. Problems
 `doctor` reports each of these.
 
 ### 3.4 Time and the clock
-How times are recorded and compared, so dates mean the same thing everywhere.
+
+Every time `para` stores is a moment in UTC, truncated to the second and written like `2026-11-05T16:30:00Z`. That includes deadlines, such as a due date or the end of a suppression. [`doctor`](#82-doctor-findings) reports a stored time in any other form.
+
+The tree has one time zone, the `time-zone` setting in the root's `config.toml`, an IANA name such as `America/Los_Angeles` ([config](#35-config)). It decides only how commands read and show times ([fields and time input](#72-fields-and-time-input)):
+
+- A time you type without an offset is in the tree's zone, and one with an offset is converted. A local time that a daylight saving change repeats means its earlier moment, and one the change skips is refused.
+- A date you type without a time means the last second of that day in the tree's zone, the later one if it repeats. In Los Angeles, `--due 2026-11-05` stores `2026-11-06T07:59:59Z`.
+- Command output shows times in the tree's zone, and a deadline at the last second of a day in that zone as just that date. After the zone changes, an older deadline may show as a full time.
+
+Changing the zone moves nothing stored. Generated files, such as [`ACTIVITY.md`](#19-activity) with its day groups and README frontmatter with its due dates, show full UTC times and days, so they never depend on the zone.
+
+The setting can be made only on the root. Unset, or with no root `config.toml`, the zone is UTC. A name `para` does not know makes every command but `doctor` and `para config` refuse. [`init`](#73-init) sets it from `--time-zone`, or else from your system's zone, and says which. If it finds no zone, or one that is not an IANA name, it sets UTC and says so. Each `para` release carries its own copy of the time zone database, so a newer release can read or show a time differently.
+
+Times compare as moments:
+
+- Work is [overdue](#114-status) once the current time is past its due date. A key result that has not reached its target becomes `missed` at the same moment.
+- A key result's value at its due date is its latest value whose claimed time is at or before the due date.
+- A [suppression](#116-suppression) hides its flag until its end has passed.
+- An entity is [stale](#45-staleness) once more than its `<kind>.stale-after` has passed since its attention's claimed time ([the journal](#33-the-journal)).
+
+A duration, such as `stale-after`, is a positive whole number and a unit: `m` for minutes, `h` for hours, `d` for days of 24 hours or `w` for weeks, such as `90m`, `36h` or `7d`. There is no unit for months. A bare number is refused, and so is one over `5200w`, about a hundred years.
+
+Each command reads the clock once, when it starts. That one time is the `time` of every event it writes, and the current time for every check, status and flag, such as the rule that a claimed time cannot be in the future. The one exception is an archived key result or indicator, which uses the time it was last archived, alone or with an entity above it ([status](#114-status)).
+
+`PARA_NOW` replaces that reading for one command, such as `PARA_NOW=2026-11-05T09:00:00Z`, so tests and [worked examples](#appendix-b-worked-examples) give the same result on every run. It is an environment variable with no command-line option.
+
+An empty `PARA_NOW` counts as unset. Any other value must be a full time with an offset, `Z` included, which `para` converts to UTC and truncates to the second; otherwise every command refuses.
+
+Anyone may use it. It adds no weakness, since stored times were never more trustworthy than the clock, which anyone can set.
+
+A clock behind times already stored, as on a machine set wrong, is not a fault. Statuses and flags use that time as usual, so work may look not yet overdue.
 
 ### 3.5 Config
 The settings a person chooses with `para config`, stored in each `.para/config.toml`, which change only what `para` does from then on (within the limits of [how labels flow](#64-how-labels-flow)), and how they pass down the tree, so behaviour is set once and inherited below.
