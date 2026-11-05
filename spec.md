@@ -30,7 +30,7 @@ In `para`, each category is a top-level [bucket](#12-buckets) of the tree.
 The tree's structure and metadata belong to `para`. They are:
 
 - every entity, which is every folder `para` manages (the folder itself, not what you put in it): the root, the containers (the buckets, archive buckets and ones such as `objectives/`), archive stubs, and every project, area, dir and entity of another kind. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
-- everything inside each `.para/`: state (including each recorded file's provenance), config (including sensitivity rules), the journal and the files `para` generates, such as `ACTIVITY.md` ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
+- everything inside each `.para/`: state (including each recorded file's provenance), config (including sensitivity rules), a metric's measurements and the journal ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
 - the keys `para` writes in README frontmatter, its marked blocks in READMEs and `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
 
 Change these only through `para`'s commands, including creating, moving, renaming, archiving and removing entities. The commands are designed to be the easiest way for a person or an agent to make these changes. `para` validates each change before writing anything and refuses an invalid one.
@@ -45,7 +45,7 @@ Every command depends on this split: it writes only `para`'s side.
 
 Agents, like people, are drawn to a clear, predictable framework that leaves them free to create within it. The framework keeps their attention on the task, and when following its rules is also the easiest way to work, they follow them. An agent often arrives in a tree with no memory of it and shares the tree with people, scripts and other agents, so it needs rules it can learn quickly and trust everyone else to follow, and `para` provides them.
 
-`para`'s rules for the structure (the buckets, the kinds and which kind may sit where) are small and the same in every tree, so an agent learns them once. The tree explains itself on disk: `AGENTS.md` at the root, in each bucket and in each archive bucket describes the rules ([`AGENTS.md`](#56-agentsmd)), and each entity's README shows its main facts in frontmatter ([README frontmatter](#53-readme-frontmatter)), so ordinary file tools are enough to find any entity and read about it.
+`para`'s rules for the structure (the buckets, the kinds and which kind may sit where) are small and the same in every tree, so an agent learns them once. The tree explains itself on disk: `AGENTS.md` at the root, in each bucket and in each archive bucket describes the rules ([`AGENTS.md`](#54-agentsmd)), and each entity's README shows its main facts in frontmatter ([README frontmatter](#53-readme-frontmatter)), so ordinary file tools are enough to find any entity and read about it.
 
 The commands make the right path the easy one. Every change to the structure is made with a command, so the agent never needs to edit `para`'s side or know how `.para/` is laid out. A command refuses an invalid change before writing anything and says why and what to do instead, and [safety guarantees](#81-safety-guarantees) covers one that fails partway. Commands are [deterministic](#01-what-para-is), so an agent can rely on how each one behaves and confirm its result from the JSON output and exit codes ([output and exit codes](#710-output-and-exit-codes)). Each entity's journal shows the next agent or person what happened to it ([notes and the journal](#18-notes-and-the-journal)).
 
@@ -55,7 +55,7 @@ Within that framework, agents are free to create, edit and organize content with
 
 These are outside `para`'s scope, and a feature that falls under one is declined for the reason given.
 
-- **Skills and tool-specific files**: `para` does not distribute skills (instructions packaged for an agent) or generate files for one agent tool, such as Cursor rules or `CLAUDE.md`. Distributing skills is its own problem, and tool-specific files differ from tool to tool. Other tools can layer both on a tree, and layering skills on top is the intended way to customize how agents work with it. `para` writes only its own block in `AGENTS.md`, a file many agent tools read and that you may also use for your own instructions ([`AGENTS.md`](#56-agentsmd)). [`para migrate`](#91-migrating-a-v0-tree) removes the `CLAUDE.md` blocks an earlier version wrote.
+- **Skills and tool-specific files**: `para` does not distribute skills (instructions packaged for an agent) or generate files for one agent tool, such as Cursor rules or `CLAUDE.md`. Distributing skills is its own problem, and tool-specific files differ from tool to tool. Other tools can layer both on a tree, and layering skills on top is the intended way to customize how agents work with it. `para` writes only its own block in `AGENTS.md`, a file many agent tools read and that you may also use for your own instructions ([`AGENTS.md`](#54-agentsmd)). [`para migrate`](#91-migrating-a-v0-tree) removes the `CLAUDE.md` blocks an earlier version wrote.
 - **Version control**: `para` never runs git or requires a repository, so it works the same in any tree and never commits for you. [Git](#37-git) covers how its files behave in a repository.
 - **Interpreting content**: `para` never judges a file by what it says, and calls no AI model. A model's answer would make commands nondeterministic, so a file's provenance comes from what a person or agent records, its label from the tree's rules, and its trust is computed from those records, the grades a person sets and their vouches.
 - **Reaching outside the tree**: `para` never fetches or sends anything over a network, which keeps every command [deterministic](#01-what-para-is). A [link](#110-links) points to something outside the tree and is flagged when it is due to be checked or updated, and outside values enter only as [recorded measurements](#42-recording-measurements).
@@ -68,7 +68,7 @@ Every design decision in this spec follows these rules. A new question is answer
 
 1. **Structure is `para`'s, content is yours**: `para` writes only its own side of the tree and never edits or deletes content ([ownership](#03-structure-is-paras-content-is-yours)).
 2. **Deterministic**: the same tree, arguments and time give the same result, apart from new ids ([what para is](#01-what-para-is)).
-3. **One home per fact**: each fact is stored as truth in exactly one place ([truth and projection](#31-truth-and-projection)), and each event is recorded once, in the journal of the folder it happened to, where a child arriving or leaving is its parent's event. A value that can be computed, such as a key result's status, is never stored as truth ([what is never stored](#57-what-is-never-stored)).
+3. **One home per fact**: each fact is stored as truth in one place ([truth and projection](#31-truth-and-projection)). Each event is recorded once, in the journal of the folder it happened to, where a child arriving or leaving is its parent's event. Computed statuses, analytic values, overdue, stale and trust follow the clock, measurements or file contents, so they are never stored ([what is never stored](#55-what-is-never-stored)). A value that history decides, such as attention, is kept in state by the command that changes it.
 4. **Generated files serve readers**: the files `para` writes for readers who never run it show facts and the values computed from them that only a command can change; they are updated with every change, can be rebuilt from the stored truth at any time and are never read back as truth ([generated files](#117-generated-files)).
 5. **Ids are identity**: every entity is addressed by a stored id that survives moves and renames and is never reused. Its path only says where it is now ([addressing](#23-addressing)).
 6. **The right path is the easy one**: every change to the structure is a command, and a command that cannot make a change validly and safely refuses before writing anything, saying why and what to do instead. It never guesses ([why deterministic structure helps agents](#04-why-deterministic-structure-helps-agents)).
@@ -153,7 +153,7 @@ In `para`, objectives exist only inside projects. Besides its `.para/` and READM
 
 A key result holds an [analytic](#151-analytics) (the number tracked, such as weekly visitors from search) to a target by its due date. Every key result has its own due date, required when it is created, which separates it from an [indicator](#142-indicators) and its rolling window. The analytic computes its value from [metrics](#152-metrics), where each raw value is recorded once, so any key result or indicator can use it ([measurement](#15-measurement)). Each key result is a folder in its objective's `key-results/` and holds no other entities. Together, an objective's key results show whether it is met.
 
-Apart from `dropped`, which you set, its status is computed from the analytic, the target, the due date and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#57-what-is-never-stored)). The first row that applies wins:
+Apart from `dropped`, which you set, its status is computed from the analytic, the target, the due date and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#55-what-is-never-stored)). The first row that applies wins:
 
 | Status | Means |
 | --- | --- |
@@ -183,7 +183,7 @@ A standard says in words what an area must keep up, such as keeping the house in
 
 An indicator holds an [analytic](#151-analytics) to a target over a rolling window, such as average nightly sleep over the last 28 days staying at or above seven hours. Others call an indicator a key performance indicator (KPI), or a service level indicator (SLI) with its service level objective (SLO). It is the area's counterpart to a key result, with a window in place of a due date. Each indicator is a folder in its standard's `indicators/` and holds no other entities.
 
-Its status is computed from the analytic over the window, the target, the margin and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#57-what-is-never-stored)). The first row that applies wins:
+Its status is computed from the analytic over the window, the target, the margin and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#55-what-is-never-stored)). The first row that applies wins:
 
 | Status | Means |
 | --- | --- |
@@ -202,11 +202,11 @@ Each refers by id to what it uses. A [key result](#132-key-results) or [indicato
 
 #### 1.5.1 Analytics
 
-An analytic is a computation over one or more metrics, as simple as one metric's latest value or as involved as visitors from search divided by all visitors. It has no target of its own, because the key results and indicators that use it set their own. Its value at any time is computed from its metrics' measurements and is never stored ([what is never stored](#57-what-is-never-stored)). [Analytics, metrics and terms](#41-analytics-metrics-and-terms) defines what an analytic can compute.
+An analytic is a computation over one or more metrics, as simple as one metric's latest value or as involved as visitors from search divided by all visitors. It has no target of its own, because the key results and indicators that use it set their own. Its value at any time is computed from its metrics' measurements and is never stored ([what is never stored](#55-what-is-never-stored)). [Analytics, metrics and terms](#41-analytics-metrics-and-terms) defines what an analytic can compute.
 
 #### 1.5.2 Metrics
 
-A metric is one thing you measure, such as visitors from search in a week or hours slept in a night. Its measurements are dated numbers, recorded with a command and kept in the metric's `.para/` ([recording measurements](#42-recording-measurements)). The computed statuses of key results and indicators come from them. `para` also writes them to `MEASUREMENTS.csv` in the same `.para/`, linked from the metric's README, so they open in any spreadsheet ([`MEASUREMENTS.csv`](#55-measurementscsv)).
+A metric is one thing you measure, such as visitors from search in a week or hours slept in a night. Its measurements are dated numbers you record with a command. Each is one row in `measurements.csv` in the metric's `.para/`, which its README links to and any spreadsheet opens ([recording measurements](#42-recording-measurements)). The computed statuses of key results and indicators come from them.
 
 #### 1.5.3 Terms
 
@@ -232,17 +232,25 @@ The archive is read-only: an archived entity can be shown, listed, unarchived or
 
 ### 1.8 Notes and the journal
 
-Every entity except a stub keeps a journal in its `.para/`, the history of what happened to it. Each time a command changes what the folder is or holds, `para` appends a dated event, such as a project's status changing, a child being added, moved, archived or removed, or a note. `para` only ever appends to a journal and never edits an event in it, except to bring old events up to date when [migrating](#91-migrating-a-v0-tree), so anyone arriving later can read what happened and when without having to remember it ([the journal](#33-the-journal)).
+Every entity except a stub keeps a journal in its `.para/`, the history of what was done to it through `para`. Each time a command changes what the folder is or holds, `para` appends a dated event, such as a project's status changing, a child being added, moved, archived or removed, a measurement being recorded, or a note. `para` only appends to a journal, so anyone arriving later can read what happened and when without having to remember it. Only [`migrate`](#91-migrating-a-v0-tree) and repair change old events ([the journal](#33-the-journal)).
+
+The journal is a log. Current values live in the entity's state, config and, for a metric, its measurements ([truth and projection](#31-truth-and-projection)).
 
 Each event goes to the folder it happened to; a child arriving or leaving is its parent's event, so a move gives the old and new parent one each ([principles](#06-principles)). [Removing](#76-writing) an entity deletes its journal, and its parent's journal records the removal (a stub, having none, records nothing).
 
-A note is a short dated entry in an entity's journal, such as "waiting on the design review", not a notes file of your own, and every entity that keeps a journal takes them. You add one with its own command, and any command that changes an entity can carry one to say why. An entity's attention, which keeps it from going [stale](#45-staleness), is its newest note that you marked as attention, as when you record work you did, or else its creation; for a metric, a new measurement counts too. Nothing else counts, not a status change or a child's note, so working notes and reasons never make neglected work look tended.
+A note is a short dated entry in an entity's journal, such as "waiting on the design review", and every entity that keeps a journal takes them. You add one with its own command, and any command that changes an entity can carry one to say why.
 
-### 1.9 Activity
+An entity's attention keeps it from going [stale](#45-staleness). Its attention time is the latest of:
 
-Every entity except a stub has an `ACTIVITY.md` in its `.para/`, linked from its README, so its history can be read in any Markdown viewer, such as GitHub, without running `para`. It lists every event in that folder's own journal in plain sentences, grouped by day with the newest day first. So the `projects/` bucket's file shows projects arriving, moving and being archived, and a project's file shows its own status changes and notes, not what happens inside its objectives.
+- its creation
+- its newest note marked as attention, such as a note about work you did
+- for a metric, its newest measurement
 
-`para` rewrites it from its journal whenever the journal changes ([write-through](#51-write-through)), so an edit to it is lost, and [`rebuild`](#78-rebuild) regenerates it ([`ACTIVITY.md`](#54-activitymd)).
+`para` keeps the attention time in [`state.toml`](#32-statetoml). A status change or a child's note does not count, so routine notes never make neglected work look tended.
+
+### 1.9 History
+
+An entity's history is its journal, a file of JSON lines that any agent or text viewer can read without running `para`. `para` also shows it on request, newest first ([reading](#74-reading)).
 
 ### 1.10 Links
 
@@ -258,7 +266,7 @@ A dir is the basic kind of entity, a folder for material of any kind, such as a 
 
 Each live dir sits directly in `resources/`, a project, an area or another dir, and nowhere else; an archived one sits at its mirrored path in `archive/` ([archive](#17-archive)). A dir holds other dirs, its [links](#110-links) in its `links/` container and any content of your own, and no other entities ([kinds and containment](#22-kinds-and-containment)).
 
-Like a project or area, a dir has a journal that takes [notes](#18-notes-and-the-journal), an [`ACTIVITY.md`](#19-activity) and a README whose frontmatter and [block](#52-para-owned-blocks) `para` keeps, and it can carry its own [sensitivity label](#112-sensitivity-labels). [Review](#115-review) reports a dir as stale only when a `dir.stale-after` setting reaches it ([staleness](#45-staleness)).
+Like a project or area, a dir has a journal that takes [notes](#18-notes-and-the-journal) and a README whose frontmatter and [block](#52-para-owned-blocks) `para` keeps, and it can carry its own [sensitivity label](#112-sensitivity-labels). [Review](#115-review) reports a dir as stale only when a `dir.stale-after` setting reaches it ([staleness](#45-staleness)).
 
 A plain folder in a project, area or dir is content and needs nothing from `para`. Make it a dir when it needs notes, links or staleness of its own; to give it only a stricter label, a path rule in its entity's config is enough ([where labels are set](#63-where-labels-are-set)). [Adopting](#24-adopting-existing-directories) such a folder makes it a dir and keeps everything in it; a folder inside a plain folder can be adopted only once that folder is a dir.
 
@@ -296,7 +304,7 @@ Status says where a piece of work stands, so active, blocked and finished work c
 | [key result](#132-key-results) | `dropped`, `achieved`, `missed`, `at-risk`, `on-track` | computed, except `dropped`, which you set and can clear |
 | [indicator](#142-indicators) | `no-data`, `breached`, `at-risk`, `healthy` | computed |
 
-A status you set, `dropped` included, is stored in the entity's `state.toml`, and each change is an event in its journal. Setting `blocked` needs a note saying why, so every blocker keeps its reason. A computed status is never stored: `para` works it out from the measurements and the current time whenever it is shown ([derived status](#44-derived-status)).
+A status you set, `dropped` included, is stored in the entity's `state.toml`, and each change is an event in its journal. Setting `blocked` needs a note saying why. State keeps that reason until the status changes. A computed status is never stored: `para` works it out from the measurements and the current time whenever it is shown ([derived status](#44-derived-status)).
 
 `done` and `dropped` say how the work ended. A project is closed when its status is one of them, an objective when its own or its project's is, and a key result when it is `dropped` or its objective is closed; all other work is open. Closure is never written to the children, so reopening a project or objective reopens only the work beneath it whose own status is not `done` or `dropped`. [Review](#115-review) stops reporting closed work, and [archiving](#17-archive) it is a separate step.
 
@@ -345,16 +353,14 @@ Review ends by saying how many flags are suppressed, and lists each with its not
 
 ### 1.17 Generated files
 
-`para` writes some files for people and tools that read the tree without running `para`, such as someone browsing it on GitHub or an agent using ordinary file tools. They are part of what `para` delivers, meant to stay in the tree for anyone to read. `para` never reads them as truth: it works only from the state, config and journals in each `.para/`, and reads a README or `AGENTS.md` only to find its own part ([truth and projection](#31-truth-and-projection)).
+`para` writes some files for people and tools that read the tree without running `para`, such as someone browsing it on GitHub or an agent using ordinary file tools. They are part of what `para` delivers, meant to stay in the tree for anyone to read. `para` never reads them as truth: it works only from the truth files in each `.para/`, and reads a README or `AGENTS.md` only to find its own part ([truth and projection](#31-truth-and-projection)).
 
 | File | Where | `para`'s part | Shows |
 | --- | --- | --- | --- |
-| `README.md` | every entity except a stub | its frontmatter keys and its block | the entity's main facts, such as its id, kind, set status and label; its children and links to its other generated files |
+| `README.md` | every entity except a stub | its frontmatter keys and its block | the entity's main facts, such as its id, kind, set status and label; its children and, for a metric, a link to its measurements |
 | `AGENTS.md` | the root, each bucket and each archive bucket | its block | the tree's rules and what each label allows, for agents |
-| `ACTIVITY.md` | every `.para/` except a stub's | the whole file | the folder's journal in plain sentences ([activity](#19-activity)) |
-| `MEASUREMENTS.csv` | a metric's `.para/` | the whole file | the metric's measurements as a table ([metrics](#152-metrics)) |
 
-A command that changes a fact rewrites every generated file that shows it in the same run ([write-through](#51-write-through)), and [`rebuild`](#78-rebuild) rewrites them all from the state, config and journals, as after a git merge or a hand edit. Your own text outside `para`'s part is content and is kept, and anything written inside it is replaced at the next rewrite ([para-owned blocks](#52-para-owned-blocks)).
+A command that changes a fact rewrites every generated file that shows it in the same run ([write-through](#51-write-through)), and [`rebuild`](#78-rebuild) rewrites them all from the truth files, as after a git merge or a hand edit. Your own text outside `para`'s part is content and is kept, and anything written inside it is replaced at the next rewrite ([para-owned blocks](#52-para-owned-blocks)).
 
 Generated files show only values that a command alone can change. Values that change without one are left out: whether a project or objective is overdue and whether anything is stale, which follow the clock, and trust, which follows the contents of files. Computed statuses are left out too, so any status a file shows is one you set. [`show`](#74-reading), [`list`](#74-reading) and [review](#115-review) give all of these. So a generated file goes out of date only through a change made outside `para`, such as a hand edit or a git merge, and `rebuild` in the same version of `para` writes the same files on any day and on any machine.
 
@@ -499,7 +505,13 @@ Archiving and unarchiving are journaled like any move ([notes and the journal](#
 
 - each entity moved on its own, the one named and any ancestors brought back, gets an event in its own journal, as does each descendant archived on its own that `unarchive` brings back with it
 - its old and new parent each get one, containers included, unless the parent is a stub, which has no journal
-- entities moved beneath it get none; [the journal](#33-the-journal) says how they find the date they were archived, which their [status](#114-status) needs
+- entities moved beneath it get none
+
+`archive` also stores the archive time in the state of every live entity it moves, descendants included ([`state.toml`](#32-statetoml)):
+
+- An entity archived earlier keeps its own time.
+- `unarchive` removes the time from each entity it brings back.
+- An archived key result's or indicator's [status](#114-status) is computed as of that time.
 
 A move takes the folder as it is. Symlinks inside move unchanged and are never followed, so a relative link that points outside the entity may break.
 
@@ -517,14 +529,21 @@ The truth files are:
 | --- | --- | --- |
 | `state.toml` | every `.para/` | the entity's facts, such as its kind, id, set status, provenance records and suppressions; the root's also holds the schema version and id prefix ([`state.toml`](#32-statetoml)) |
 | `config.toml` | any `.para/` but a stub's, once something is set | your choices, such as a label, path rules and settings ([config](#35-config)) |
-| the journal | every `.para/` but a stub's | the entity's events, including notes and a metric's measurements, only ever appended to ([the journal](#33-the-journal)) |
+| `measurements.csv` | a metric's `.para/`, once it has a measurement | the metric's measurements, one row each ([recording measurements](#42-recording-measurements)) |
+| the journal | every `.para/` but a stub's | the entity's events, notes included, only ever appended to ([the journal](#33-the-journal)) |
 | `ids/` | the root's `.para/` | an empty file for every id issued ([addressing](#23-addressing)) |
 
-State holds what is true now, and the journal holds what happened. A command that changes a fact, such as a status, writes the new value to state and appends the change to the journal. So the value's one home is state and the change's is the journal. `para` reads current facts from state, and reads the journal for what only history gives, such as [attention](#18-notes-and-the-journal), measurements and when something was archived.
+State, config and a metric's measurements hold what is true now, and the journal holds what happened. A command that changes a fact, such as a status, writes the new value to state and appends the change to the journal. The value lives in one truth file, and the change in the journal.
 
-If state and the journal disagree, as after a hand edit or a merge, commands go by state and never rebuild it from the journal. [`doctor`](#82-doctor-findings) reports the disagreement, and [repair](#83-repair) lets you keep state, appending an event that matches it, or set state from the journal.
+Commands find current values in truth files, never by reading a journal, so a long history never slows one down. Some values depend on history, such as an entity's [attention](#18-notes-and-the-journal), and the command that changes one stores the result in state. A journal is read only:
 
-A folder whose kind cannot be read from its `state.toml` is [damaged](#21-directory-shapes). So is one whose `config.toml` exists but cannot be read, since going on without it would drop its labels: commands that would change it or anything beneath it refuse, and reads warn. A missing `config.toml` means nothing is set there. `doctor` reports any other fault in a truth file, such as a missing journal.
+- to show history or notes on request ([reading](#74-reading))
+- by [`doctor`](#82-doctor-findings), [repair](#83-repair) and [`migrate`](#91-migrating-a-v0-tree)
+- to reset attention after a correction ([the journal](#33-the-journal))
+
+Nothing checks a truth file against its journal. After a hand edit or a merge, commands go by state, config and measurements, and the journal lacks the change.
+
+A folder whose kind cannot be read from its `state.toml` is [damaged](#21-directory-shapes). So is one whose `config.toml` exists but cannot be read, since going on without it would drop its labels: commands that would change it or anything beneath it refuse, and reads warn. A missing `config.toml` means nothing is set there. A `measurements.csv` that cannot be read makes each command that writes to it refuse, naming the folder and pointing to `doctor`, and reads leave out the statuses that need it and warn. `doctor` reports any other fault in a truth file, such as a missing journal.
 
 An edit inside a generated file changes no fact and is replaced at the next rewrite, so a fact changes only by its command. Anything else inside a `.para/` is `para`'s but is neither truth nor generated, and `doctor` reports it.
 
@@ -568,13 +587,16 @@ Other keys are defined with the behaviour they serve:
 | Facts | Kinds | Keys defined in |
 | --- | --- | --- |
 | set status and due date | projects, objectives, key results | [status](#114-status), [targets](#43-targets-key-results-and-indicators) |
+| blocked reason | projects, objectives | [status](#114-status) |
+| attention time | every kind but the root, a container and a stub | [staleness](#45-staleness) |
+| archive time | archived entities | [archiving](#25-archiving) |
 | analytic, target and window | key results, indicators | [targets](#43-targets-key-results-and-indicators) |
 | what it computes and the metrics and terms it uses | analytics, metrics | [analytics, metrics and terms](#41-analytics-metrics-and-terms) |
 | type, ref and direction | links | [links](#110-links) |
 | provenance records | every kind but the root, a container and a stub | [provenance and trust](#62-provenance-and-trust) |
 | suppressions | anything review can flag | [suppression](#47-suppression) |
 
-State never holds the entity's folder name, path or parent, since those are where its folder sits, nor anything computed ([what is never stored](#57-what-is-never-stored)) or chosen in config ([config](#35-config)).
+State never holds the entity's folder name, path or parent, since those are where its folder sits, nor any value [what is never stored](#55-what-is-never-stored) lists, nor anything chosen in config ([config](#35-config)).
 
 `para` writes the file the same way every time, so the same facts give the same bytes and a diff shows only what changed:
 
@@ -592,7 +614,7 @@ The root's `prefix` must be ASCII letters and digits. Otherwise every command bu
 
 ### 3.3 The journal
 
-Each entity's journal is `.para/journal.jsonl` ([notes and the journal](#18-notes-and-the-journal)). Each line is one event: a JSON object on one line, in UTF-8, ending in a newline. Every event holds these fields, in this order:
+Each entity's journal is `.para/journal.jsonl`, the log of everything done to it through `para` ([notes and the journal](#18-notes-and-the-journal)). Each line is one event: a JSON object on one line, in UTF-8, ending in a newline. Every event holds these fields, in this order:
 
 | Field | Holds |
 | --- | --- |
@@ -615,30 +637,28 @@ Every event names who did it, as [sources](#113-provenance), the entities that s
 
 A note or a measurement can claim an earlier time than when it was written, such as a reading taken yesterday. The claimed time goes in `at` and can never be in the future. A note's can also not be before the entity's `created` time, so a backdated note cannot make old neglect look tended. Every other event is dated when it is written, and a command refuses `at` on it.
 
-Where order matters, such as the newest attention note or a metric's latest value, events go by their claimed time, `at` or else `time`, and file order breaks ties. After a merge or a clock change, a later line can carry an earlier time, and that is not a fault.
+Where order matters, such as finding the newest attention note after a correction, events go by their claimed time, `at` or else `time`, and file order breaks ties. After a merge or a clock change, a later line can carry an earlier time, and that is not a fault.
 
 A command appends its events only after its checks pass, in the same run as its changes to state ([safety guarantees](#81-safety-guarantees)). When one command writes to several journals, such as a move's entity and its old and new parents, its events share one `time`. Rewriting a generated file is never an event.
 
 Every change made with [`para config`](#79-config) is an event in the journal of the folder whose `config.toml` changed, with the old and new values. The root's journal also records `init` and `migrate`.
 
-An entity archived along with an ancestor gets no event of its own ([archiving](#25-archiving)). It finds the date it was archived, which its [status](#114-status) needs, like this:
+`para` changes an event in only two cases: `migrate` converts old events to the current format, giving each an id and keeping its meaning and times, and repair cleans up after a merge, as below. Giving a duplicated entity or record id a new one ([repair](#83-repair)) leaves old events as they are and appends one naming the old and new id. A journal is never trimmed, since it is the whole history ([history](#19-history)).
 
-1. Look at the entity, then at each ancestor in turn, skipping stubs, which have no journal.
-2. In each, find the newest event recording that folder's own move, such as being moved, archived or unarchived, not a child arriving or leaving.
-3. The first folder whose newest such event is being archived gives that event's `time`.
+A wrong note is corrected with a `correction` event in the same journal. Its `of` field names the note's `id`, and it holds one of:
 
-`para` never edits or removes an event. There are two exceptions: `migrate` converts old events to the current format, giving each an id and keeping its meaning and times, and repair cleans up after a merge, as below. Giving a duplicated entity or record id a new one ([repair](#83-repair)) leaves old events as they are and appends one naming the old and new id. A journal is never trimmed, since `ACTIVITY.md` shows the whole history ([activity](#19-activity)).
+- `values`: the note's text, claimed time and attention mark, as corrected.
+- `"withdrawn": true`, for a note that should never have been written.
 
-A wrong note or measurement is corrected with a `correction` event in the same journal. Its `of` field names the original's `id`, and it holds one of:
+A corrected claimed time cannot be later than the note's `time` or before the entity's `created` time. The correction itself is dated when written.
 
-- `values`: every field the original may change, as corrected, under the original's field names. For a measurement that is its value and claimed time; for a note, its text, claimed time and attention mark.
-- `"withdrawn": true`, as for a reading that should never have been recorded.
+A correction replaces all of the note's values. The newest correction wins, so a later one can undo a withdrawal. The journal keeps the note and every correction, and history shows each one. A correction is not attention itself.
 
-A corrected claimed time cannot be later than the original's `time`, and a note's cannot be before the entity's `created` time. The correction itself is dated when written, like any event but a note or measurement.
+A measurement is corrected or withdrawn in `measurements.csv` itself, and the journal logs the old and new values ([recording measurements](#42-recording-measurements)). Its corrected claimed time can be any past time, as when it was recorded. Only notes take correction events.
 
-Each correction replaces the original's values entirely, and the newest one wins, so a withdrawal can be undone. The journal keeps the original and every correction, and `ACTIVITY.md` shows each one. Everything else, such as attention, a metric's data and `MEASUREMENTS.csv`, uses the corrected values.
+Attention can change when you correct or withdraw a note that is, or becomes, an attention note, and when you correct or withdraw a measurement. The command then reads the journal and `measurements.csv` and resets the attention time ([notes and the journal](#18-notes-and-the-journal)).
 
-Only notes and measurements can be corrected. A correction is not attention itself.
+A blocked reason in state is its own fact. Correcting the note it came from leaves it, and setting `blocked` again with a new note replaces it.
 
 A line is readable when it is a JSON object with a `time` and a `type`. Problems are handled like this:
 
@@ -648,7 +668,7 @@ A line is readable when it is a JSON object with a `time` and a `type`. Problems
 - **An event of a type, or with a field, `para` does not know** is kept like any other.
 - **An event with no `sub`** that is not marked `v0` is read like any other.
 - **Two events with the same `id`**, which only a merge can cause, make a new correction naming that id refuse, and a correction already naming it applies to neither.
-- **A correction naming a missing id**, or an event that is not a note or measurement, is kept and changes nothing.
+- **A correction that names a missing id**, or names an event that is not a note, is kept and changes nothing.
 - **An event with no `id`**, such as one written by hand, is read like any other but cannot be corrected.
 - **A journal that is a symlink** makes each command that would append to it refuse, so `para` never writes outside the tree ([safety guarantees](#81-safety-guarantees)).
 
@@ -664,7 +684,7 @@ The tree has one time zone, the `time-zone` setting in the root's `config.toml`,
 - A date you type without a time means the last second of that day in the tree's zone, the later one if it repeats. In Los Angeles, `--due 2026-11-05` stores `2026-11-06T07:59:59Z`.
 - Command output shows times in the tree's zone, and a deadline at the last second of a day in that zone as just that date. After the zone changes, an older deadline may show as a full time.
 
-Changing the zone moves nothing stored. Generated files, such as [`ACTIVITY.md`](#19-activity) with its day groups and README frontmatter with its due dates, show full UTC times and days, so they never depend on the zone.
+Changing the zone changes no stored time. Generated files, such as README frontmatter with its due dates, show full UTC times, so they never depend on the zone.
 
 The setting can be made only on the root. Unset, or with no root `config.toml`, the zone is UTC. A name `para` does not know makes every command but `doctor` and `para config` refuse. [`init`](#73-init) sets it from `--time-zone`, or else from your system's zone, and says which. If it finds no zone, or one that is not an IANA name, it sets UTC and says so. Each `para` release carries its own copy of the time zone database, so a newer release can read or show a time differently.
 
@@ -673,7 +693,7 @@ Times compare as moments:
 - Work is [overdue](#114-status) once the current time is past its due date. A key result that has not reached its target becomes `missed` at the same moment.
 - A key result's value at its due date is its latest value whose claimed time is at or before the due date.
 - A [suppression](#116-suppression) hides its flag until its end has passed.
-- An entity is [stale](#45-staleness) once more than its `<kind>.stale-after` has passed since its attention's claimed time ([the journal](#33-the-journal)).
+- An entity is [stale](#45-staleness) once more than its `<kind>.stale-after` has passed since its attention time ([`state.toml`](#32-statetoml)).
 
 A duration, such as `stale-after`, is a positive whole number and a unit: `m` for minutes, `h` for hours, `d` for days of 24 hours or `w` for weeks, such as `90m`, `36h` or `7d`. There is no unit for months. A bare number is refused, and so is one over `5200w`, about a hundred years.
 
@@ -702,7 +722,7 @@ How `para` behaves inside a git repository, since most trees are versioned and m
 How analytics compute from metrics and how terms scope metrics, all referenced by id, so a measurement is defined once and reused.
 
 ### 4.2 Recording measurements
-How dated values are recorded against a metric, the only place raw data enters the tree.
+How measurements are recorded, corrected and withdrawn in a metric's `measurements.csv`. Covers the file's format, each row's id (the id of the event that recorded it), rows with a missing or repeated id, bad rows and merge conflicts. This is the only place raw data enters the tree.
 
 ### 4.3 Targets: key results and indicators
 How a target is set on an analytic, by a due date or over a rolling window, so goals and standards are measured the same way.
@@ -730,17 +750,11 @@ The markers that separate `para`'s text from yours, so `para` never overwrites y
 ### 5.3 README frontmatter
 The generated header on each thing's README, the main place a reader sees its facts.
 
-### 5.4 `ACTIVITY.md`
-The rendered history file in `.para/`, linked from the README, so a folder's history is readable without the CLI.
-
-### 5.5 `MEASUREMENTS.csv`
-The rendered measurement table in a metric's `.para/`, linked from its README, so data opens in any spreadsheet.
-
-### 5.6 `AGENTS.md`
+### 5.4 `AGENTS.md`
 The file that orients an agent to the tree, which is how agents learn the framework.
 
-### 5.7 What is never stored
-Values that are always computed and never stored as truth, so no stored copy is trusted over a fresh computation.
+### 5.5 What is never stored
+Values computed from the clock, measurements or file contents. They are never stored, so they are always current.
 
 ## 6. Sensitivity and provenance
 
@@ -774,7 +788,7 @@ The fields a command can set and how dates are typed, so input is consistent.
 Creating a tree, the one command that runs before a tree exists.
 
 ### 7.4 Reading
-The commands that show and list things, the most common way into a tree.
+The commands that show and list things, an entity's history included, the most common way into a tree.
 
 ### 7.5 Filters, sorting, limiting
 How to narrow and order results, so large trees stay usable.
@@ -786,7 +800,7 @@ The commands that change a tree, each a safe, checked operation.
 The command that answers "what needs attention?", `para`'s main daily use.
 
 ### 7.8 `rebuild`
-Regenerating every derived file, which is how a tree is repaired or refreshed.
+Regenerating every generated file from the truth files, which is how a tree is repaired or refreshed.
 
 ### 7.9 `config`
 Reading and changing settings, so config is never hand-edited by guesswork.
