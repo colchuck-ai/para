@@ -87,7 +87,7 @@ Every example starts from the tree in Appendix A unless it names another startin
 
 ### 1.1 The tree
 
-A tree is a root directory and everything in it. The root's `.para/state.toml` has `kind = "root"`, which marks the tree, and records the tree's schema version and the prefix of its ids ([`state.toml`](#32-statetoml)). [`init`](#73-init) creates a tree, and every command that works on a tree finds it by checking the current directory and then each parent for a `.para/state.toml` with `kind = "root"` ([the walk](#36-the-walk)). A v0 tree is marked by `tree.toml` instead, and only [`migrate`](#91-migrating-a-v0-tree) works on it.
+A tree is a root directory and everything in it. The root's `.para/state.toml` has `kind = "root"`, which marks the tree, and records the tree's schema version and the prefix of its ids ([`state.toml`](#32-statetoml)). [`init`](#73-init) creates a tree, and every command that works on a tree finds it by checking the current directory and then each parent for a `.para/state.toml` with `kind = "root"`, unless `--root` or `PARA_ROOT` names it ([the walk](#36-the-walk)). A v0 tree is marked by `tree.toml` instead, and only [`migrate`](#91-migrating-a-v0-tree) works on it.
 
 Under the root are the four [buckets](#12-buckets), and `archive/` holds archive buckets that mirror the other three ([archive](#17-archive)). Every folder `para` manages is an entity, a directory it tracks by id: the root, the buckets and archive buckets, the projects, areas, dirs and other kinds within them, and the archive's [stubs](#17-archive) ([kinds and containment](#22-kinds-and-containment)). A container is an entity with a fixed name that groups children: each bucket is one, created by `init`, and so is each archive bucket and a project's `objectives/`, created when its first child arrives. Every entity has a `.para/` whose `state.toml` records its kind, and each except the root sits directly inside another.
 
@@ -373,9 +373,11 @@ Every directory in a tree has one of four shapes, and `para` tells them apart th
 | Shape | Recognised by | Owner |
 | --- | --- | --- |
 | entity | it holds a `.para/` whose `state.toml` gives a known kind | `para`, though what you put in it is [yours](#03-structure-is-paras-content-is-yours) |
-| damaged folder | it holds something named `.para`, but its kind cannot be read, or its `config.toml` exists but cannot be read ([truth and projection](#31-truth-and-projection)) | `para`, though what you put in it is yours |
+| damaged folder | it holds something named `.para`, but its kind cannot be read, or its `config.toml` exists but cannot be read ([truth and projection](#31-truth-and-projection)), or `para` is denied when checking it for `.para` | `para`, though what you put in it is yours |
 | `.para/` | its name | `para`, with everything in it, which is never classified further |
 | plain folder | anything else | you, as content |
+
+A folder inside your content is content too, whatever it holds, since the walk down never looks inside content ([the walk](#36-the-walk)).
 
 An entity's kind is the `kind` in its `state.toml`, matched exactly, case included, and recorded nowhere else ([`state.toml`](#32-statetoml)). `para` never works out a kind from a folder's name or where it sits. Having read the kind, `para` checks that it may sit there and, for a container, that its name is one fixed for a container where it sits, so its name and parent say which container it is ([kinds and containment](#22-kinds-and-containment)). An archived entity keeps its kind, since being archived is a matter of where it sits.
 
@@ -784,7 +786,44 @@ A dotted key and a table are the same setting, so `project.stale-after = "14d"` 
 [The example tree](#appendix-a-example-tree) shows the exact format.
 
 ### 3.6 The walk
-How `para` finds a tree's root and everything in it, and what it does outside any tree, inside a nested tree and in an unmigrated v0 tree, which every command but `migrate` refuses, so every command sees the same set of things.
+
+Each command starts with two walks. The walk up finds the tree's root. The walk down then finds the entities in it. Both follow the same rules every time, so every command sees the same set of entities.
+
+`para` recognises a name only when it matches exactly, case included, on every filesystem. A folder named `.PARA` or `Projects/` is content, never `para`'s. Creating a name still collides as the filesystem sees it ([kinds and containment](#22-kinds-and-containment)).
+
+The walk up starts at the current directory, with symlinks resolved, and checks it and then each parent, up to the filesystem root. At each folder it asks, in this order:
+
+1. Does `.para/state.toml` have `kind = "root"`? Then this is the root, and the walk stops.
+2. Does `.para/` hold `tree.toml`? Then this is a v0 tree, and the walk stops. Every command but [`migrate`](#91-migrating-a-v0-tree) refuses there and names `para migrate`.
+3. Is the folder damaged ([directory shapes](#21-directory-shapes))? Then the command refuses, naming the folder and suggesting [`doctor`](#82-doctor-findings) run with `--root`, as below.
+4. Otherwise the walk goes on to the parent.
+
+A root whose `config.toml` cannot be read is damaged too, and the command refuses as in step 3. The walk up judges each folder as it finds it, so a stray `.para` in your content above the current directory also stops it. A command therefore never lands in a tree above a broken folder. To run one from inside a damaged folder, name the root with `--root`.
+
+With no root found, the command refuses. It says no tree was found and suggests [`init`](#73-init) or `--root`. A current directory that cannot be resolved, such as one deleted, also refuses.
+
+`--root <dir>`, or the `PARA_ROOT` variable, names the root directly, and there is no walk up. When both are given, the flag wins. An empty `PARA_ROOT` counts as unset.
+
+- A relative path is read from the current directory, and symlinks are resolved, as in the walk up.
+- The folder must be a root or a v0 tree, and a v0 tree still refuses every command but `migrate`. Anything else refuses, a damaged folder included.
+
+`init` makes a root, so it refuses `--root` and ignores `PARA_ROOT`. Its walk up passes damaged folders, and it refuses only where it finds a root or a v0 tree.
+
+The walk down starts at the root. It reads each entity's `.para/state.toml` and looks at each folder directly inside that entity:
+
+- A folder holding anything named `.para`, or one `para` is denied when checking, is `para`'s: an entity, a nested root or a damaged folder.
+- Any other folder is your content, and the walk never goes into it.
+
+The walk also never goes into:
+
+- a damaged folder, which reads leave out with a warning
+- a nested root
+- a `.para/`, where it never looks for entities
+- a symlink, which is never followed, so a symlinked folder is content; a `.para` that is a symlink makes its folder damaged
+
+A nested tree is a tree inside a folder of another tree. It comes from a copy, from `init` run above a tree kept in content, or from a hand edit, such as an entity's kind changed to `root`. The walk up stops at the nearest root, so a command run inside a nested tree works on that tree alone.
+
+A nested root directly inside an outer entity is a root in the wrong place, which `doctor` reports ([kinds and containment](#22-kinds-and-containment)). So is a folder directly inside an outer entity whose `.para/` holds `tree.toml`, a nested v0 tree.
 
 ### 3.7 Git
 How `para` behaves inside a git repository, since most trees are versioned and merged.
