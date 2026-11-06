@@ -310,7 +310,7 @@ A status you set, `dropped` included, is stored in the entity's `state.toml`, an
 
 An open project or objective whose due date has passed is overdue, a flag review reports rather than a status, so the status you set stays as it is.
 
-An archived key result or indicator shows its status as of when it was last archived, alone or with an entity above it, so its status stops changing and an indicator's window does not run out of data. Unarchiving it computes its status at the current time again.
+An archived key result or indicator shows its status as of when it was last archived, alone or with an entity above it, so its status no longer follows the clock and an indicator's window does not run out of data. A setting changed above it, such as a margin, can still change it ([config](#35-config)). Unarchiving it computes its status at the current time again.
 
 ### 1.15 Review
 
@@ -708,7 +708,80 @@ Anyone may use it. It adds no weakness, since stored times were never more trust
 A clock behind times already stored, as on a machine set wrong, is not a fault. Statuses and flags use that time as usual, so work may look not yet overdue.
 
 ### 3.5 Config
-The settings a person chooses with `para config`, stored in each `.para/config.toml`, which change only what `para` does from then on (within the limits of [how labels flow](#64-how-labels-flow)), and how they pass down the tree, so behaviour is set once and inherited below.
+
+A `.para/config.toml` holds your choices for its folder and everything beneath it, such as a label or how long a project may go untended. A change applies from then on and never rewrites what is already recorded.
+
+Any entity but a stub can have one, including the root and containers such as buckets. The file appears when the first setting is made there and goes when nothing is left in it. [`para config`](#79-config) reads and changes settings, and each change is an event in that folder's journal, with the old and new values ([the journal](#33-the-journal)). In the archive, `para config` can only tighten a label or lower a source's grade ([archive](#17-archive)).
+
+These are the settings:
+
+| Setting | Where | Default | Defined in |
+| --- | --- | --- | --- |
+| `time-zone` | the root only | UTC | [time and the clock](#34-time-and-the-clock) |
+| the sensitivity scale | the root only | TLP 2.0 | [sensitivity labels](#61-sensitivity-labels) |
+| the reliability scale | the root only | `A` to `F` | [provenance and trust](#62-provenance-and-trust) |
+| a label, and path rules | any entity but a stub | none | [where labels are set](#63-where-labels-are-set) |
+| a source's grade | sources only | the lowest grade | [provenance and trust](#62-provenance-and-trust) |
+| `<kind>.stale-after`, for each kind that can go stale | any entity but a stub | none (`init` writes two, below) | [staleness](#45-staleness) |
+| `indicator.margin` | any entity but a stub | a built-in margin | [derived status](#44-derived-status) |
+
+A kind can go stale unless it is the root, a container or a stub.
+
+A setting holds at the folder that sets it and at every folder beneath it, until a nearer folder sets it again. To find a value, `para` looks at the entity, then at each ancestor up to the root, containers included, and takes the first it finds. For example, if the root sets `area.stale-after = "90d"` and `areas/garden/` sets `"180d"`, the garden and its sub-areas use 180 days and every other area uses 90.
+
+A source's grade does not pass down. It covers only that source.
+
+A setting with nothing beneath it to apply to, such as `project.stale-after` on an area, is allowed and changes nothing, even when its value is bad.
+
+A folder cannot cancel a setting it inherits. To keep a setting from one subtree, remove it from the ancestor, then set it again on each folder that should still have it.
+
+Labels pass down the same way. A label is never looser than the one above it, and loosening one asks for confirmation ([how labels flow](#64-how-labels-flow)).
+
+A path rule covers only files and plain folders in its own entity ([where labels are set](#63-where-labels-are-set)).
+
+An archived entity looks up settings along its path in the archive, through `archive/` to the root:
+
+- Its own `config.toml` moves with it.
+- Settings on its old live ancestors no longer reach it, since they are not on its archive path.
+- So archiving can change an indicator's margin, and with it the status frozen at archiving.
+- A later change above it, such as to the root's margin, can also change that status.
+- A label cannot loosen this way, since the move refuses ([sensitivity labels](#112-sensitivity-labels)).
+
+To keep a setting, set it on the entity before you archive it.
+
+A root-only setting holds for the whole tree. `para config` refuses it anywhere else. If one is added elsewhere by hand, it changes nothing and [`doctor`](#82-doctor-findings) reports it. The same goes for a grade on an entity that is not a source.
+
+A `config.toml` on a stub is ignored. `doctor` reports it, and `para` removes it with the stub.
+
+[`init`](#73-init) writes three settings into the root's `config.toml`: the time zone ([time and the clock](#34-time-and-the-clock)) and two staleness settings, so review flags neglect from the start. For example:
+
+```toml
+time-zone = "America/Los_Angeles"
+
+[project]
+stale-after = "14d"
+
+[area]
+stale-after = "90d"
+```
+
+You can change or remove them like any setting. [`migrate`](#91-migrating-a-v0-tree) writes none, so a migrated tree keeps what it had.
+
+A missing `config.toml` means nothing is set there. One that cannot be read makes its folder [damaged](#21-directory-shapes) ([truth and projection](#31-truth-and-projection)).
+
+A value `para` cannot use, such as `stale-after = "7"` with no unit or `stale-after = 14` with no quotes, makes each command that needs it refuse. The command names the folder and points to `doctor`. `para` uses the nearest value even when it is bad. It never falls back to one from further up. An unknown `time-zone` is handled in [time and the clock](#34-time-and-the-clock).
+
+A dotted key and a table are the same setting, so `project.stale-after = "14d"` at the top level means the same as `stale-after = "14d"` under `[project]`.
+
+`para` writes `config.toml` the same way every time, as it does [`state.toml`](#32-statetoml):
+
+- Top-level keys come first, in the order of the settings table. Each setting's section says whether it is a key or a table.
+- Each kind's settings follow in a table of their own, such as `[project]`, in the order [directory shapes](#21-directory-shapes) lists the kinds. Inside one, `stale-after` comes before `margin`.
+- Other tables, such as path rules, come last, in the order of the settings table.
+- An empty table is not written, and comments are dropped.
+- An unknown key is kept with its value and placed as in `state.toml`: after `para`'s keys, inside `para`'s table if it was in one, or in its own table at the end. A setting out of place, such as `time-zone` below the root, is placed the same way. `doctor` reports both.
+
+[The example tree](#appendix-a-example-tree) shows the exact format.
 
 ### 3.6 The walk
 How `para` finds a tree's root and everything in it, and what it does outside any tree, inside a nested tree and in an unmigrated v0 tree, which every command but `migrate` refuses, so every command sees the same set of things.
