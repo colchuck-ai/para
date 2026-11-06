@@ -151,7 +151,7 @@ In `para`, objectives exist only inside projects. Besides its `.para/` and READM
 
 #### 1.3.2 Key results
 
-A key result holds an [analytic](#151-analytics) (the number tracked, such as weekly visitors from search) to a target by its due date. Every key result has its own due date, required when it is created, which separates it from an [indicator](#142-indicators) and its rolling window. The analytic computes its value from [metrics](#152-metrics), where each raw value is recorded once, so any key result or indicator can use it ([measurement](#15-measurement)). Each key result is a folder in its objective's `key-results/` and holds no other entities. Together, an objective's key results show whether it is met.
+A key result holds an [analytic](#151-analytics) (the number tracked, such as weekly visitors from search) to a target by its due date. Every key result has its own due date, required when it is created, which separates it from an [indicator](#142-indicators), which tracks a rolling analytic. The analytic computes its value from [metrics](#152-metrics), where each raw value is recorded once, so any key result or indicator can use it ([measurement](#15-measurement)). Each key result is a folder in its objective's `key-results/` and holds no other entities. Together, an objective's key results show whether it is met.
 
 Apart from `dropped`, which you set, its status is computed from the analytic, the target, the due date and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#55-what-is-never-stored)). The first row that applies wins:
 
@@ -163,7 +163,7 @@ Apart from `dropped`, which you set, its status is computed from the analytic, t
 | `at-risk` | progress is too slow to reach the target by the due date |
 | `on-track` | none of the above |
 
-Before the due date, status follows the latest value, so a key result that falls back short of its target is no longer `achieved`. Once the due date has passed, status uses the latest value whose claimed time is at or before it, so later readings do not change it.
+Before the due date, status follows the analytic's current value, so a key result that falls back short of its target is no longer `achieved`. Once the due date has passed, status uses the analytic's value computed at the due date ([analytics, metrics and terms](#41-analytics-metrics-and-terms)), so readings claimed later do not change it.
 
 ### 1.4 Areas
 
@@ -181,15 +181,15 @@ A standard says in words what an area must keep up, such as keeping the house in
 
 #### 1.4.2 Indicators
 
-An indicator holds an [analytic](#151-analytics) to a target over a rolling window, such as average nightly sleep over the last 28 days staying at or above seven hours. Others call an indicator a key performance indicator (KPI), or a service level indicator (SLI) with its service level objective (SLO). It is the area's counterpart to a key result, with a window in place of a due date. Each indicator is a folder in its standard's `indicators/` and holds no other entities.
+An indicator holds a rolling [analytic](#151-analytics), such as average nightly sleep over the last 28 days, to a bound, such as at least seven hours. Others call an indicator a key performance indicator (KPI), or a service level indicator (SLI) with its service level objective (SLO). It is the area's counterpart to a key result, usually with a rolling analytic in place of a due date. Each indicator is a folder in its standard's `indicators/` and holds no other entities.
 
-Its status is computed from the analytic over the window, the target, the margin and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#55-what-is-never-stored)). The first row that applies wins:
+Its status is computed from the analytic, the bound, the margin and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#55-what-is-never-stored)). The first row that applies wins:
 
 | Status | Means |
 | --- | --- |
-| `no-data` | the analytic has no value over the window, such as when a metric it uses has no measurements inside it |
-| `breached` | the analytic over the window misses the target |
-| `at-risk` | the analytic meets the target but is within a margin of missing it |
+| `no-data` | the analytic has no value, such as when its range holds no measurements |
+| `breached` | the analytic is outside the bound |
+| `at-risk` | the analytic is inside the bound, but within a margin of leaving it |
 | `healthy` | none of the above |
 
 The margin is a setting with a default that passes down the tree, where a nearer setting replaces a farther one ([config](#35-config)), and [derived status](#44-derived-status) defines how it applies. You never set an indicator's status; to stop tracking one, remove or [archive](#17-archive) it.
@@ -232,7 +232,7 @@ The archive is read-only: an archived entity can be shown, listed, unarchived or
 
 ### 1.8 Notes and the journal
 
-Every entity except a stub keeps a journal in its `.para/`, the history of what was done to it through `para`. Each time a command changes what the folder is or holds, `para` appends a dated event, such as a project's status changing, a child being added, moved, archived or removed, a measurement being recorded, or a note. `para` only appends to a journal, so anyone arriving later can read what happened and when without having to remember it. Only [`migrate`](#91-migrating-a-v0-tree) and repair change old events ([the journal](#33-the-journal)).
+Every entity except a stub keeps a journal in its `.para/`, the history of what was done to it through `para`. Each time a command changes what the folder is or holds, `para` appends a dated event, such as a project's status changing, a child being added, moved, archived or removed, a measurement being recorded, or a note. `para` only appends to a journal, so anyone arriving later can read what happened and when without having to remember it. Only [`migrate`](#91-migrating-a-v0-tree) changes old events ([the journal](#33-the-journal)).
 
 The journal is a log. Current values live in the entity's state, config and, for a metric, its measurements ([truth and projection](#31-truth-and-projection)).
 
@@ -310,7 +310,7 @@ A status you set, `dropped` included, is stored in the entity's `state.toml`, an
 
 An open project or objective whose due date has passed is overdue, a flag review reports rather than a status, so the status you set stays as it is.
 
-An archived key result or indicator shows its status as of when it was last archived, alone or with an entity above it, so its status no longer follows the clock and an indicator's window does not run out of data. A setting changed above it, such as a margin, can still change it ([config](#35-config)). Unarchiving it computes its status at the current time again.
+An archived key result or indicator shows its status as of when it was last archived, alone or with an entity above it, so its status no longer follows the clock and an indicator's analytic does not run out of data. A setting changed above it, such as a margin, can still change it ([config](#35-config)). Unarchiving it computes its status at the current time again.
 
 ### 1.15 Review
 
@@ -531,7 +531,7 @@ The truth files are:
 | --- | --- | --- |
 | `state.toml` | every `.para/` | the entity's facts, such as its kind, id, set status, provenance records and suppressions; the root's also holds the schema version and id prefix ([`state.toml`](#32-statetoml)) |
 | `config.toml` | any `.para/` but a stub's, once something is set | your choices, such as a label, path rules and settings ([config](#35-config)) |
-| `measurements.csv` | a metric's `.para/`, once it has a measurement | the metric's measurements, one row each ([recording measurements](#42-recording-measurements)) |
+| `measurements.csv` | a metric's `.para/`, created with it | the metric's measurements, one row each ([recording measurements](#42-recording-measurements)) |
 | the journal | every `.para/` but a stub's | the entity's events, notes included, only ever appended to ([the journal](#33-the-journal)) |
 | `ids/` | the root's `.para/` | an empty file for every id issued ([addressing](#23-addressing)) |
 
@@ -592,7 +592,7 @@ Other keys are defined with the behaviour they serve:
 | blocked reason | projects, objectives | [status](#114-status) |
 | attention time | every kind but the root, a container and a stub | [staleness](#45-staleness) |
 | archive time | archived entities | [archiving](#25-archiving) |
-| analytic, target and window | key results, indicators | [targets](#43-targets-key-results-and-indicators) |
+| analytic, target, start and bound | key results, indicators | [targets](#43-targets-key-results-and-indicators) |
 | what it computes and the metrics and terms it uses | analytics, metrics | [analytics, metrics and terms](#41-analytics-metrics-and-terms) |
 | type, ref and direction | links | [links](#110-links) |
 | provenance records | every kind but the root, a container and a stub | [provenance and trust](#62-provenance-and-trust) |
@@ -602,8 +602,8 @@ State never holds the entity's folder name, path or parent, since those are wher
 
 `para` writes the file the same way every time, so the same facts give the same bytes and a diff shows only what changed:
 
-- top-level keys first, in the order above, then the root's or stub's keys, then the kind's keys in the order their section gives
-- then tables, such as provenance records, in the order their sections give
+- top-level keys first, in the order above, then the root's or stub's keys, then the kind's keys, following the rows of the table above and, within a row, the order its section gives
+- then tables, such as provenance records, in the same order
 - no comments, so any written by hand are dropped
 
 [The example tree](#appendix-a-example-tree) shows the exact format, such as spacing and quoting.
@@ -645,7 +645,7 @@ A command appends its events only after its checks pass, in the same run as its 
 
 Every change made with [`para config`](#79-config) is an event in the journal of the folder whose `config.toml` changed, with the old and new values. The root's journal also records `init` and `migrate`.
 
-`para` changes an event in only two cases: `migrate` converts old events to the current format, giving each an id and keeping its meaning and times, and repair cleans up after a merge, as below. Giving a duplicated entity or record id a new one ([repair](#83-repair)) leaves old events as they are and appends one naming the old and new id. A journal is never trimmed, since it is the whole history ([history](#19-history)).
+`para` changes an event only when `migrate` converts old events to the current format, giving each an id and keeping its meaning and times. Giving a duplicated entity or record id a new one ([repair](#83-repair)) leaves old events as they are and appends one naming the old and new id. A journal is never trimmed, since it is the whole history ([history](#19-history)).
 
 A wrong note is corrected with a `correction` event in the same journal. Its `of` field names the note's `id`, and it holds one of:
 
@@ -664,8 +664,8 @@ A blocked reason in state is its own fact. Correcting the note it came from leav
 
 A line is readable when it is a JSON object with a `time` and a `type`. Problems are handled like this:
 
-- **An unreadable line**, such as a git conflict marker or half a line from an interrupted write, makes each command that reads or appends to that journal refuse, naming the folder and pointing to [`doctor`](#82-doctor-findings). `doctor` and repair still read it.
-- **A merge conflict**, from two branches that both appended: repair keeps every event from both sides and removes the markers and half lines. A line that one side repeats from the other is kept once. This cleanup appends no event.
+- **An unreadable line**, such as a git conflict marker or half a line from an interrupted write, makes each command that reads or appends to that journal refuse, naming the folder and pointing to [`doctor`](#82-doctor-findings). `doctor` still reads it.
+- **A merge conflict**, from two branches that both appended, leaves unreadable lines, as above. You resolve it by hand, usually by keeping every event from both sides ([git](#37-git)).
 - **A missing journal** is created at the next append.
 - **An event of a type, or with a field, `para` does not know** is kept like any other.
 - **An event with no `sub`** that is not marked `v0` is read like any other.
@@ -693,7 +693,7 @@ The setting can be made only on the root. Unset, or with no root `config.toml`, 
 Times compare as moments:
 
 - Work is [overdue](#114-status) once the current time is past its due date. A key result that has not reached its target becomes `missed` at the same moment.
-- A key result's value at its due date is its latest value whose claimed time is at or before the due date.
+- A key result's value at its due date is its analytic's value computed at the due date, from measurements claimed at or before it ([analytics, metrics and terms](#41-analytics-metrics-and-terms)).
 - A [suppression](#116-suppression) hides its flag until its end has passed.
 - An entity is [stale](#45-staleness) once more than its `<kind>.stale-after` has passed since its attention time ([`state.toml`](#32-statetoml)).
 
@@ -831,12 +831,12 @@ Most trees live in a git repository. `para` never reads or writes `.git/` or che
 
 `para` writes plain text files, each the same way every time, so a commit shows only what changed. It writes LF line endings, a whole file at a time, and reads LF, CRLF or a mix. Before appending to a file whose last line has no ending, it adds one.
 
-A merge can leave these behind:
+`para` never resolves a merge conflict: you resolve each one by hand. A merge can leave these behind:
 
-- **A conflict in a journal**, most often a bucket's, since each create writes to its parent's journal. [Repair](#83-repair) resolves it ([the journal](#33-the-journal)).
-- **A conflict in `state.toml` or `config.toml`.** The markers make the file unreadable, so its folder is [damaged](#21-directory-shapes). You resolve the markers by hand, and `doctor` reports the folder until you do. A conflict in either of the root's files stops every command, `doctor` included, until you resolve it ([the walk](#36-the-walk)).
+- **A conflict in a journal**, most often a bucket's, since each create writes to its parent's journal ([the journal](#33-the-journal)).
+- **A conflict in `state.toml` or `config.toml`.** The markers make the file unreadable, so its folder is [damaged](#21-directory-shapes). A conflict in either of the root's files stops every command, `doctor` included, until you resolve it ([the walk](#36-the-walk)).
 - **A conflict in `measurements.csv`**, handled as [recording measurements](#42-recording-measurements) describes.
-- **A conflict in a README or `AGENTS.md`**, common in a bucket's for the same reason. Markers inside `para`'s part are replaced by [`rebuild`](#78-rebuild). Markers anywhere else, or across the edge of `para`'s part, are yours to fix, and `doctor` reports them ([para-owned blocks](#52-para-owned-blocks)).
+- **A conflict in a README or `AGENTS.md`**, common in a bucket's for the same reason. Markers inside `para`'s part go when [`rebuild`](#78-rebuild) rewrites that part, since it is generated. Markers anywhere else, or across the edge of `para`'s part, are yours to fix, and `doctor` reports them ([para-owned blocks](#52-para-owned-blocks)).
 - **A folder left without its `state.toml`**, as when one branch removes an entity and the other changes a file in its `.para/`. The folder is damaged.
 - **Two entities with one id**, as a merge or a copy can leave ([addressing](#23-addressing)).
 - **A structure that breaks the rules**, such as a project inside a project ([kinds and containment](#22-kinds-and-containment)).
@@ -853,19 +853,127 @@ After a merge, run [`doctor`](#82-doctor-findings) to see what it left, fix what
 * -text
 ```
 
-- The first makes git keep both sides of a journal conflict, much as repair does. Unlike repair, it can leave repeated lines, half lines and both versions of an event that `migrate` or repair rewrote. `doctor` reports each ([the journal](#33-the-journal)).
+- The first makes git keep both sides of a journal conflict, so you rarely resolve one by hand. It can leave repeated lines, half lines and both versions of an event that `migrate` rewrote. `doctor` reports each ([the journal](#33-the-journal)).
 - The second turns off line-ending conversion for every file in the tree, yours included, since a [recorded file](#113-provenance) can be any file and its hash uses its exact bytes. Files already checked out keep their endings until you check them out again.
 
 ## 4. Progress and attention
 
 ### 4.1 Analytics, metrics and terms
-How analytics compute from metrics and how terms scope metrics, all referenced by id, so a measurement is defined once and reused.
+
+References in the measurement library run one way, from key results and indicators to analytics, then to metrics, then to terms, so none can loop back ([measurement](#15-measurement)). A metric's `terms` key lists the ids of the terms it uses, present only when it names any.
+
+An analytic computes one number with a `formula` over metrics, in the style of a [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) query. This one gives the share of visitors who came from search over the last 28 days:
+
+```text
+sum(brain-7k2q[28d]) / sum(brain-9p3w[28d])
+```
+
+A value is computed for a time: now, except for a key result past its due date and an archived key result or indicator ([derived status](#44-derived-status)). A function takes one metric and a range in brackets, a [duration](#34-time-and-the-clock) such as `28d`. The range covers measurements claimed after the time minus the duration and at or before the time:
+
+| Function | Value over the range |
+| --- | --- |
+| `sum` | the total, added in the order of [`measurements.csv`](#42-recording-measurements) |
+| `avg` | the sum divided by the count |
+| `min` | the smallest |
+| `max` | the largest |
+| `count` | how many measurements there are |
+
+A metric's id alone takes its newest measurement claimed at or before the time, however old. "Newest" goes by claimed time, then event id, then place in the file.
+
+A formula combines these and numbers with operators and parentheses, as the grammar below shows, with `*` and `/` before `+` and `-`, and names at least one metric:
+
+- An id is written as `para` prints it ([addressing](#23-addressing)), and names match exactly, case included. Text that starts with the tree's prefix and a `-` is read as an id, so with an all-digit prefix such as `5`, write `5 - 1234` with spaces.
+- A number is unsigned, below 10^15, so every `-` is an operator.
+- A range must be more than zero.
+- Spaces and tabs may sit only between these parts.
+
+```text
+formula  = term { ("+" | "-") term }
+term     = factor { ("*" | "/") factor }
+factor   = "-" factor | number | id | function "(" id "[" duration "]" ")" | "(" formula ")"
+function = "sum" | "avg" | "min" | "max" | "count"
+number   = digits [ "." digits ]
+```
+
+`para` stores the formula in one form: one space on each side of a binary operator, none elsewhere, numbers as a [measurement's value](#42-recording-measurements) is stored, and durations without leading zeros. So `sum( brain-7k2q[028d] )/100.0` is stored as `sum(brain-7k2q[28d]) / 100`. A formula that does not parse is refused.
+
+`count` of no measurements is 0, and every other function, or an id alone, with none has no value. A formula has no value when any part of it has none, when it divides by zero, or when any step gives a result that is not finite. It computes with 64-bit floats, rounding after every operation, never fusing a multiply and an add, so every machine gives the same result.
+
+The analytic's one key of its own is `formula`. In this abridged example:
+
+```toml
+kind = "analytic"
+id = "brain-4n8r"
+title = "Share of visitors from search"
+created = "2026-01-05T17:00:00Z"
+formula = "sum(brain-7k2q[28d]) / sum(brain-9p3w[28d])"
+```
 
 ### 4.2 Recording measurements
-How measurements are recorded, corrected and withdrawn in a metric's `measurements.csv`. Covers the file's format, each row's id (the id of the event that recorded it), rows with a missing or repeated id, bad rows and merge conflicts. This is the only place raw data enters the tree.
+
+A metric's measurements live in `.para/measurements.csv`, the one home of its data ([truth and projection](#31-truth-and-projection)). `para` creates the file with the metric, holding only its header. With two rows it reads:
+
+```csv
+event,at,value,note
+q7m2k9xa,2026-03-01T07:00:00Z,6.5,
+b3n8w1pz,2026-03-02T07:00:00Z,7.25,"late night, then slept in"
+```
+
+- `event` is the id of the journal event that recorded the row, kept when the row is corrected ([the journal](#33-the-journal)).
+- `at` is the measurement's claimed time, in UTC to the second ([time and the clock](#34-time-and-the-clock)).
+- `value` is the number.
+- `note` is an optional note, empty when there is none. It is valid UTF-8 with no control characters, such as a line break or a tab, and its spaces are kept exactly. `para` puts it in double quotes when it holds a comma or a double quote, doubling any double quote inside.
+
+Rows are sorted by `at`, then by `event`, and the file is written the same way every time. A row that sorts last is appended to a file already sorted and in stored form. Any other change rewrites the whole file.
+
+A value is typed as an optional `-`, digits, and optionally a `.` and more digits, such as `7.25`, `-3` or `007.50`, so `+7`, `.5`, `5.`, `1,000`, `1e3`, NaN and infinities are refused. Its magnitude, once stored, must be below 10^15. `para` stores the nearest 64-bit float, written as the shortest decimal that reads back to it, with no exponent: `7.5`, `0.1`, `1200`, and `0` for minus zero.
+
+Recording a measurement adds its row, with a note if you give one, and logs it in the metric's journal, with who recorded it. Its claimed time is now unless you give an earlier one, which may fall before the metric was created, as when loading old readings. It is never in the future.
+
+Correcting a measurement changes its value, its note or its claimed time, which may again be any past time. Withdrawing one deletes its row ([the journal](#33-the-journal)). After the last withdrawal, the file holds only its header. An archived metric's measurements cannot be recorded, corrected or withdrawn until you unarchive it.
+
+When reading the file, `para` ignores a UTF-8 byte order mark and blank lines and accepts a field in double quotes. A value in another accepted form, such as `7.50`, is read and rewritten in stored form at the next write. Hand edits and merges can leave these behind:
+
+- **A file that cannot be read**, such as one with a bad header, a row without four fields, a bad time or value, or conflict markers, makes writes to the metric refuse. Reads leave out the statuses that depend on it and warn ([truth and projection](#31-truth-and-projection)).
+- **A missing file** means no measurements. [`doctor`](#82-doctor-findings) reports it, and the next recording creates it.
+- **A row with an empty `event`**, such as one you typed in, counts. `doctor` reports it, and [repair](#83-repair) gives it one.
+- **Rows sharing an `event`** all count. A correction or withdrawal naming that event refuses, and `doctor` reports them.
+- **Rows out of order** are read as they are and sorted at the next write.
+- **A merge conflict** is yours to resolve, usually by keeping both sides' rows, which `para` sorts at the next write ([git](#37-git)).
 
 ### 4.3 Targets: key results and indicators
-How a target is set on an analytic, by a due date or over a rolling window, so goals and standards are measured the same way.
+
+A key result and an indicator each hold one analytic to a target or a bound, naming it by id in `analytic` ([analytics, metrics and terms](#41-analytics-metrics-and-terms)).
+
+A key result's keys follow, in this order, among the rest ([`state.toml`](#32-statetoml)):
+
+| Key | Holds |
+| --- | --- |
+| `status` | `dropped`, present only when you set it ([key results](#132-key-results)) |
+| `due` | its due date, required ([time and the clock](#34-time-and-the-clock)) |
+| `analytic` | the analytic's id |
+| `target` | the value to reach |
+| `start` | the time progress is measured from, in the form of `created`, present only when you give one; otherwise the key result's `created` |
+
+The start value is the analytic's value at the start time. If it has none then, it is the analytic's value at the earliest later claimed time, among the measurements of the metrics it names, at which it has one. It is computed from the metrics' history each time and never stored, so a backdated measurement can change it. The start time is never in the future and is before the due date ([time and the clock](#34-time-and-the-clock)). It may be before the key result was created, such as the first day of a quarter.
+
+The direction comes from the start value and the target. A target below the start, such as for page load time, is reached by going down. Progress is the distance covered, (current − start) ÷ (target − start), where current is the analytic's value. [Derived status](#44-derived-status) turns progress, the start time and the due date into a status, including when the start value equals the target.
+
+An indicator's keys are `analytic` and exactly one of `at-least` and `at-most`, the bound its analytic must stay within. It has no window of its own. Any analytic will do, and one whose functions take a range, such as the last 28 days, makes the indicator roll. In this abridged example:
+
+```toml
+kind = "indicator"
+id = "brain-6t1m"
+created = "2026-02-01T18:00:00Z"
+analytic = "brain-8d5h"
+at-least = 7.0
+```
+
+Targets and bounds take the form of a [measurement's value](#42-recording-measurements), written as TOML floats, so a whole number gains `.0`. Reading accepts any finite TOML integer or float whose magnitude is below 10^15.
+
+You set each of these keys, and an analytic's, by command when you create the entity, and can change them later. Each change is journaled. An id naming a missing, archived or wrong-kind entity is refused ([measurement](#15-measurement)).
+
+A hand edit that leaves a value in the wrong form is a bad value ([`state.toml`](#32-statetoml)). An id whose entity was later removed is reported by [`doctor`](#82-doctor-findings), and [derived status](#44-derived-status) says what the status then shows.
 
 ### 4.4 Derived status
 How key result and indicator statuses are worked out from an analytic, a target and the time, so nobody has to set them by hand.
