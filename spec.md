@@ -826,7 +826,35 @@ A nested tree is a tree inside a folder of another tree. It comes from a copy, f
 A nested root directly inside an outer entity is a root in the wrong place, which `doctor` reports ([kinds and containment](#22-kinds-and-containment)). So is a folder directly inside an outer entity whose `.para/` holds `tree.toml`, a nested v0 tree.
 
 ### 3.7 Git
-How `para` behaves inside a git repository, since most trees are versioned and merged.
+
+Most trees live in a git repository. `para` never reads or writes `.git/` or checks for a repository ([scope](#05-scope-and-non-goals)). A `.git/` inside the tree is content.
+
+`para` writes plain text files, each the same way every time, so a commit shows only what changed. It writes LF line endings, a whole file at a time, and reads LF, CRLF or a mix. Before appending to a file whose last line has no ending, it adds one.
+
+A merge can leave these behind:
+
+- **A conflict in a journal**, most often a bucket's, since each create writes to its parent's journal. [Repair](#83-repair) resolves it ([the journal](#33-the-journal)).
+- **A conflict in `state.toml` or `config.toml`.** The markers make the file unreadable, so its folder is [damaged](#21-directory-shapes). You resolve the markers by hand, and `doctor` reports the folder until you do. A conflict in either of the root's files stops every command, `doctor` included, until you resolve it ([the walk](#36-the-walk)).
+- **A conflict in `measurements.csv`**, handled as [recording measurements](#42-recording-measurements) describes.
+- **A conflict in a README or `AGENTS.md`**, common in a bucket's for the same reason. Markers inside `para`'s part are replaced by [`rebuild`](#78-rebuild). Markers anywhere else, or across the edge of `para`'s part, are yours to fix, and `doctor` reports them ([para-owned blocks](#52-para-owned-blocks)).
+- **A folder left without its `state.toml`**, as when one branch removes an entity and the other changes a file in its `.para/`. The folder is damaged.
+- **Two entities with one id**, as a merge or a copy can leave ([addressing](#23-addressing)).
+- **A structure that breaks the rules**, such as a project inside a project ([kinds and containment](#22-kinds-and-containment)).
+- **Changes from both branches joined in one `state.toml`** without a conflict, which can break its rules. `doctor` reports them, or the file becomes unreadable.
+- **A branch that ran [`migrate`](#91-migrating-a-v0-tree) merged with one that did not.** Migrate on one branch and merge it before other branches write.
+- **Generated files that are out of date**, which `rebuild` rewrites.
+
+After a merge, run [`doctor`](#82-doctor-findings) to see what it left, fix what it reports, then run `rebuild`.
+
+`para` writes no `.gitattributes`. You can add these lines to one at the root of the tree:
+
+```text
+**/.para/journal.jsonl merge=union
+* -text
+```
+
+- The first makes git keep both sides of a journal conflict, much as repair does. Unlike repair, it can leave repeated lines, half lines and both versions of an event that `migrate` or repair rewrote. `doctor` reports each ([the journal](#33-the-journal)).
+- The second turns off line-ending conversion for every file in the tree, yours included, since a [recorded file](#113-provenance) can be any file and its hash uses its exact bytes. Files already checked out keep their endings until you check them out again.
 
 ## 4. Progress and attention
 
