@@ -592,7 +592,7 @@ Other keys are defined with the behaviour they serve:
 | blocked reason | projects, objectives | [status](#114-status) |
 | attention time | every kind but the root, a container and a stub | [staleness](#45-staleness) |
 | archive time | archived entities | [archiving](#25-archiving) |
-| analytic, target, start and bound | key results, indicators | [targets](#43-targets-key-results-and-indicators) |
+| analytic, target (`at-least` or `at-most`), start and bound | key results, indicators | [targets](#43-targets-key-results-and-indicators) |
 | what it computes and the metrics and terms it uses | analytics, metrics | [analytics, metrics and terms](#41-analytics-metrics-and-terms) |
 | type, ref and direction | links | [links](#110-links) |
 | provenance records | every kind but the root, a container and a stub | [provenance and trust](#62-provenance-and-trust) |
@@ -725,7 +725,9 @@ These are the settings:
 | a label, and path rules | any entity but a stub | none | [where labels are set](#63-where-labels-are-set) |
 | a source's grade | sources only | the lowest grade | [provenance and trust](#62-provenance-and-trust) |
 | `<kind>.stale-after`, for each kind that can go stale | any entity but a stub | none (`init` writes two, below) | [staleness](#45-staleness) |
-| `indicator.margin` | any entity but a stub | a built-in margin | [derived status](#44-derived-status) |
+| `key-result.grace` | any entity but a stub | 0.1 | [derived status](#44-derived-status) |
+| `key-result.pace` | any entity but a stub | 0.8 | [derived status](#44-derived-status) |
+| `indicator.margin` | any entity but a stub | 0.1 | [derived status](#44-derived-status) |
 
 A kind can go stale unless it is the root, a container or a stub.
 
@@ -778,7 +780,7 @@ A dotted key and a table are the same setting, so `project.stale-after = "14d"` 
 `para` writes `config.toml` the same way every time, as it does [`state.toml`](#32-statetoml):
 
 - Top-level keys come first, in the order of the settings table. Each setting's section says whether it is a key or a table.
-- Each kind's settings follow in a table of their own, such as `[project]`, in the order [directory shapes](#21-directory-shapes) lists the kinds. Inside one, `stale-after` comes before `margin`.
+- Each kind's settings follow in a table of their own, such as `[project]`, in the order [directory shapes](#21-directory-shapes) lists the kinds. Inside one, `stale-after` comes first, then `grace` and `pace`, or `margin`.
 - Other tables, such as path rules, come last, in the order of the settings table.
 - An empty table is not written, and comments are dropped.
 - An unknown key is kept with its value and placed as in `state.toml`: after `para`'s keys, inside `para`'s table if it was in one, or in its own table at the end. A setting out of place, such as `time-zone` below the root, is placed the same way. `doctor` reports both.
@@ -952,12 +954,14 @@ A key result's keys follow, in this order, among the rest ([`state.toml`](#32-st
 | `status` | `dropped`, present only when you set it ([key results](#132-key-results)) |
 | `due` | its due date, required ([time and the clock](#34-time-and-the-clock)) |
 | `analytic` | the analytic's id |
-| `target` | the value to reach |
+| `at-least` or `at-most` | the target, exactly one of the two |
 | `start` | the time progress is measured from, in the form of `created`, present only when you give one; otherwise the key result's `created` |
 
-The start value is the analytic's value at the start time. If it has none then, it is the analytic's value at the earliest later claimed time, among the measurements of the metrics it names, at which it has one. It is computed from the metrics' history each time and never stored, so a backdated measurement can change it. The start time is never in the future and is before the due date ([time and the clock](#34-time-and-the-clock)). It may be before the key result was created, such as the first day of a quarter.
+The start value is the analytic's value at the start time. If it has none then, it is the analytic's value at the earliest later claimed time, up to the time the status is computed for ([derived status](#44-derived-status)), among the measurements of the metrics it names, at which it has one. It is computed from the metrics' history each time and never stored, so a backdated measurement can change it. The start time is never in the future and is before the due date ([time and the clock](#34-time-and-the-clock)). It may be before the key result was created, such as the first day of a quarter.
 
-The direction comes from the start value and the target. A target below the start, such as for page load time, is reached by going down. Progress is the distance covered, (current − start) ÷ (target − start), where current is the analytic's value. [Derived status](#44-derived-status) turns progress, the start time and the due date into a status, including when the start value equals the target.
+A live key result may not be due later than its objective or its project. Any command that would make it so refuses, such as setting the key result's due date, giving the objective or project a due date or an earlier one, or moving or unarchiving a key result, or an objective holding one, under an objective or project due earlier. Work with no due date sets no limit. [`doctor`](#82-doctor-findings) reports a later due date left by a hand edit.
+
+The key gives the direction. `at-least = 200.0` is met once the analytic is 200 or more, such as weekly signups. `at-most = 2.0` is met once it is 2 or less, such as page load time in seconds. [Derived status](#44-derived-status) turns the target, the start and the due date into a status.
 
 An indicator's keys are `analytic` and exactly one of `at-least` and `at-most`, the bound its analytic must stay within. It has no window of its own. Any analytic will do, and one whose functions take a range, such as the last 28 days, makes the indicator roll. In this abridged example:
 
@@ -976,10 +980,63 @@ You set each of these keys, and an analytic's, by command when you create the en
 A hand edit that leaves a value in the wrong form is a bad value ([`state.toml`](#32-statetoml)). An id whose entity was later removed is reported by [`doctor`](#82-doctor-findings), and [derived status](#44-derived-status) says what the status then shows.
 
 ### 4.4 Derived status
-How key result and indicator statuses are worked out from an analytic, a target and the time, so nobody has to set them by hand.
+
+`para` works out a key result's or an indicator's status each time it is shown, and never stores it ([status](#114-status)). It computes for one time: now, or for an archived one, the time it was last archived ([archiving](#25-archiving)). Every step uses 64-bit floats, as a formula does ([analytics, metrics and terms](#41-analytics-metrics-and-terms)).
+
+A key result's status takes four values:
+
+- **Current** is the analytic's value at the time. Once the due date has passed, it is the value at the due date.
+- **Progress** is how much of the way from the start value to the target is covered: (current − start value) ÷ (target − start value). It is 0 at the start value and 1 at the target. If the start value already meets the target, progress is 1 while the target is met and 0 otherwise. If the analytic has no current value or no start value, progress is 0.
+- **Elapsed** is how much of the time from the start time to the due date has passed: 0 at the start time, 1 at the due date.
+- **Pace** is progress ÷ elapsed, or 0 when that is negative. A pace of 1 keeps to a straight line from the start value to the target. Pace has no value when elapsed is 0, or when a hand edit leaves the start time at or after the due date.
+
+The first rule that applies gives the status:
+
+1. `dropped`, if you set it.
+2. After the due date: `achieved` if current meets the target, otherwise `missed`.
+3. `achieved`, if current meets the target.
+4. `at-risk`, if elapsed is at least `key-result.grace` and pace has a value below `key-result.pace`.
+5. `on-track`.
+
+For example, weekly signups start at 100 with `at-least = 200.0`, due in ten weeks. At week five, elapsed is 0.5. With 150 signups, progress is 0.5 and pace 1, so it is `on-track`. With 130, pace is 0.6, below the built-in 0.8, so it is `at-risk`.
+
+The grace keeps a new key result from being `at-risk` before anyone could have made progress. Both settings are found like any setting ([config](#35-config)). Each is a TOML integer or float from 0 to 1, and anything else is a bad value. A pace setting of 0 means never `at-risk`.
+
+A due date may be in the past, as when you record last quarter's results. The status then settles at once. A measurement backdated to before the due date can still change a settled status ([recording measurements](#42-recording-measurements)).
+
+An indicator's margin is `indicator.margin` times the size of its bound, ignoring the sign. The setting takes the same form as the key result settings. The first rule that applies gives the status:
+
+1. `no-data`, if the analytic has no value at the time.
+2. `breached`, if the value is below `at-least` or above `at-most`.
+3. `at-risk`, if the value is below `at-least` + margin, or above `at-most` − margin.
+4. `healthy`.
+
+For example, with `at-least = 7.0` and the built-in margin of 0.1, 6.9 is `breached`, 7 up to just under 7.7 is `at-risk`, and 7.7 is `healthy`. With `at-most = 2.0`, anything above 1.8 up to 2 is `at-risk`. A margin of 0, or a bound of 0, means never `at-risk`.
+
+When the analytic, or a metric its formula names, has been removed, the analytic has no value, so a key result's progress is 0 and an indicator is `no-data`. [`show`](#74-reading) names the missing id, and `doctor` reports it.
 
 ### 4.5 Staleness
-When something counts as neglected, which is the main signal review gives.
+
+An entity is stale once more than its `<kind>.stale-after` has passed since its attention time ([time and the clock](#34-time-and-the-clock)). Review reports it in the stale group ([review](#115-review)), and `show` and `list` mark it.
+
+Only a live entity outside closed work can be stale. Nothing in the archive is stale, and neither is closed work or anything beneath it, such as a dir in a `done` project ([status](#114-status)).
+
+Every kind but the root, a container and a stub has its own `<kind>.stale-after`, such as `project.stale-after` or `dir.stale-after`. A kind is never stale until a setting reaches it. [`init`](#73-init) writes two ([config](#35-config)).
+
+Like any setting, `dir.stale-after` on a project covers that project's dirs, and on `resources/` it covers only resources.
+
+The attention time is the `attention` key in the entity's [`state.toml`](#32-statetoml), a time in UTC. Creating or adopting the entity sets it to `created`, and [`migrate`](#91-migrating-a-v0-tree) works it out from the v0 history. After that it moves only forward, to the claimed time of:
+
+- a note on the entity marked as attention ([notes and the journal](#18-notes-and-the-journal))
+- for a metric, a measurement
+
+A note or measurement claimed before the attention time leaves it as it is. A key result or indicator counts only its own notes, since measurements belong to the metric.
+
+The one exception is a correction or withdrawal of an attention note or a measurement, which resets it ([the journal](#33-the-journal)). It then becomes the latest of `created`, the claimed times of notes marked as attention, and for a metric the claimed times in `measurements.csv`. Each note counts as its latest correction leaves it, and a withdrawn note does not count.
+
+Nothing else counts: a status, due date or other change, a suppression, unarchiving, or anything on another entity. An entity archived long ago therefore comes back stale. Add a note marked as attention when you pick it up again.
+
+A sub-area's notes never keep its parent fresh. An area with no work of its own, such as `health/` holding `fitness/` and `sleep/`, needs notes of its own or a longer `area.stale-after` set on it.
 
 ### 4.6 Review groups
 The categories review sorts things into, so attention is ranked rather than one long list.

@@ -6,12 +6,12 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 
 - **Branch:** `clean-room-impl`, local and on `origin` (tracks `origin/clean-room-impl`); push with `git push` only when the human asks. `main` holds the PoC; `poc-final` and `v0.7.0` tag its last commit.
 - **Beads:** epic `para-a1b`; Phase 1 is `para-a1b.2` (claimed), and its notes log progress per section.
-- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 History (was Activity), §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review, §1.16 Suppression, §1.17 Generated files (chapter 1 complete), §2.1 Directory shapes, §2.2 Kinds and containment, §2.3 Addressing, §2.4 Adopting existing directories, §2.5 Archiving (chapter 2 complete), §3.1 Truth and projection, §3.2 `state.toml`, §3.3 The journal, §3.4 Time and the clock, §3.5 Config, §3.6 The walk, §3.7 Git (chapter 3 complete), §4.1–§4.3 (chunk 1). Also committed: the journal-as-audit-log restructure (D156–D161), which amended §0.3, §0.6, §1.5.2, §1.8, §1.9, §1.14, §1.17, §2.5, §3.1–§3.4 and removed §5.4 `ACTIVITY.md` and §5.5 `MEASUREMENTS.csv` (old §5.6 and §5.7 are now §5.4 and §5.5).
-- **Next:** chunk 2, §4.4–§4.5 Derived status and Staleness (see the loop for the chunk plan). Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
-- **For chunk 2:** read the §4.4 and §4.5 charters, the carried notes naming them (Key result computation, Indicator computation, Dangling measurement references, Measurement follow-ups, Time follow-ups, Restructure follow-ups), and D35, D40, D45, D54, D55, D92, D95, D155, D159, D167, D169, D186, D197.
+- **Done and committed:** §0.1 What para is, §0.2 The PARA method, §0.3 Structure is para's, content is yours, §0.4 Why deterministic structure helps agents, §0.5 Scope and non-goals, §0.6 Principles, §0.7 How to read this spec (chapter 0 complete), §1.1 The tree, §1.2 Buckets, §1.3 Projects, §1.3.1 Objectives, §1.3.2 Key results, §1.4 Areas, §1.4.1 Standards, §1.4.2 Indicators, §1.5 Measurement, §1.5.1 Analytics, §1.5.2 Metrics, §1.5.3 Terms, §1.6 Resources, §1.7 Archive, §1.8 Notes and the journal, §1.9 History (was Activity), §1.10 Links, §1.11 Dirs, §1.12 Sensitivity labels, §1.13 Provenance, §1.14 Status, §1.15 Review, §1.16 Suppression, §1.17 Generated files (chapter 1 complete), §2.1 Directory shapes, §2.2 Kinds and containment, §2.3 Addressing, §2.4 Adopting existing directories, §2.5 Archiving (chapter 2 complete), §3.1 Truth and projection, §3.2 `state.toml`, §3.3 The journal, §3.4 Time and the clock, §3.5 Config, §3.6 The walk, §3.7 Git (chapter 3 complete), §4.1–§4.3 (chunk 1), §4.4–§4.5 (chunk 2). Also committed: the journal-as-audit-log restructure (D156–D161), which amended §0.3, §0.6, §1.5.2, §1.8, §1.9, §1.14, §1.17, §2.5, §3.1–§3.4 and removed §5.4 `ACTIVITY.md` and §5.5 `MEASUREMENTS.csv` (old §5.6 and §5.7 are now §5.4 and §5.5).
+- **Next:** chunk 3, §4.6–§4.7 Review groups and Suppression (see the loop for the chunk plan). Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
+- **For chunk 3:** read the §4.6 and §4.7 charters, §1.15 and §1.16, the carried notes naming them (Review details, Suppression details, Attention marks, Git follow-ups, Time follow-ups), and D97–D107, D198, D204, D206. Open from chunk 2: whether review shows a stale entity's latest unmarked note (Attention marks note), and how `show` displays progress and pace (§7.4).
 - **Working style the human has asked for:** short sentences and one idea per paragraph (bulleted lists and numbered steps are fine); ask design questions before drafting when no decision covers them, recommending one option; record every answer as the next D-number and tag the decisions it amends; reviews may run a third round or over the whole change set when the human asks.
-- **Git:** the branch is pushed and level with `origin` after chunk 1; push only when asked.
-- **Decisions:** D1–D169 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Git:** the branch is pushed and level with `origin` after chunk 2; push only when asked.
+- **Decisions:** D1–D206 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -179,6 +179,15 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D195: a measurement may carry a one-line `note`.
   - D196: `para` never resolves a merge conflict; every conflict is fixed by hand (repair no longer cleans up after merges).
   - D197: a key result's `start` is a time (default `created`); the start value is computed from history.
+  - D198: key result pace = progress ÷ elapsed; never at-risk while elapsed < `key-result.grace` (0.1), then at-risk when pace < `key-result.pace` (0.8) (§3.5 amended).
+  - D199: `indicator.margin` is a fraction of the bound's size, built-in 0.1.
+  - D200: no current or start value (removed analytic or metric included) means progress 0; an indicator is `no-data`.
+  - D201: a key result's target is `at-least` or `at-most`, replacing `target` (§4.3 amended).
+  - D202: a due date may be in the past; a status settles at once.
+  - D203: unarchiving is not attention.
+  - D204: closed and archived entities are never stale.
+  - D205: a live key result is due no later than its objective and project; any command breaking that refuses.
+  - D206: status details: negative pace counts as 0, no pace is never at-risk, settings are integers or floats from 0 to 1, the exact indicator comparison, the start value fallback bounded by the computed time.
   - §3.3 also gave descendants that `unarchive` brings back their own event, so the archive-date walk works (§2.5 amended).
 
 ## Priorities
