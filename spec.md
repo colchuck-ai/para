@@ -181,15 +181,15 @@ A standard says in words what an area must keep up, such as keeping the house in
 
 #### 1.4.2 Indicators
 
-An indicator holds a rolling [analytic](#151-analytics), such as average nightly sleep over the last 28 days, to a bound, such as at least seven hours. Others call an indicator a key performance indicator (KPI), or a service level indicator (SLI) with its service level objective (SLO). It is the area's counterpart to a key result, usually with a rolling analytic in place of a due date. Each indicator is a folder in its standard's `indicators/` and holds no other entities.
+An indicator holds a rolling [analytic](#151-analytics), such as average nightly sleep over the last 28 days, to a bound, such as at least seven hours, or to a range, such as seven to nine hours. Others call an indicator a key performance indicator (KPI), or a service level indicator (SLI) with its service level objective (SLO). It is the area's counterpart to a key result, usually with a rolling analytic in place of a due date. Each indicator is a folder in its standard's `indicators/` and holds no other entities.
 
-Its status is computed from the analytic, the bound, the margin and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#55-what-is-never-stored)). The first row that applies wins:
+Its status is computed from the analytic, its bounds, the margin and the current time, and is never stored ([derived status](#44-derived-status), [what is never stored](#55-what-is-never-stored)). The first row that applies wins:
 
 | Status | Means |
 | --- | --- |
 | `no-data` | the analytic has no value, such as when its range holds no measurements |
-| `breached` | the analytic is outside the bound |
-| `at-risk` | the analytic is inside the bound, but within a margin of leaving it |
+| `breached` | the analytic is outside its bounds |
+| `at-risk` | the analytic is inside its bounds, but within a margin of leaving them |
 | `healthy` | none of the above |
 
 The margin is a setting with a default that passes down the tree, where a nearer setting replaces a farther one ([config](#35-config)), and [derived status](#44-derived-status) defines how it applies. You never set an indicator's status; to stop tracking one, remove or [archive](#17-archive) it.
@@ -306,6 +306,8 @@ Status says where a piece of work stands, so active, blocked and finished work c
 
 A status you set, `dropped` included, is stored in the entity's `state.toml`, and each change is an event in its journal. Setting `blocked` needs a note saying why. State keeps that reason until the status changes. A computed status is never stored: `para` works it out from the measurements and the current time whenever it is shown ([derived status](#44-derived-status)).
 
+State also keeps `status-since`, the time the status last changed, so review and [`show`](#74-reading) can say how long work has been blocked or in progress. Setting the same status again, such as `blocked` with a new reason, keeps it. Creating or adopting a project or objective sets it to `created`, and [`migrate`](#91-migrating-a-v0-tree) works it out from the v0 history. A key result has it only while it is `dropped`.
+
 `done` and `dropped` say how the work ended. A project is closed when its status is one of them, an objective when its own or its project's is, and a key result when it is `dropped` or its objective is closed; all other work is open. Closure is never written to the children, so reopening a project or objective reopens only the work beneath it whose own status is not `done` or `dropped`. [Review](#115-review) stops reporting closed work, and [archiving](#17-archive) it is a separate step.
 
 An open project or objective whose due date has passed is overdue, a flag review reports rather than a status, so the status you set stays as it is.
@@ -335,21 +337,22 @@ Review covers attention to the work. The tree's integrity, such as a duplicated 
 
 ### 1.16 Suppression
 
-Suppression pauses one [review](#115-review) flag, an entity's place in one review group, until a date you give, with a note saying why, so review stays useful while something is knowingly on hold. Only flags in these three groups can be suppressed, because while the work waits, the only other ways to clear them are recording attention or a measurement that did not happen, or giving up work you still mean to do:
+Suppression pauses one [review](#115-review) flag, an entity's place in one review group, until a date you give, with a note saying why, so review stays useful while something is knowingly on hold. Only flags in these four groups can be suppressed, because while the work waits, the only other ways to clear them are recording attention or a measurement that did not happen, setting a status that is not true, or giving up work you still mean to do:
 
 | Group | Example |
 | --- | --- |
+| blocked | a project waiting months on a legal review |
 | stale | an area left alone for a season, such as a garden in winter |
 | key results | a key result `at-risk` because a launch slipped, which you still mean to reach |
 | indicators | an indicator with `no-data` while a broken tracker is replaced |
 
-Blocked, overdue and unchecked flags cannot be suppressed, since each has its own remedy: change the status, set a new due date, or vouch for the file.
+Overdue and unchecked flags cannot be suppressed, since each has its own remedy: set a new due date, or vouch for the file.
 
-A suppression leaves the entity's other flags, and everything beneath it, reported as usual. A stale flag can be suppressed before it appears, such as before a trip. A key result or indicator can be suppressed only while it is flagged, and the suppression holds only for that status: one suppressed while `at-risk` is reported again if it becomes `missed`, and one suppressed for `no-data` is reported again if it turns `breached`.
+A suppression leaves the entity's other flags, and everything beneath it, reported as usual. A stale flag can be suppressed before it appears, such as before a trip. A status can be suppressed only while it is flagged, and the suppression holds only for that status: one suppressed while `at-risk` is reported again if it becomes `missed`, and one suppressed for `no-data` is reported again if it turns `breached`.
 
 `suppress` sets a suppression, with its end and a note, and `unsuppress` lifts it early, also with a note ([writing](#76-writing)). The suppression is stored in the entity's `state.toml`, and setting or lifting it is an event in the entity's journal. Neither counts as [attention](#18-notes-and-the-journal), so a suppression never makes neglected work look tended. When the end date passes, the suppression lapses with no event, and review checks the flag as usual ([suppression](#47-suppression)).
 
-Review ends by saying how many flags are suppressed, and lists each with its note and end when asked ([`review`](#77-review)).
+Review ends by saying how many flags its suppressions leave out, and lists each suppression with its note and end when asked ([`review`](#77-review)).
 
 ### 1.17 Generated files
 
@@ -588,15 +591,15 @@ Other keys are defined with the behaviour they serve:
 
 | Facts | Kinds | Keys defined in |
 | --- | --- | --- |
-| set status and due date | projects, objectives, key results | [status](#114-status), [targets](#43-targets-key-results-and-indicators) |
+| set status, its time and due date | projects, objectives, key results | [status](#114-status), [targets](#43-targets-key-results-and-indicators) |
 | blocked reason | projects, objectives | [status](#114-status) |
 | attention time | every kind but the root, a container and a stub | [staleness](#45-staleness) |
 | archive time | archived entities | [archiving](#25-archiving) |
-| analytic, target (`at-least` or `at-most`), start and bound | key results, indicators | [targets](#43-targets-key-results-and-indicators) |
+| analytic, target (`at-least` or `at-most`), start and bounds | key results, indicators | [targets](#43-targets-key-results-and-indicators) |
 | what it computes and the metrics and terms it uses | analytics, metrics | [analytics, metrics and terms](#41-analytics-metrics-and-terms) |
 | type, ref and direction | links | [links](#110-links) |
 | provenance records | every kind but the root, a container and a stub | [provenance and trust](#62-provenance-and-trust) |
-| suppressions | anything review can flag | [suppression](#47-suppression) |
+| suppressions | entities that can go stale, projects, objectives, key results, indicators | [suppression](#47-suppression) |
 
 State never holds the entity's folder name, path or parent, since those are where its folder sits, nor any value [what is never stored](#55-what-is-never-stored) lists, nor anything chosen in config ([config](#35-config)).
 
@@ -610,7 +613,7 @@ State never holds the entity's folder name, path or parent, since those are wher
 
 A key `para` does not know, such as one added by hand, is kept with its value, written in the same format. An unknown top-level key goes after `para`'s and before the first table, an unknown key inside one of `para`'s tables stays in that table, and an unknown table goes after `para`'s. A key on a kind that does not take it, such as a `status` on a dir, counts as unknown. [`doctor`](#82-doctor-findings) reports unknown keys.
 
-A `state.toml` that cannot be parsed, or whose kind cannot be read, makes a [damaged folder](#21-directory-shapes). A known key with a missing or bad value, such as a `created` that is not a time, makes each command that needs it refuse, naming the folder and pointing to `doctor`, which reports it. An entity without a valid `id` is skipped, with a warning, when a command looks for an id, and only commands that act on it refuse.
+A `state.toml` that cannot be parsed, or whose kind cannot be read, makes a [damaged folder](#21-directory-shapes). A known key with a missing or bad value, such as a `created` that is not a time, makes each command that needs it refuse, naming the folder and pointing to `doctor`, which reports it. A bad [suppression](#47-suppression) is ignored instead. An entity without a valid `id` is skipped, with a warning, when a command looks for an id, and only commands that act on it refuse.
 
 The root's `prefix` must be ASCII letters and digits. Otherwise every command but `doctor` refuses, since every new id would carry it, and [repair](#83-repair) restores it from the names of the issued ids in `ids/`. How `para` treats a `schema` it does not read, letting `migrate` upgrade an older one, is in [schema version](#93-schema-version).
 
@@ -952,6 +955,7 @@ A key result's keys follow, in this order, among the rest ([`state.toml`](#32-st
 | Key | Holds |
 | --- | --- |
 | `status` | `dropped`, present only when you set it ([key results](#132-key-results)) |
+| `status-since` | when it was dropped, present with `status` ([status](#114-status)) |
 | `due` | its due date, required ([time and the clock](#34-time-and-the-clock)) |
 | `analytic` | the analytic's id |
 | `at-least` or `at-most` | the target, exactly one of the two |
@@ -963,7 +967,7 @@ A live key result may not be due later than its objective or its project. Any co
 
 The key gives the direction. `at-least = 200.0` is met once the analytic is 200 or more, such as weekly signups. `at-most = 2.0` is met once it is 2 or less, such as page load time in seconds. [Derived status](#44-derived-status) turns the target, the start and the due date into a status.
 
-An indicator's keys are `analytic` and exactly one of `at-least` and `at-most`, the bound its analytic must stay within. It has no window of its own. Any analytic will do, and one whose functions take a range, such as the last 28 days, makes the indicator roll. In this abridged example:
+An indicator's keys are `analytic` and one or both of `at-least` and `at-most`, the bounds its analytic must stay within. With both, `at-least` must be below `at-most`, so together they give a range. A hand edit that breaks this is a bad value. It has no window of its own. Any analytic will do, and one whose functions take a range, such as the last 28 days, makes the indicator roll. In this abridged example:
 
 ```toml
 kind = "indicator"
@@ -1004,14 +1008,16 @@ The grace keeps a new key result from being `at-risk` before anyone could have m
 
 A due date may be in the past, as when you record last quarter's results. The status then settles at once. A measurement backdated to before the due date can still change a settled status ([recording measurements](#42-recording-measurements)).
 
-An indicator's margin is `indicator.margin` times the size of its bound, ignoring the sign. The setting takes the same form as the key result settings. The first rule that applies gives the status:
+An indicator has a margin at each bound: `indicator.margin` times the size of that bound, ignoring the sign. The setting takes the same form as the key result settings. The first rule that applies gives the status:
 
 1. `no-data`, if the analytic has no value at the time.
 2. `breached`, if the value is below `at-least` or above `at-most`.
-3. `at-risk`, if the value is below `at-least` + margin, or above `at-most` − margin.
+3. `at-risk`, if the value is below `at-least` + its margin, or above `at-most` − its margin.
 4. `healthy`.
 
-For example, with `at-least = 7.0` and the built-in margin of 0.1, 6.9 is `breached`, 7 up to just under 7.7 is `at-risk`, and 7.7 is `healthy`. With `at-most = 2.0`, anything above 1.8 up to 2 is `at-risk`. A margin of 0, or a bound of 0, means never `at-risk`.
+For example, with `at-least = 7.0` and the built-in margin of 0.1, 6.9 is `breached`, 7 up to just under 7.7 is `at-risk`, and 7.7 is `healthy`. With `at-most = 2.0`, anything above 1.8 up to 2 is `at-risk`. With both `at-least = 7.0` and `at-most = 9.0`, 7 up to just under 7.7 and anything above 8.1 up to 9 are `at-risk`.
+
+A margin setting of 0 means never `at-risk`, and a bound of 0 has no margin. In a narrow range the two margins can overlap, leaving no `healthy` value until you lower the margin.
 
 When the analytic, or a metric its formula names, has been removed, the analytic has no value, so a key result's progress is 0 and an indicator is `no-data`. [`show`](#74-reading) names the missing id, and `doctor` reports it.
 
@@ -1039,10 +1045,68 @@ Nothing else counts: a status, due date or other change, a suppression, unarchiv
 A sub-area's notes never keep its parent fresh. An area with no work of its own, such as `health/` holding `fitness/` and `sleep/`, needs notes of its own or a longer `area.stale-after` set on it.
 
 ### 4.6 Review groups
-The categories review sorts things into, so attention is ranked rather than one long list.
+
+Review reports each flag in its group, and ranks each group so the worst comes first ([review](#115-review)). Every entry names the entity by its id and path, or for an unchecked file its record ([addressing](#23-addressing)).
+
+| Group | Each entry shows | Order within the group |
+| --- | --- | --- |
+| blocked | the reason and how long it has been blocked | longest blocked first, then soonest due |
+| overdue | the due date | furthest past due first |
+| key results | the status, the analytic's value or none, the target and the due date | `missed`, then `at-risk`, each earliest due first |
+| indicators | the status, the analytic's value or none, and the bounds | `breached`, then `no-data`, then `at-risk` |
+| stale | the attention time, the setting that flagged it and the folder that sets it | longest past its `stale-after` first |
+| unchecked | the file and the live files made from it | by path |
+
+Ties go by path. Paths compare one name at a time, by the bytes of each name in UTF-8. A path comes before any longer path that starts with it, so a folder comes before everything in it.
+
+An entry whose analytic or metric was removed names the missing id ([derived status](#44-derived-status)).
+
+If a stale entry looks wrong, history shows whether a note lacks its attention mark ([reading](#74-reading)).
 
 ### 4.7 Suppression
-How a pause changes review, so a known hold never hides a real problem.
+
+A suppression keeps one flag on one entity out of review until its end ([suppression](#116-suppression)). It is in force until its end has passed. An entity has at most two flags to suppress:
+
+- `stale`, on an entity that can go stale ([staleness](#45-staleness))
+- `status`, on a project or objective while it is `blocked`, or on a key result or an indicator, for the status it shows when suppressed ([status](#114-status))
+
+`suppress` sets one, with an end and a note, and `unsuppress` lifts one early, with a note ([writing](#76-writing)). Both refuse an entity in the archive, closed, or beneath closed work ([status](#114-status)). `unsuppress` also refuses when no suppression is in force. `suppress` also refuses:
+
+- an end that is not after the current time
+- `status` on an entity whose status is not flagged now
+- `stale` when no `<kind>.stale-after` reaches the entity
+
+A date alone means the end of that day, so today's date works ([time and the clock](#34-time-and-the-clock)). Suppressing a flag that is already suppressed replaces its end and note. Setting, replacing and lifting are each an event in the entity's journal, and none is attention.
+
+While a suppression is in force, review leaves out its flag:
+
+- A `stale` suppression leaves out staleness.
+- A `status` suppression leaves out its status whenever the entity shows it. One set while `at-risk` still leaves it out if the key result goes `on-track` and back, but `missed` is reported.
+
+`show` and `list` still give the status or the stale mark and say it is suppressed.
+
+After its end, commands treat a suppression as absent. It stays in `state.toml` until a command next rewrites the file, which drops it with no event. A rewrite keeps a table it cannot use as it is.
+
+A suppression survives closing, reopening, archiving and unarchiving. It applies again while the entity is live and outside closed work.
+
+Review ends with the number of flags it leaves out now. On request, it lists every suppression in force on a live entity outside closed work, with its note and end, and says whether it leaves out a flag now ([`review`](#77-review)).
+
+Each suppression is a table in the entity's [`state.toml`](#32-statetoml), `stale` before `status`:
+
+```toml
+[suppressions.stale]
+until = "2027-03-01T07:59:59Z"
+note = "Garden is dormant until spring"
+
+[suppressions.status]
+status = "at-risk"
+until = "2026-12-31T07:59:59Z"
+note = "Launch slipped a month"
+```
+
+A table `para` cannot use, such as one with a bad `until`, or a `status` the entity cannot be suppressed for, is ignored, unlike other bad values ([`state.toml`](#32-statetoml)), so its flag shows. [`doctor`](#82-doctor-findings) reports it, and `suppress` on that flag replaces it.
+
+Two branches that suppress the same flag leave the table twice, or conflict markers, after a merge. Either way the file cannot be parsed, so the folder is damaged until you fix it by hand ([git](#37-git)).
 
 ## 5. Generated files
 
