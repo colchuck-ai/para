@@ -10,8 +10,8 @@ How each section of `spec.md` is written, and where the work stands. Read this f
 - **Next:** chunk 6, §6.2 Lineage and trust (see the loop for the chunk plan). Then continue in outline order. Reviewer agents don't survive a session, so start fresh reviewers.
 - **For chunk 6:** read the §6.2 charter, §1.13, §1.15, §3.2, §3.3, §4.1, §6.4 and §6.6, `plans/clean-room/research/labeling.md`, the carried notes naming §6.2 (Provenance details, Record ids, Provenance storage, Truth and projection follow-ups, Chunk 5 follow-ups), and D70–D91, D97, D100, D125, D241–D243, D245–D247, D251. Terms: a value on the scale is a level (D244); a file's record is a lineage record; "a person's act" is the loosening tier (D251).
 - **Working style the human has asked for:** short sentences and one idea per paragraph (bulleted lists and numbered steps are fine); ask design questions before drafting when no decision covers them, recommending one option; record every answer as the next D-number and tag the decisions it amends; reviews may run a third round or over the whole change set when the human asks. In questions about file layouts, show concrete before and after examples of the files (the human asked for a second example before choosing in chunk 4). The human may revise a choice after reviewing the full text, as with the README layout in chunk 4 (D228), so keep each change small and record it as a new D-number that replaces the old one.
-- **Git:** two commits ahead of `origin` after chunk 5 (b230b58, b9f8a28), not pushed; push only when asked.
-- **Decisions:** D1–D255 in `plans/clean-room/plan.md`. The ones written during drafting:
+- **Git:** the branch is pushed and level with `origin` after chunk 5; push only when asked.
+- **Decisions:** D1–D256 in `plans/clean-room/plan.md`. The ones written during drafting:
   - D22: `para` never deletes or edits content; `remove` deletes only `para`'s side and names what history it loses.
   - D23: generated files (`ACTIVITY.md`, `MEASUREMENTS.csv`) live in `.para/`, linked from the README; on `remove`, the parent's README block is regenerated and the removal is journaled at the parent.
   - D24: `para` owns only its own keys in README frontmatter.
@@ -237,6 +237,7 @@ How each section of `spec.md` is written, and where the work stands. Read this f
   - D253: §7.1 defines the tiers once.
   - D254: an unknown level can be replaced by a mapping or a person; stored declassification levels count as in use.
   - D255: a gone input adds nothing in a tree with no levels; ceilings compute without hidden content; equal level counts as tightening.
+  - D256: the scale-change table is `[classification-mapping]`, in an input file (file only, no flags or stdin), never stored in config.
   - §3.3 also gave descendants that `unarchive` brings back their own event, so the archive-date walk works (§2.5 amended).
 
 ## Priorities
