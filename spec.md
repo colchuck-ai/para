@@ -1305,16 +1305,16 @@ Names match exactly, case included. With no `[[classification-scale]]`, the tree
 
 The root's `AGENTS.md` lists each level with what it allows: TLP's meanings above, or each `allows`. So a level means one thing everywhere in the tree ([`AGENTS.md`](#54-agentsmd)).
 
-Changing the scale maps every old level to a new one. You give [`para config`](#79-config) a file holding the new scale and a `[mapping]` that sends each old level to a new level and says why. Level names are quoted keys:
+Changing the scale maps every old level to a new one. You give [`para config`](#79-config) a file holding the new scale and a `[classification-mapping]` that sends each old level to a new level and says why. The file is input to that one command, not a `config.toml`. Level names are quoted keys:
 
 ```toml
-[mapping]
+[classification-mapping]
 "CLEAR" = { to = "PUBLIC", reason = "Same audience." }
 "AMBER" = { to = "INTERNAL", reason = "Clients sign NDAs, so they count as contractors." }
 "AMBER+STRICT" = { to = "INTERNAL", reason = "No content needed the stricter split." }
 ```
 
-The mapping is never stored in config. Only the journal event keeps it. A level that keeps its name needs no `[mapping]` entry unless its `allows` changes, when it needs one with a reason. A mapping key may name any level in use, even one the old scale lacks. `para` refuses the change when:
+`para` never stores the mapping in config. Once applied, only the root's journal event keeps it. A level that keeps its name needs no `[classification-mapping]` entry unless its `allows` changes, when it needs one with a reason. A mapping key may name any level in use, even one the old scale lacks. `para` refuses the change when:
 
 - a level in use has no mapping, where levels in use are those set anywhere, archived entities included: an entity's `classification`, a path rule, and a declassification's level and the levels its notes were bound at
 - the mapping breaks the order: an old level stricter than another must map to a level at least as strict, though levels may merge

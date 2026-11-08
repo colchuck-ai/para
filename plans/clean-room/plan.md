@@ -271,6 +271,7 @@ The next revision starts from one unified spec, and new code is written against 
 | D253 | **§7.1 defines the tiers once.** §7.1 holds the tiers, `--force`, `--dry-run` and confirmation; chapter 6 and each command section name a change's tier and link there. |
 | D254 | **An unknown level can still be replaced.** While a level in config or state is not in the scale, a scale change that maps it, or setting a level in its place as a person's act, still works; a mapping key may name any level in use. Levels in use include a declassification's level and the levels its notes were bound at, and a scale change rewrites and journals them in state. Old names in journals are history and never rewritten. Found in review. Amends D238, D249. |
 | D255 | **Review details for classification.** A gone input adds nothing in a tree that sets no level anywhere, so classification stays optional (amends D233). Anything worked out from what a ceiling leaves out is worked out without it (amends D236). Setting an entity's own level equal to its covering level counts as tightening, including in the archive. Found in review. |
+| D256 | **The scale-change table is `[classification-mapping]`.** It sits in the input file given to `para config` with the new `[[classification-scale]]`, a file that is not a `config.toml`; `para` never stores it in config, and once applied only the root's journal event keeps it. The file is the only input: no flags and no stdin, so a scale change has one form. Asked for by the human. Amends D249. |
 
 ## What leaves with skills
 
