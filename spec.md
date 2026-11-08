@@ -8,7 +8,7 @@ Status: **outline.** One sentence per section: what it holds, and why it is here
 
 `para` is a command-line tool that manages the structure and metadata of a PARA file tree: a directory with four buckets (projects, areas, resources and archive), organized by [the PARA method](#02-the-para-method).
 
-The **structure** is which entities (the projects, areas, dirs and other things `para` manages) exist, what kind each one is and where it sits. The **metadata** is the facts `para` records about entities, such as ids, status, history and measurements. Both are meant to change only through `para`'s commands ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)). Each command is deterministic: for the same tree, arguments and current time, it gives the same output and makes the same change, apart from any new ids it generates. [Safety guarantees](#81-safety-guarantees) states what `para` promises when a command fails or is interrupted.
+The **structure** is which entities (the projects, areas, dirs and other things `para` manages) exist, what kind each one is and where it sits. The **metadata** is the facts `para` records about entities, such as ids, status, history, measurements, classification and lineage. Both are meant to change only through `para`'s commands ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)). Each command is deterministic: for the same tree, arguments and current time, it gives the same output and makes the same change, apart from any new ids it generates. [Safety guarantees](#81-safety-guarantees) states what `para` promises when a command fails or is interrupted.
 
 Everything `para` doesn't own is content, which people, AI agents and scripts edit freely inside a structure they can rely on ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)).
 
@@ -30,7 +30,7 @@ In `para`, each category is a top-level [bucket](#12-buckets) of the tree.
 The tree's structure and metadata belong to `para`. They are:
 
 - every entity, which is every folder `para` manages (the folder itself, not what you put in it): the root, the containers (the buckets, archive buckets and ones such as `objectives/`), archive stubs, and every project, area, dir and entity of another kind. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
-- everything inside each `.para/`: state (including each recorded file's provenance), config (including sensitivity rules), a metric's measurements and the journal ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
+- everything inside each `.para/`: state (including each recorded file's lineage), config (including classification levels), a metric's measurements and the journal ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
 - the `para` key in README frontmatter ([READMEs](#53-readmes)), its marked blocks in READMEs and `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
 
 Change these only through `para`'s commands, including creating, moving, renaming, archiving and removing entities. The commands are designed to be the easiest way for a person or an agent to make these changes. `para` validates each change before writing anything and refuses an invalid one.
@@ -57,10 +57,10 @@ These are outside `para`'s scope, and a feature that falls under one is declined
 
 - **Skills and tool-specific files**: `para` does not distribute skills (instructions packaged for an agent) or generate files for one agent tool, such as Cursor rules or `CLAUDE.md`. Distributing skills is its own problem, and tool-specific files differ from tool to tool. Other tools can layer both on a tree, and layering skills on top is the intended way to customize how agents work with it. `para` writes only its own block in `AGENTS.md`, a file many agent tools read and that you may also use for your own instructions ([`AGENTS.md`](#54-agentsmd)). [`para migrate`](#91-migrating-a-v0-tree) removes the `CLAUDE.md` blocks an earlier version wrote.
 - **Version control**: `para` never runs git or requires a repository, so it works the same in any tree and never commits for you. [Git](#37-git) covers how its files behave in a repository.
-- **Interpreting content**: `para` never judges a file by what it says, and calls no AI model. A model's answer would make commands nondeterministic, so a file's provenance comes from what a person or agent records, its label from the tree's rules, and its trust is computed from those records, the grades a person sets and their vouches.
+- **Interpreting content**: `para` never judges a file by what it says, and calls no AI model. A model's answer would make commands nondeterministic, so a file's lineage comes from what a person or agent records, its classification level from the tree's rules, and its trust is computed from those records, the grades a person sets and their vouches.
 - **Reaching outside the tree**: `para` never fetches or sends anything over a network, which keeps every command [deterministic](#01-what-para-is). A [link](#110-links) points to something outside the tree and is flagged when it is due to be checked or updated, and outside values enter only as [recorded measurements](#42-recording-measurements).
 - **Running on its own**: `para` has no background process, schedule or notifications, so nothing changes the tree unless someone runs a command. [`review`](#77-review) is how to ask what needs attention.
-- **Access control**: `para` does not encrypt files or set file permissions. A [sensitivity label](#112-sensitivity-labels) records how far content may travel, but `para` cannot stop a readable file being copied. [What para does with labels](#65-what-para-does-with-labels) covers what it does instead.
+- **Access control**: `para` does not encrypt files or set file permissions. A [classification](#112-classification) level records how far content may travel, but `para` cannot stop a readable file being copied. [What para does with classifications](#65-what-para-does-with-classifications) covers what it does instead.
 
 ### 0.6 Principles
 
@@ -72,7 +72,7 @@ Every design decision in this spec follows these rules. A new question is answer
 4. **Generated files serve readers**: the files `para` writes for readers who never run it show facts and the values computed from them that only a command can change; they are updated with every change, can be rebuilt from the stored truth at any time and are never read back as truth ([generated files](#117-generated-files)).
 5. **Ids are identity**: every entity is addressed by a stored id that survives moves and renames and is never reused. Its path only says where it is now ([addressing](#23-addressing)).
 6. **The right path is the easy one**: every change to the structure is a command, and a command that cannot make a change validly and safely refuses before writing anything, saying why and what to do instead. It never guesses ([why deterministic structure helps agents](#04-why-deterministic-structure-helps-agents)).
-7. **Loosening and format changes are explicit**: a sensitivity label only tightens down the tree, and trust only falls as content is derived from other content. Only an explicit command lowers a label or raises trust, asking for confirmation unless forced, and never a label below its parent's ([how labels flow](#64-how-labels-flow)). A tree's format changes only through `para migrate` ([schema version](#93-schema-version)).
+7. **Loosening and format changes are explicit**: a classification level only tightens down the tree and along lineage, and trust only falls as content is derived from other content. Only an explicit command lowers a level or raises trust, asking for confirmation unless forced, and never a level below its parent's ([how classifications flow](#64-how-classifications-flow)). A tree's format changes only through `para migrate` ([schema version](#93-schema-version)).
 8. **Small and one way**: a feature is added only when managing a PARA tree needs it ([scope and non-goals](#05-scope-and-non-goals)), and each concept has one name, each kind of change one command and each value one format ([glossary](#appendix-c-glossary)).
 
 ### 0.7 How to read this spec
@@ -126,7 +126,7 @@ Each bucket directly holds:
 | --- | --- |
 | `projects/` | [projects](#13-projects) |
 | `areas/` | [areas](#14-areas) |
-| `resources/` | [dirs](#111-dirs), the [measurement library](#15-measurement) in `measurement/` and the [sources](#113-provenance) in `sources/` ([resources](#16-resources)) |
+| `resources/` | [dirs](#111-dirs), the [measurement library](#15-measurement) in `measurement/` and the [sources](#113-lineage) in `sources/` ([resources](#16-resources)) |
 | `archive/` | the archive buckets `projects/`, `areas/` and `resources/` |
 
 Each archive bucket holds the projects, areas or dirs archived from the matching bucket, and the [stubs](#17-archive) that stand in for an ancestor so an archived entity keeps its path.
@@ -198,7 +198,7 @@ The margin is a setting with a default that passes down the tree, where a nearer
 
 The measurement library in `resources/measurement/` defines each number that key results and indicators track, so the same number is never defined twice. `measurement/` is a container that holds three more, `analytics/`, `metrics/` and `terms/`. `para` creates the library and each container when you add the first analytic, metric or term that needs it, and the name `measurement` is reserved in `resources/` before then. Each analytic, metric and term is a folder directly in its container and holds no entities, only its `.para/`, README and any content of your own.
 
-Each refers by id to what it uses. A [key result](#132-key-results) or [indicator](#142-indicators) names one analytic, an analytic names the metrics it computes from, and a metric names the terms it uses ([analytics, metrics and terms](#41-analytics-metrics-and-terms)). So one metric can feed many analytics, and one analytic can serve many key results and indicators. Commands refuse a reference to a missing id, to the wrong kind or to an archived entity, [`show`](#74-reading) lists what each one uses and what uses it, and [`doctor`](#82-doctor-findings) reports a reference whose target has since been removed. A live entity never uses an archived one, whatever its status, so archiving an analytic, metric or term is refused while a live entity uses it, and unarchiving an entity is refused while one it uses is archived. Each refusal names those entities, so you can point them elsewhere or archive or unarchive them first.
+Each refers by id to what it uses. A [key result](#132-key-results) or [indicator](#142-indicators) names one analytic, an analytic names the metrics it computes from, and a metric names the terms and sources it uses ([analytics, metrics and terms](#41-analytics-metrics-and-terms)). So one metric can feed many analytics, and one analytic can serve many key results and indicators. Commands refuse a reference to a missing id, to the wrong kind or to an archived entity, [`show`](#74-reading) lists what each one uses and what uses it, and [`doctor`](#82-doctor-findings) reports a reference whose target has since been removed. A live entity never uses an archived one, whatever its status, so archiving an analytic, metric, term or source is refused while a live entity uses it, and unarchiving an entity is refused while one it uses is archived. Each refusal names those entities, so you can point them elsewhere or archive or unarchive them first.
 
 #### 1.5.1 Analytics
 
@@ -206,7 +206,7 @@ An analytic is a computation over one or more metrics, as simple as one metric's
 
 #### 1.5.2 Metrics
 
-A metric is one thing you measure, such as visitors from search in a week or hours slept in a night. Its measurements are dated numbers you record with a command. Each is one row in `measurements.csv` in the metric's `.para/`, which its README links to and any spreadsheet opens ([recording measurements](#42-recording-measurements)). The computed statuses of key results and indicators come from them.
+A metric is one thing you measure, such as visitors from search in a week or hours slept in a night. Its measurements are dated numbers you record with a command. Each is one row in `measurements.csv` in the metric's `.para/`, which its README links to and any spreadsheet opens ([recording measurements](#42-recording-measurements)). The computed statuses of key results and indicators come from them. A metric can name the sources its values come from, such as a bathroom scale ([lineage](#113-lineage)).
 
 #### 1.5.3 Terms
 
@@ -214,7 +214,7 @@ A term defines a word that metrics share, such as what counts as a critical bug,
 
 ### 1.6 Resources
 
-A resource, the third of the [PARA categories](#02-the-para-method), is reference material on a topic, such as cooking or a programming language. Each resource is a [dir](#111-dirs) in `resources/`, since a resource has no kind of its own, and dirs nest to any depth, so cooking can hold baking. `resources/` also holds the [measurement library](#15-measurement) once you add the first analytic, metric or term, and the [sources](#113-provenance) once you add the first source.
+A resource, the third of the [PARA categories](#02-the-para-method), is reference material on a topic, such as cooking or a programming language. Each resource is a [dir](#111-dirs) in `resources/`, since a resource has no kind of its own, and dirs nest to any depth, so cooking can hold baking. `resources/` also holds the [measurement library](#15-measurement) once you add the first analytic, metric or term, and the [sources](#113-lineage) once you add the first source.
 
 A resource is not a commitment, so it has no [status](#114-status) or due date, and [review](#115-review) never reports it as stale unless you set a staleness period for dirs in [config](#35-config), on it or on a folder above it ([staleness](#45-staleness)).
 
@@ -228,7 +228,7 @@ You can [archive](#25-archiving) any entity except the root, a container or a st
 
 When something is archived from inside a live entity, `para` puts a stub for each live ancestor that nothing in the archive stands for yet. A stub is an entity that records the id and kind of the entity it stands for and holds only archived entities and other stubs. Stubs are `para`'s alone, so only `show` and `list` take a stub's id. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs. An entity or stub arriving at a path already held gets a numbered suffix ([archiving](#25-archiving)).
 
-The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [label](#112-sensitivity-labels), lowering a [source's grade](#113-provenance) or vouching for a file. Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
+The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [classification](#112-classification) level, lowering a [source's grade](#113-lineage) or vouching for a file or metric. Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
 ### 1.8 Notes and the journal
 
@@ -266,33 +266,35 @@ A dir is the basic kind of entity, a folder for material of any kind, such as a 
 
 Each live dir sits directly in `resources/`, a project, an area or another dir, and nowhere else; an archived one sits at its mirrored path in `archive/` ([archive](#17-archive)). A dir holds other dirs, its [links](#110-links) in its `links/` container and any content of your own, and no other entities ([kinds and containment](#22-kinds-and-containment)).
 
-Like a project or area, a dir has a journal that takes [notes](#18-notes-and-the-journal) and a README whose `para` frontmatter key and [block](#52-para-owned-blocks) `para` keeps, and it can carry its own [sensitivity label](#112-sensitivity-labels). [Review](#115-review) reports a dir as stale only when a `dir.stale-after` setting reaches it ([staleness](#45-staleness)).
+Like a project or area, a dir has a journal that takes [notes](#18-notes-and-the-journal) and a README whose `para` frontmatter key and [block](#52-para-owned-blocks) `para` keeps, and it can be [classified](#112-classification) at its own level. [Review](#115-review) reports a dir as stale only when a `dir.stale-after` setting reaches it ([staleness](#45-staleness)).
 
-A plain folder in a project, area or dir is content and needs nothing from `para`. Make it a dir when it needs notes, links or staleness of its own; to give it only a stricter label, a path rule in its entity's config is enough ([where labels are set](#63-where-labels-are-set)). [Adopting](#24-adopting-existing-directories) such a folder makes it a dir and keeps everything in it; a folder inside a plain folder can be adopted only once that folder is a dir.
+A plain folder in a project, area or dir is content and needs nothing from `para`. Make it a dir when it needs notes, links or staleness of its own; to give it only a stricter level, a path rule in its entity's config is enough ([where classifications are set](#63-where-classifications-are-set)). [Adopting](#24-adopting-existing-directories) such a folder makes it a dir and keeps everything in it; a folder inside a plain folder can be adopted only once that folder is a dir.
 
-### 1.12 Sensitivity labels
+### 1.12 Classification
 
-A sensitivity label says how far content may travel. By default `para` uses the five labels of [TLP 2.0](https://www.first.org/tlp/), from loosest to strictest: `CLEAR` (anyone), `GREEN` (your community, but not public channels), `AMBER` (your organization and its clients, as they need it), `AMBER+STRICT` (your organization only) and `RED` (only the people it was given to). The root's [config](#35-config) can define another scale, and [sensitivity labels](#61-sensitivity-labels) defines each one.
+Classification says how far content may travel. Each folder can be given a level, and by default `para` uses the five levels of [TLP 2.0](https://www.first.org/tlp/), from loosest to strictest: `CLEAR` (anyone), `GREEN` (your community, but not public channels), `AMBER` (your organization and its clients, as they need it), `AMBER+STRICT` (your organization only) and `RED` (only the people it was given to). The root's [config](#35-config) can define another scale, and [classification levels](#61-classification-levels) defines each one.
 
-A label is set in the [config](#35-config) of any entity except a stub, the root and buckets included, and covers everything beneath it, so no file has to carry a label in itself. A config can also hold path rules, each giving a stricter label to a file or plain folder beneath that folder, though never to anything inside a child entity, which sets its own ([where labels are set](#63-where-labels-are-set)).
+A level is set in the [config](#35-config) of any entity except a stub, the root and buckets included, and covers everything beneath it, so no file has to carry one in itself. A config can also hold path rules, each giving a stricter level to a file or plain folder beneath that folder, though never to anything inside a child entity, which sets its own ([where classifications are set](#63-where-classifications-are-set)).
 
-A label is never looser than the one above it, and `para` refuses a change that would break this, such as setting `RED` on an area whose sub-area is labelled `AMBER`, until the sub-area is tightened first. A label can also be removed, so the folder takes the one above it. Loosening a label, or removing one when the label above is looser or there is none, asks for confirmation unless run with `--force`, and is journaled either way ([how labels flow](#64-how-labels-flow)).
+A level is never looser than the one above it, and `para` refuses a change that would break this, such as classifying an area `RED` when its sub-area is classified `AMBER`, until the sub-area is tightened first. A level can also be removed, so the folder takes the one above it. Loosening a level, or removing one when the one above is looser or there is none, asks for confirmation unless run with `--force`, and is journaled either way ([how classifications flow](#64-how-classifications-flow)).
 
-A command that moves an entity, archiving and unarchiving included, refuses if the label covering it would become looser or none at all, as when an unlabelled dir in a `RED` area moves to a `resources/` labelled `GREEN`, or if any label it carries, its own or one set beneath it, would end up looser than the one above it. The remedy is to tighten the entity's label, or one inside it, and run the command again; a label can be tightened even in the read-only archive.
+A command that moves an entity, archiving and unarchiving included, refuses if the level covering it would become looser or none at all, as when an unclassified dir in a `RED` area moves to a `resources/` classified `GREEN`, or if any level it carries, its own or one set beneath it, would end up looser than the one above it. The remedy is to tighten the entity's level, or one inside it, and run the command again; a level can be tightened even in the read-only archive.
 
-Content no label covers is shown as `unlabelled`, and `para` assumes nothing about it, so labels are optional; to label everything, set one on the root ([unlabelled content](#66-unlabelled-content)). An entity's README frontmatter, [`show`](#74-reading) and [`list`](#74-reading) give the label that covers it, and `AGENTS.md` tells agents what each label allows ([what para does with labels](#65-what-para-does-with-labels)).
+Content no level covers is unclassified, and `para` assumes nothing about it, so classification is optional; to classify everything, set a level on the root ([unclassified content](#66-unclassified-content)). An entity's README frontmatter, [`show`](#74-reading) and [`list`](#74-reading) give the level that covers it, and `AGENTS.md` tells agents what each level allows ([what para does with classifications](#65-what-para-does-with-classifications)).
 
-### 1.13 Provenance
+### 1.13 Lineage
 
-Provenance answers two questions about a file: where it came from, and how far to trust it. `para` records the first as facts, a person grades the sources, and `para` computes trust from those two, never from what the file says ([scope and non-goals](#05-scope-and-non-goals)).
+Lineage records where content came from, as a graph: sources at its start, then the files and measurements that come from them, then what is made from those. `para` records the graph as facts, a person grades the sources, and `para` computes trust from those two, never from what a file says ([scope and non-goals](#05-scope-and-non-goals)). Classification flows along the same graph ([how classifications flow](#64-how-classifications-flow)).
 
-A source is an entity that stands for where material comes from, such as a sender, a website, a person or an agent, and carries a reliability grade a person sets, from `A` (reliable) to `F` (cannot be judged) by default ([config](#35-config)). Sources are kept, like terms, in `resources/sources/`, which [`init`](#73-init) creates along with your own source, since every event names one ([the journal](#33-the-journal)). A source added without a grade starts at the lowest. Setting or raising a grade asks for confirmation unless forced, as loosening a label does, and lowering one is allowed even in the archive.
+A source is an entity that stands for where material comes from, such as a sender, a website, a person or an agent, and carries a reliability grade a person sets, from `A` (reliable) to `F` (cannot be judged) by default ([config](#35-config)). Sources are kept, like terms, in `resources/sources/`, which [`init`](#73-init) creates along with your own source, since every event names one ([the journal](#33-the-journal)). A source added without a grade starts at the lowest. Setting or raising a grade asks for confirmation unless forced, as loosening a level does, and lowering one is allowed even in the archive.
 
-You record a file with a command after it exists, as a primary or a derived work. A primary is a copy of something from outside the tree, such as an email or a web page; it names its source, and `para` keeps its hash, so a later change to it is flagged. A derived work, such as notes or a summary, names the files it was made from by their records' ids, and stays free to change. Naming a file that has no record gives it a bare one, which counts as unrecorded until you record it. Naming one where no record can be written, such as in the archive, is refused. Every record names the person accountable and, when someone acted for them, such as an agent working for a person, who did the work; both are sources. An agent's source is its model and harness, and each record it makes also notes the exact model, harness version and session, given with the command, as facts that are never graded. `para` takes these names as given.
+You record a file with a command after it exists, as a primary or a derived work. A primary is a copy of something from outside the tree, such as an email or a web page; it names its source, and `para` keeps its hash, so a later change to it is flagged. A derived work, such as notes or a summary, names the files it was made from by their records' ids, and stays free to change. Each input may carry a one-line note saying what was done to it, such as "kept only the signing date". Naming a file that has no record gives it a bare one, which counts as unrecorded until you record it. Naming one where no record can be written, such as in the archive, is refused. Every record names the person accountable and, when someone acted for them, such as an agent working for a person, who did the work; both are sources. An agent's source is its model and harness, and each record it makes also notes the exact model, harness version and session, given with the command, as facts that are never graded. `para` takes these names as given.
 
-Trust has two parts, computed whenever it is shown and never stored. A file's reliability is the worst grade among its sources: for a primary, its source alone; for a derived work, the people accountable for it, anyone who acted for them, and everything it was made from, through every input. A primary that changed, a source or input that is gone, or an unrecorded input, counts as the lowest grade. A file is unchecked while it, or anything it was made from, holds recorded work done for a person that they have not since vouched for. A vouch counts only when it names that person with no one acting for them, asks for confirmation unless forced, and puts the person's grade in place of every actor's for the work recorded before it. So a summary that an agent graded `B` writes for a person graded `A`, from an email graded `C`, reads `C, unchecked` until that person vouches for it, and `C` even then.
+Measurements join the same graph. A metric may name its sources, such as a bathroom scale or a payment service. An analytic is made from what its formula names, each of which may carry a note too, and a key result or indicator from its analytic ([measurement](#15-measurement)). Changing a metric's sources so its reliability rises asks for confirmation unless forced. A source can be archived unless a live metric names it; a record or event that names it does not prevent this.
 
-A file's record has an id, drawn and recorded like entity ids ([addressing](#23-addressing)), and sits in the `state.toml` of the entity that holds it, which is never the root, a container or a stub. Its path within that entity is a property of the record: after a rename or move, a command updates the path, and every input still resolves because it names the record's id. Like a label's path rule, a record never covers a file inside a child entity, with one exception: a file in a container, or in a plain folder there waiting to be adopted, keeps its record in the nearest ancestor that can hold one. Each recording, change to a record and vouch is an event in that entity's journal. A file with no record is `unrecorded`, and `para` assumes nothing about it. [`show`](#74-reading) and [`list`](#74-reading) give a file's provenance and trust, and [`doctor`](#82-doctor-findings) reports a primary that changed and a record whose file is gone; a command sets its new path ([provenance and trust](#62-provenance-and-trust)).
+Trust has two parts, computed whenever it is shown and never stored. A file's reliability is the worst grade among its sources: for a primary, its source alone; for a derived work, the people accountable for it, anyone who acted for them, and everything it was made from, through every input. A primary that changed, a source or input that is gone, or an unrecorded input, counts as the lowest grade. A measurement's reliability is the worst grade among its metric's sources, the lowest when it names none or one is gone. The person it was recorded for, and anyone acting for them, count too. An analytic, key result or indicator takes the worst of the measurements it uses. A file is unchecked while it, or anything it was made from, holds recorded work done for a person that they have not since vouched for, and a metric while it holds such measurements. A vouch, on a file or a metric, counts only when it names that person with no one acting for them, asks for confirmation unless forced, and puts the person's grade in place of every actor's for the work recorded before it. It never lifts reliability above the worst source. So a summary that an agent graded `B` writes for a person graded `A`, from an email graded `C`, reads `C, unchecked` until that person vouches for it, and `C` even then.
+
+A file's lineage record has an id, drawn and recorded like entity ids ([addressing](#23-addressing)), and sits in the `state.toml` of the entity that holds it, which is never the root, a container or a stub. Its path within that entity is a property of the record: after a rename or move, a command updates the path, and every input still resolves because it names the record's id. Like a path rule, a record never covers a file inside a child entity, with one exception: a file in a container, or in a plain folder there waiting to be adopted, keeps its record in the nearest ancestor that can hold one. Each recording, change to a record and vouch is an event in that entity's journal. A file with no record is `unrecorded`, and `para` assumes nothing about it. [`show`](#74-reading) gives what a file or entity was made from, what was made from it, and its trust, which [`list`](#74-reading) gives too. [`doctor`](#82-doctor-findings) reports a primary that changed and a record whose file is gone; a command sets its new path ([lineage and trust](#62-lineage-and-trust)).
 
 ### 1.14 Status
 
@@ -327,9 +329,9 @@ It reports in six groups, and anything that needs attention appears in every gro
 | key results | open key results that are `at-risk` or `missed` |
 | indicators | indicators that are `breached`, `at-risk` or `no-data` |
 | stale | entities that have gone without [attention](#18-notes-and-the-journal) for longer than their `<kind>.stale-after` setting ([staleness](#45-staleness)) |
-| unchecked | files holding work done for a person that they have not since vouched for, when the file, or any file made from it directly or through other inputs, is live and outside closed work ([provenance](#113-provenance)) |
+| unchecked | files holding work done for a person that they have not since vouched for, when the file, or any file made from it directly or through other inputs, is live and outside closed work; metrics holding such measurements, when a live key result or indicator outside closed work uses them ([lineage](#113-lineage)) |
 
-A missed key result stays listed, except while [suppressed](#116-suppression), until it is closed, archived or removed. The unchecked group lists the files to vouch for, wherever they sit, and names the live files made from each; a file unchecked only through its inputs is not listed itself.
+A missed key result stays listed, except while [suppressed](#116-suppression), until it is closed, archived or removed. The unchecked group lists the files and metrics to vouch for, wherever they sit, and names the live files, key results and indicators that use each; a file unchecked only through its inputs is not listed itself.
 
 Apart from the unchecked group, review reports nothing in the archive, and nothing that is closed or sits under a closed project or objective, including its dirs, links and files. Areas never close, so their indicators and staleness always count. To pause one flag for a known reason, such as an area left alone while you travel, suppress it.
 
@@ -346,7 +348,7 @@ Suppression pauses one [review](#115-review) flag, an entity's place in one revi
 | key results | a key result `at-risk` because a launch slipped, which you still mean to reach |
 | indicators | an indicator with `no-data` while a broken tracker is replaced |
 
-Overdue and unchecked flags cannot be suppressed, since each has its own remedy: set a new due date, or vouch for the file.
+Overdue and unchecked flags cannot be suppressed, since each has its own remedy: set a new due date, or vouch for the file or metric.
 
 A suppression leaves the entity's other flags, and everything beneath it, reported as usual. A stale flag can be suppressed before it appears, such as before a trip. A status can be suppressed only while it is flagged, and the suppression holds only for that status: one suppressed while `at-risk` is reported again if it becomes `missed`, and one suppressed for `no-data` is reported again if it turns `breached`.
 
@@ -360,8 +362,8 @@ Review ends by saying how many flags its suppressions leave out, and lists each 
 
 | File | Where | `para`'s part | Shows |
 | --- | --- | --- | --- |
-| `README.md` | every entity except a stub | its `para` frontmatter key and its block | the entity's main facts, such as its id, kind, set status and label; its title and description, its children, a link to its history and, for a metric, a link to its measurements |
-| `AGENTS.md` | the root, each bucket and each archive bucket | its block | the tree's rules and what each label allows, for agents |
+| `README.md` | every entity except a stub | its `para` frontmatter key and its block | the entity's main facts, such as its id, kind, set status and classification level; its title and description, its children, a link to its history and, for a metric, a link to its measurements |
+| `AGENTS.md` | the root, each bucket and each archive bucket | its block | the tree's rules and what each classification level allows, for agents |
 
 A command that changes a fact rewrites every generated file that shows it in the same run ([write-through](#51-write-through)), and [`rebuild`](#78-rebuild) rewrites them all from the truth files, as after a git merge or a hand edit. Your own text outside `para`'s part is content and is kept, and anything written inside it is replaced at the next rewrite ([para-owned blocks](#52-para-owned-blocks)).
 
@@ -435,11 +437,11 @@ A command refuses any change that breaks these rules, such as filing a dir in `p
 
 ### 2.3 Addressing
 
-Commands name an entity only by its id, never by its path or name. A path says where an entity is now, and that changes whenever it is renamed, moved or archived, often by people, agents or git outside `para`, which cannot rewrite the notes, scripts and memories that mention it. An id stays the same for the entity's whole life and is never given to another, so a stale reference fails instead of reaching the wrong entity. Write the id alone when you refer to an entity, and use [`show`](#74-reading) to see what it names. The id is stored in the entity's [`state.toml`](#32-statetoml) and travels with its folder, and `para` finds an entity by reading the tree for its id ([the walk](#36-the-walk)). [Provenance](#113-provenance) records have ids too, and a derived work names its inputs by them.
+Commands name an entity only by its id, never by its path or name. A path says where an entity is now, and that changes whenever it is renamed, moved or archived, often by people, agents or git outside `para`, which cannot rewrite the notes, scripts and memories that mention it. An id stays the same for the entity's whole life and is never given to another, so a stale reference fails instead of reaching the wrong entity. Write the id alone when you refer to an entity, and use [`show`](#74-reading) to see what it names. The id is stored in the entity's [`state.toml`](#32-statetoml) and travels with its folder, and `para` finds an entity by reading the tree for its id ([the walk](#36-the-walk)). [Lineage](#113-lineage) records have ids too, and a derived work names its inputs by them.
 
 An id is the tree's prefix, a hyphen and a random code, such as `brain-7k2q`. The prefix is letters and digits, set when the tree is created or migrated and never changed ([`init`](#73-init), [migrating a v0 tree](#91-migrating-a-v0-tree)). The code is lowercase letters and digits, at least four characters long. New codes get longer as the tree issues more ids, so the chance of two ids ever matching stays at or below 1%: four characters cover about 180 ids, five about 1,100 and six about 6,600. Issuing a new id never changes an existing one. The exact rule: each new code has the shortest length L, at least 4, for which n² ÷ (2 × 36^L) ≤ 0.01, where 36 is the number of characters a code may use and n counts every id issued so far plus the new one. [Worked examples](#appendix-b-worked-examples) says how tests fix the codes `para` draws.
 
-`para` keeps a record of every id it has issued, to entities and to [provenance](#113-provenance) records alike, so it never reuses one and can count them. Each id gets an empty file of that name in the root's `.para/ids/`, which is never deleted, even when what it named is gone. A code whose file already exists is drawn again, and the number of files is the n above. Branches that issue ids add files with different names, so git merges the record without a conflict. If two branches draw the same code by chance, their files merge into one and two holders share the id, as below. An entity whose id has no file, such as one copied by hand from another tree with the same prefix, still answers to its id; [`doctor`](#82-doctor-findings) reports it, and [repair](#83-repair) adds the file.
+`para` keeps a record of every id it has issued, to entities and to [lineage](#113-lineage) records alike, so it never reuses one and can count them. Each id gets an empty file of that name in the root's `.para/ids/`, which is never deleted, even when what it named is gone. A code whose file already exists is drawn again, and the number of files is the n above. Branches that issue ids add files with different names, so git merges the record without a conflict. If two branches draw the same code by chance, their files merge into one and two holders share the id, as below. An entity whose id has no file, such as one copied by hand from another tree with the same prefix, still answers to its id; [`doctor`](#82-doctor-findings) reports it, and [repair](#83-repair) adds the file.
 
 A command takes an id exactly as `para` prints it, never shortened. Every output names entities by id, [`list`](#74-reading) finds one by name, kind or place, and each README's frontmatter carries its entity's id ([READMEs](#53-readmes)). A command refuses an id it cannot use and says why ([output and exit codes](#710-output-and-exit-codes)):
 
@@ -468,14 +470,14 @@ Adopt parents first: a folder inside a plain folder waits until that folder is a
 - a README already there is not a plain file, or its frontmatter already has a `para` key or is not valid YAML ([READMEs](#53-readmes))
 - the parent is in the archive, which is read-only ([archive](#17-archive))
 
-No file's label loosens and no provenance is lost. Once the folder is an entity, the parent's path rules stop covering its files. So adoption gives the new entity the strictest label those rules gave any file in it, and journals it ([where labels are set](#63-where-labels-are-set)). Files those rules did not cover can end up stricter. The parent's rules stay as they are, and [`doctor`](#82-doctor-findings) warns about any rule that now matches nothing, which you can then delete. Provenance records for files in the folder, at any depth, move to the new entity from the nearest ancestor holding them, with their ids unchanged, so whatever names them as inputs still does ([provenance](#113-provenance)). A container holds no records, so when the new entity is a container they stay where they are until each file's subfolder is adopted.
+No file's level loosens and no lineage is lost. Once the folder is an entity, the parent's path rules stop covering its files. So adoption gives the new entity the strictest level those rules gave any file in it, and journals it ([where classifications are set](#63-where-classifications-are-set)). Files those rules did not cover can end up stricter. The parent's rules stay as they are, and [`doctor`](#82-doctor-findings) warns about any rule that now matches nothing, which you can then delete. Lineage records for files in the folder, at any depth, move to the new entity from the nearest ancestor holding them, with their ids unchanged, so whatever names them as inputs still does ([lineage](#113-lineage)). A container holds no records, so when the new entity is a container they stay where they are until each file's subfolder is adopted.
 
 To bring in a whole tree:
 
 1. Run [`init`](#73-init) in its top folder. After you confirm or pass a flag that acknowledges it, `init` makes that folder the root and makes any `projects/`, `areas/`, `resources/` and `archive/` already there buckets, creating those missing. It makes `projects/`, `areas/` and `resources/` inside `archive/` archive buckets even before anything is archived, and adds `para`'s part to any README or `AGENTS.md` already in these folders. It refuses where a folder could not be adopted, such as a symlinked bucket, and in a v0 tree points to [`migrate`](#91-migrating-a-v0-tree). Loose files in a bucket stay content that `doctor` reports.
 2. Move any folder under `archive/` by hand to the matching live bucket, since nothing in the archive can be adopted.
 3. Adopt the folders, parents first, running `doctor` after each round to list what is still plain, such as the subfolders of a newly adopted container.
-4. [Archive](#25-archiving) again what came from `archive/`, once its subfolders are adopted and its label is set, since the archive is read-only.
+4. [Archive](#25-archiving) again what came from `archive/`, once its subfolders are adopted and its level is set, since the archive is read-only.
 
 ### 2.5 Archiving
 
@@ -486,12 +488,12 @@ Archiving moves an entity out of the live buckets into `archive/`, with its hist
 - the entity is the root, a stub or already archived
 - the entity is a container, naming its entities and, where it can be archived, its parent
 - a live entity uses an analytic, metric or term that would move, unless that user moves too ([measurement](#15-measurement))
-- the label covering it would loosen, as when `projects/` is `RED` and `archive/projects/` has no label, or a label it carries would be looser than the one above it in its new place ([sensitivity labels](#112-sensitivity-labels)); tighten the archive's label or the entity's own, then run it again
+- the level covering it would loosen, as when `projects/` is `RED` and `archive/projects/` has none, or a level it carries would be looser than the one above it in its new place ([classification](#112-classification)); tighten the archive's level or the entity's own, then run it again
 
 `unarchive` takes an archived entity's id and moves it back under its live parent, with everything beneath it, including descendants archived on their own before it. Archived ancestors it needs come back live too. Stubs stay for anything still archived, such as what sits beneath the stub of a removed descendant, which has no live place to return to. `unarchive` refuses, saying why, when:
 
 - the entity is live or a stub
-- a label would loosen, as for `archive`
+- a level would loosen, as for `archive`
 - it, or anything coming back with it, uses an archived entity that stays archived
 - an ancestor was removed, so only its stub is left, naming that ancestor; give a new parent instead
 
@@ -504,7 +506,7 @@ When the path an arriving entity or stub would take is already held, `para` appe
 
 An entity's stubs, those recording its id, follow the live tree. Renaming or moving a live entity renames or moves its stubs to match, taking a suffix only if the new path is held, and adds stubs for new ancestors. A stub exists only while something archived sits beneath it, and `para` removes one left empty by any command. Removing a live entity leaves its stubs where they are, so what is archived beneath keeps its place and history.
 
-A container, once created, stays when its last child leaves, whether moved, archived or removed. It goes only when its parent is removed, and moves with its parent otherwise. So its id, label and journal survive, and its stubs always match it.
+A container, once created, stays when its last child leaves, whether moved, archived or removed. It goes only when its parent is removed, and moves with its parent otherwise. So its id, level and journal survive, and its stubs always match it.
 
 Archiving and unarchiving are journaled like any move ([notes and the journal](#18-notes-and-the-journal)):
 
@@ -532,8 +534,8 @@ The truth files are:
 
 | File | Where | Holds |
 | --- | --- | --- |
-| `state.toml` | every `.para/` | the entity's facts, such as its kind, id, set status, provenance records and suppressions; the root's also holds the schema version and id prefix ([`state.toml`](#32-statetoml)) |
-| `config.toml` | any `.para/` but a stub's, once something is set | your choices, such as a label, path rules and settings ([config](#35-config)) |
+| `state.toml` | every `.para/` | the entity's facts, such as its kind, id, set status, lineage records and suppressions; the root's also holds the schema version and id prefix ([`state.toml`](#32-statetoml)) |
+| `config.toml` | any `.para/` but a stub's, once something is set | your choices, such as a classification level, path rules and settings ([config](#35-config)) |
 | `measurements.csv` | a metric's `.para/`, created with it | the metric's measurements, one row each ([recording measurements](#42-recording-measurements)) |
 | the journal | every `.para/` but a stub's | the entity's events, notes included, only ever appended to ([the journal](#33-the-journal)) |
 | `ids/` | the root's `.para/` | an empty file for every id issued ([addressing](#23-addressing)) |
@@ -548,7 +550,7 @@ Commands find current values in truth files, never by reading a journal, so a lo
 
 Nothing checks a truth file against its journal. After a hand edit or a merge, commands go by state, config and measurements, and the journal lacks the change.
 
-A folder whose kind cannot be read from its `state.toml` is [damaged](#21-directory-shapes). So is one whose `config.toml` exists but cannot be read, since going on without it would drop its labels: commands that would change it or anything beneath it refuse, and reads warn. A missing `config.toml` means nothing is set there. A `measurements.csv` that cannot be read makes each command that writes to it refuse, naming the folder and pointing to `doctor`, and reads leave out the statuses that need it and warn. `doctor` reports any other fault in a truth file, such as a missing journal.
+A folder whose kind cannot be read from its `state.toml` is [damaged](#21-directory-shapes). So is one whose `config.toml` exists but cannot be read, since going on without it would drop its levels: commands that would change it or anything beneath it refuse, and reads warn. A missing `config.toml` means nothing is set there. A `measurements.csv` that cannot be read makes each command that writes to it refuse, naming the folder and pointing to `doctor`, and reads leave out the statuses that need it and warn. `doctor` reports any other fault in a truth file, such as a missing journal.
 
 An edit inside a generated file changes no fact and is replaced at the next rewrite, so a fact changes only by its command. Anything else inside a `.para/` is `para`'s but is neither truth nor generated, and `doctor` reports it.
 
@@ -599,9 +601,9 @@ Other keys are defined with the behaviour they serve:
 | attention time | every kind but the root, a container and a stub | [staleness](#45-staleness) |
 | archive time | archived entities | [archiving](#25-archiving) |
 | analytic, target (`at-least` or `at-most`), start and bounds | key results, indicators | [targets](#43-targets-key-results-and-indicators) |
-| what it computes and the metrics and terms it uses | analytics, metrics | [analytics, metrics and terms](#41-analytics-metrics-and-terms) |
+| what it computes and the metrics, terms and sources it uses | analytics, metrics | [analytics, metrics and terms](#41-analytics-metrics-and-terms) |
 | type, ref and direction | links | [links](#110-links) |
-| provenance records | every kind but the root, a container and a stub | [provenance and trust](#62-provenance-and-trust) |
+| lineage records | every kind but the root, a container and a stub | [lineage and trust](#62-lineage-and-trust) |
 | suppressions | entities that can go stale, projects, objectives, key results, indicators | [suppression](#47-suppression) |
 
 State never holds the entity's folder name, path or parent, since those are where its folder sits, nor any value [what is never stored](#55-what-is-never-stored) lists, nor anything chosen in config ([config](#35-config)).
@@ -609,7 +611,7 @@ State never holds the entity's folder name, path or parent, since those are wher
 `para` writes the file the same way every time, so the same facts give the same bytes and a diff shows only what changed:
 
 - top-level keys first, in the order above, then the root's or stub's keys, then the kind's keys, following the rows of the table above and, within a row, the order its section gives
-- then tables, such as provenance records, in the same order
+- then tables, such as lineage records, in the same order
 - no comments, so any written by hand are dropped
 
 [The example tree](#appendix-a-example-tree) shows the exact format, such as spacing and quoting.
@@ -630,12 +632,12 @@ Each entity's journal is `.para/journal.jsonl`, the log of everything done to it
 | `id` | the event's id, eight random lowercase letters and digits, unique within its journal, so a correction can name it |
 | `type` | what happened, such as `created`, `note` or `status` |
 | `sub` | the source id of the person accountable for it, missing only on events converted from a v0 tree, which carry `"v0": true` instead |
-| `act` | present only when someone acted for that person: an object with the actor's source id as its `sub`, an optional `model`, `harness` and `session`, and an optional `act` of its own for a chain ([provenance](#113-provenance)) |
+| `act` | present only when someone acted for that person: an object with the actor's source id as its `sub`, an optional `model`, `harness` and `session`, and an optional `act` of its own for a chain ([lineage](#113-lineage)) |
 | `at` | the earlier time a backdated note or measurement claims, present only when given |
 
 The type's own fields follow, in the order given by the section that defines that behaviour, as for state keys ([`state.toml`](#32-statetoml)). [The example tree](#appendix-a-example-tree) shows the exact format.
 
-Every event names who did it, as [sources](#113-provenance), the entities that stand for people and agents:
+Every event names who did it, as [sources](#113-lineage), the entities that stand for people and agents:
 
 - A command takes the accountable person with `--sub` and anyone acting for them with `--act`, or `PARA_SUB` and `PARA_ACT` when the flags are absent ([fields and time input](#72-fields-and-time-input)).
 - `--act` repeats for a chain: the first acts for the `sub`, and each later one for the one before.
@@ -717,19 +719,19 @@ A clock behind times already stored, as on a machine set wrong, is not a fault. 
 
 ### 3.5 Config
 
-A `.para/config.toml` holds your choices for its folder and everything beneath it, such as a label or how long a project may go untended. A change applies from then on and never rewrites what is already recorded.
+A `.para/config.toml` holds your choices for its folder and everything beneath it, such as a classification level or how long a project may go untended. A change applies from then on and never rewrites what is already recorded.
 
-Any entity but a stub can have one, including the root and containers such as buckets. The file appears when the first setting is made there and goes when nothing is left in it. [`para config`](#79-config) reads and changes settings, and each change is an event in that folder's journal, with the old and new values ([the journal](#33-the-journal)). In the archive, `para config` can only tighten a label or lower a source's grade ([archive](#17-archive)).
+Any entity but a stub can have one, including the root and containers such as buckets. The file appears when the first setting is made there and goes when nothing is left in it. [`para config`](#79-config) reads and changes settings, and each change is an event in that folder's journal, with the old and new values ([the journal](#33-the-journal)). In the archive, `para config` can only tighten a level or lower a source's grade ([archive](#17-archive)).
 
 These are the settings:
 
 | Setting | Where | Default | Defined in |
 | --- | --- | --- | --- |
 | `time-zone` | the root only | UTC | [time and the clock](#34-time-and-the-clock) |
-| the sensitivity scale | the root only | TLP 2.0 | [sensitivity labels](#61-sensitivity-labels) |
-| the reliability scale | the root only | `A` to `F` | [provenance and trust](#62-provenance-and-trust) |
-| a label, and path rules | any entity but a stub | none | [where labels are set](#63-where-labels-are-set) |
-| a source's grade | sources only | the lowest grade | [provenance and trust](#62-provenance-and-trust) |
+| `classification-scale` | the root only | TLP 2.0 | [classification levels](#61-classification-levels) |
+| the reliability scale | the root only | `A` to `F` | [lineage and trust](#62-lineage-and-trust) |
+| `classification` and `path-classifications` | any entity but a stub | none | [where classifications are set](#63-where-classifications-are-set) |
+| a source's grade | sources only | the lowest grade | [lineage and trust](#62-lineage-and-trust) |
 | `<kind>.stale-after`, for each kind that can go stale | any entity but a stub | none (`init` writes two, below) | [staleness](#45-staleness) |
 | `key-result.grace` | any entity but a stub | 0.1 | [derived status](#44-derived-status) |
 | `key-result.pace` | any entity but a stub | 0.8 | [derived status](#44-derived-status) |
@@ -745,9 +747,9 @@ A setting with nothing beneath it to apply to, such as `project.stale-after` on 
 
 A folder cannot cancel a setting it inherits. To keep a setting from one subtree, remove it from the ancestor, then set it again on each folder that should still have it.
 
-Labels pass down the same way. A label is never looser than the one above it, and loosening one asks for confirmation ([how labels flow](#64-how-labels-flow)).
+Levels pass down the same way. A level is never looser than the one above it, and loosening one asks for confirmation ([how classifications flow](#64-how-classifications-flow)).
 
-A path rule covers only files and plain folders in its own entity ([where labels are set](#63-where-labels-are-set)).
+A path rule covers only files and plain folders in its own entity ([where classifications are set](#63-where-classifications-are-set)).
 
 An archived entity looks up settings along its path in the archive, through `archive/` to the root:
 
@@ -755,7 +757,7 @@ An archived entity looks up settings along its path in the archive, through `arc
 - Settings on its old live ancestors no longer reach it, since they are not on its archive path.
 - So archiving can change an indicator's margin, and with it the status frozen at archiving.
 - A later change above it, such as to the root's margin, can also change that status.
-- A label cannot loosen this way, since the move refuses ([sensitivity labels](#112-sensitivity-labels)).
+- A level cannot loosen this way, since the move refuses ([classification](#112-classification)).
 
 To keep a setting, set it on the entity before you archive it.
 
@@ -862,13 +864,13 @@ After a merge, run [`doctor`](#82-doctor-findings) to see what it left, fix what
 ```
 
 - The first makes git keep both sides of a journal conflict, so you rarely resolve one by hand. It can leave repeated lines, half lines and both versions of an event that `migrate` rewrote. `doctor` reports each ([the journal](#33-the-journal)).
-- The second turns off line-ending conversion for every file in the tree, yours included, since a [recorded file](#113-provenance) can be any file and its hash uses its exact bytes. Files already checked out keep their endings until you check them out again.
+- The second turns off line-ending conversion for every file in the tree, yours included, since a [recorded file](#113-lineage) can be any file and its hash uses its exact bytes. Files already checked out keep their endings until you check them out again.
 
 ## 4. Progress and attention
 
 ### 4.1 Analytics, metrics and terms
 
-References in the measurement library run one way, from key results and indicators to analytics, then to metrics, then to terms, so none can loop back ([measurement](#15-measurement)). A metric's `terms` key lists the ids of the terms it uses, present only when it names any.
+References in the measurement library run one way, from key results and indicators to analytics, then to metrics, then to terms and sources, so none can loop back ([measurement](#15-measurement)). A metric's `terms` key lists the ids of the terms it uses, and its `sources` key the ids of the sources its values come from ([lineage](#113-lineage)). Each is present only when it names any.
 
 An analytic computes one number with a `formula` over metrics, in the style of a [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) query. This one gives the share of visitors who came from search over the last 28 days:
 
@@ -1058,7 +1060,7 @@ Review reports each flag in its group, and ranks each group so the worst comes f
 | key results | the status, the analytic's value or none, the target and the due date | `missed`, then `at-risk`, each earliest due first |
 | indicators | the status, the analytic's value or none, and the bounds | `breached`, then `no-data`, then `at-risk` |
 | stale | the attention time, the setting that flagged it and the folder that sets it | longest past its `stale-after` first |
-| unchecked | the file and the live files made from it | by path |
+| unchecked | the file and the live files made from it, or the metric and the live key results and indicators that use it | by path |
 
 Ties go by path. Paths compare one name at a time, by the bytes of each name in UTF-8. A path comes before any longer path that starts with it, so a folder comes before everything in it.
 
@@ -1125,14 +1127,14 @@ A change reaches these files:
 | its id, title or folder name | its README and its parent's |
 | its description | its README |
 | an entity or stub arriving or leaving | the README of each parent it joins or leaves |
-| the label that covers it | the README of the entity and of every entity beneath it |
-| the sensitivity scale | the root's `AGENTS.md` |
+| the level that covers it | the README of the entity and of every entity beneath it |
+| the classification scale | the root's `AGENTS.md` |
 
 A new entity gets its README. [`init`](#73-init) also writes the `AGENTS.md` of the root and each bucket, and a new archive bucket gets its own. A file whose bytes would not change is left alone.
 
 A missing README or `AGENTS.md` is recreated whenever `para` would rewrite it, and [`doctor`](#82-doctor-findings) reports it until then. If a symlink, a folder or a file `para` cannot read stands where it must write, the command refuses before writing anything, naming it, so `para` never writes outside the tree. Replace it with a plain file or delete it.
 
-A label set on the root reaches every README in the tree, so one README anywhere beneath that is a symlink, unreadable or broken ([para-owned blocks](#52-para-owned-blocks)) stops the change. `doctor` lists them all.
+A level set on the root reaches every README in the tree, so one README anywhere beneath that is a symlink, unreadable or broken ([para-owned blocks](#52-para-owned-blocks)) stops the change. `doctor` lists them all.
 
 [`rebuild`](#78-rebuild) rewrites every generated file from the truth files. For the same truth, write-through and `rebuild` write the same bytes, so `rebuild` right after a command changes nothing. Run it after a hand edit or a merge ([git](#37-git)), and after upgrading `para`, since a new release may word or lay out these files differently and write-through rewrites only the files a change reaches. `doctor` reports any generated part that differs from what `rebuild` would write.
 
@@ -1178,7 +1180,7 @@ para:
   id: "brain-7k2q"
   title: "Launch website"
   description: "Rebuild the marketing site on the new stack."
-  label: "AMBER"
+  classification: "AMBER"
   status: "in-progress"
   status-since: "2026-10-02T16:00:00Z"
   due: "2026-12-01T07:59:59Z"
@@ -1200,15 +1202,15 @@ History: [.para/journal.jsonl](.para/journal.jsonl)
 The old site is in `archive/`. Sam owns the copy.
 ```
 
-The `para` key holds a map of what the entity is and where it stands. Its keys are `kind`, `id`, `title` and `description` when set, and `label`, then these where the entity has them, with the key names and order of [`state.toml`](#32-statetoml):
+The `para` key holds a map of what the entity is and where it stands. Its keys are `kind`, `id`, `title` and `description` when set, and `classification` when one covers it, then these where the entity has them, with the key names and order of [`state.toml`](#32-statetoml):
 
 - its set status, `status-since`, blocked reason and due date ([status](#114-status))
 - its archive time ([archiving](#25-archiving))
-- the keys that define its kind: a key result's or indicator's analytic, target or bounds and start ([targets](#43-targets-key-results-and-indicators)), an analytic's formula and a metric's terms ([analytics, metrics and terms](#41-analytics-metrics-and-terms)), and a link's type, ref and direction ([links](#110-links))
+- the keys that define its kind: a key result's or indicator's analytic, target or bounds and start ([targets](#43-targets-key-results-and-indicators)), an analytic's formula and a metric's terms and sources ([analytics, metrics and terms](#41-analytics-metrics-and-terms)), and a link's type, ref and direction ([links](#110-links))
 
-`label` is the label that covers the entity, or `unlabelled` ([sensitivity labels](#112-sensitivity-labels)). An indicator with a range shows both bounds.
+`classification` is the level that covers the entity, left out when there is none ([classification](#112-classification)). An indicator with a range shows both bounds.
 
-The map leaves out `created`, attention, suppressions, provenance records and a source's grade, and every computed value, such as a key result's status or an analytic's value ([what is never stored](#55-what-is-never-stored)). [`show`](#74-reading) gives all of them.
+The map leaves out `created`, attention, suppressions, lineage records and a source's grade, and every computed value, such as a key result's status or an analytic's value ([what is never stored](#55-what-is-never-stored)). [`show`](#74-reading) gives all of them.
 
 Strings are in double quotes, times are in UTC as stored, and numbers are written as in `state.toml`. [The example tree](#appendix-a-example-tree) shows the exact format.
 
@@ -1231,12 +1233,12 @@ The root's block tells an agent:
 - to change the structure only with `para`'s commands, naming the person it acts for with `--sub` and itself with `--act` ([the journal](#33-the-journal))
 - to write an entity's id alone when referring to it, and to run `para show` to see what an id names ([addressing](#23-addressing))
 - to mark a note as attention only when the upkeep it describes happened ([staleness](#45-staleness))
-- each label of the tree's scale and what it allows ([sensitivity labels](#61-sensitivity-labels))
+- each level of the tree's scale and what it allows, and that a missing `classification` key means unclassified, not free to share ([classification levels](#61-classification-levels))
 - after a git merge, to run `doctor`, fix what it reports, then run `rebuild` ([git](#37-git))
 
 A bucket's block says what the bucket holds and which kinds may sit where in it ([kinds and containment](#22-kinds-and-containment)), and points to the root's block for the rest. An archive bucket's block also says that the archive is read-only and what a stub is ([archive](#17-archive)).
 
-The blocks hold rules, never facts about entities, so they change only when `para` is upgraded, and the root's also when the label scale changes. [The example tree](#appendix-a-example-tree) gives their exact text.
+The blocks hold rules, never facts about entities, so they change only when `para` is upgraded, and the root's also when the classification scale changes. [The example tree](#appendix-a-example-tree) gives their exact text.
 
 ### 5.5 What is never stored
 
@@ -1245,37 +1247,37 @@ These values follow the clock, measurements or file contents, so `para` works th
 - key result and indicator statuses, apart from a `dropped` you set ([derived status](#44-derived-status))
 - an analytic's value, and a key result's progress, pace and start value
 - whether work is overdue or stale ([staleness](#45-staleness))
-- a file's trust, its reliability and whether it is checked ([provenance and trust](#62-provenance-and-trust))
+- a file's trust, its reliability and whether it is checked, and a computed value's reliability ([lineage and trust](#62-lineage-and-trust))
 
 A stored copy would go wrong with no command run, and a generated file would go out of date with no change made ([generated files](#117-generated-files)).
 
 These are also worked out, not stored, but change only through a command, so a generated file may show them:
 
 - whether work is closed ([status](#114-status))
-- the label and settings that reach an entity, which `config.toml` holds only where they are set ([config](#35-config))
+- the level and settings that reach an entity, which `config.toml` holds only where they are set ([config](#35-config))
 - an entity's folder name, path and parent, which are where its folder sits ([`state.toml`](#32-statetoml))
 
 A value that history decides, such as attention, is a fact that its command stores in state ([truth and projection](#31-truth-and-projection)).
 
-## 6. Sensitivity and provenance
+## 6. Classification and lineage
 
-### 6.1 Sensitivity labels
-The default label set, how the root's config defines another scale, and what each label allows, so a label has one meaning in a tree.
+### 6.1 Classification levels
+The default levels, how the root's config defines another scale, and what each level allows, so a level has one meaning in a tree.
 
-### 6.2 Provenance and trust
-Sources and their grades, what a file's record holds (primary or derived, inputs, the accountable person and who acted for them, with the model, harness and session for an agent), how reliability and checked or unchecked are computed, and vouching, so origin and trust are recorded one way.
+### 6.2 Lineage and trust
+Sources and their grades, a metric's sources, what a file's lineage record holds (primary or derived, inputs and a note on each, the accountable person and who acted for them, with the model, harness and session for an agent), how reliability and checked or unchecked are computed for files and measurements, the notes on what an analytic's formula names, what `show` gives upstream and downstream, and vouching, so origin and trust are recorded one way.
 
-### 6.3 Where labels are set
-How the `config.toml` of any entity but a stub sets its sensitivity and tightens it for paths beneath it, without reaching into a child entity, so every label has exactly one home.
+### 6.3 Where classifications are set
+How the `config.toml` of any entity but a stub sets its level and tightens it for paths beneath it, without reaching into a child entity, so every level has exactly one home.
 
-### 6.4 How labels flow
-How labels reach the files beneath and the content derived from them (sensitivity only tightens, trust only falls, and only an explicit command, confirmed unless forced, reverses either), so nothing is loosened or trusted by accident.
+### 6.4 How classifications flow
+How levels reach the files beneath and flow along lineage to what is made from them (a level only tightens, trust only falls, and only an explicit command, confirmed unless forced, reverses either), so nothing is loosened or trusted by accident.
 
-### 6.5 What para does with labels
-How labels appear in outputs and checks, so a label has visible effect.
+### 6.5 What para does with classifications
+How levels appear in outputs and checks, so classification has visible effect.
 
-### 6.6 Unlabelled content
-How content with no label, or no provenance record, behaves, so labels and provenance stay optional.
+### 6.6 Unclassified content
+How content with no level, no lineage record or no sources behaves, so classification and lineage stay optional.
 
 ## 7. Command line
 
