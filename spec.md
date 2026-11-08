@@ -31,7 +31,7 @@ The tree's structure and metadata belong to `para`. They are:
 
 - every entity, which is every folder `para` manages (the folder itself, not what you put in it): the root, the containers (the buckets, archive buckets and ones such as `objectives/`), archive stubs, and every project, area, dir and entity of another kind. Each has a `.para/` folder, and together they form an unbroken chain from the root ([kinds and containment](#22-kinds-and-containment));
 - everything inside each `.para/`: state (including each recorded file's provenance), config (including sensitivity rules), a metric's measurements and the journal ([storage](#3-storage)). Anything else put inside a `.para/` is `para`'s too;
-- the keys `para` writes in README frontmatter, its marked blocks in READMEs and `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
+- the `para` key in README frontmatter ([READMEs](#53-readmes)), its marked blocks in READMEs and `AGENTS.md` files, and, until `para migrate` removes them, the blocks an earlier version wrote in `CLAUDE.md` ([para-owned blocks](#52-para-owned-blocks)).
 
 Change these only through `para`'s commands, including creating, moving, renaming, archiving and removing entities. The commands are designed to be the easiest way for a person or an agent to make these changes. `para` validates each change before writing anything and refuses an invalid one.
 
@@ -45,7 +45,7 @@ Every command depends on this split: it writes only `para`'s side.
 
 Agents, like people, are drawn to a clear, predictable framework that leaves them free to create within it. The framework keeps their attention on the task, and when following its rules is also the easiest way to work, they follow them. An agent often arrives in a tree with no memory of it and shares the tree with people, scripts and other agents, so it needs rules it can learn quickly and trust everyone else to follow, and `para` provides them.
 
-`para`'s rules for the structure (the buckets, the kinds and which kind may sit where) are small and the same in every tree, so an agent learns them once. The tree explains itself on disk: `AGENTS.md` at the root, in each bucket and in each archive bucket describes the rules ([`AGENTS.md`](#54-agentsmd)), and each entity's README shows its main facts in frontmatter ([README frontmatter](#53-readme-frontmatter)), so ordinary file tools are enough to find any entity and read about it.
+`para`'s rules for the structure (the buckets, the kinds and which kind may sit where) are small and the same in every tree, so an agent learns them once. The tree explains itself on disk: `AGENTS.md` at the root, in each bucket and in each archive bucket describes the rules ([`AGENTS.md`](#54-agentsmd)), and each entity's README shows its main facts in frontmatter ([READMEs](#53-readmes)), so ordinary file tools are enough to find any entity and read about it.
 
 The commands make the right path the easy one. Every change to the structure is made with a command, so the agent never needs to edit `para`'s side or know how `.para/` is laid out. A command refuses an invalid change before writing anything and says why and what to do instead, and [safety guarantees](#81-safety-guarantees) covers one that fails partway. Commands are [deterministic](#01-what-para-is), so an agent can rely on how each one behaves and confirm its result from the JSON output and exit codes ([output and exit codes](#710-output-and-exit-codes)). Each entity's journal shows the next agent or person what happened to it ([notes and the journal](#18-notes-and-the-journal)).
 
@@ -137,7 +137,7 @@ Besides those, every bucket and archive bucket holds its `.para/`, a `README.md`
 
 A project is work with a finish line, the first of the [PARA categories](#02-the-para-method). Its objectives say what it is trying to do, and its key results and status say how far it has got.
 
-Each live project is a folder directly in `projects/`, as sketched in [the tree](#11-the-tree). Its [status](#114-status) is one of `planned` (where a new project starts), `in-progress`, `blocked`, `done` or `dropped`, which a person or agent sets with a command as the work moves, and it may have a due date. Its `.para/state.toml` records these facts, and `para` copies them into keys in the README's frontmatter and keeps its own block in the README. Any other keys and text you put in the README stay as you wrote them ([README frontmatter](#53-readme-frontmatter), [para-owned blocks](#52-para-owned-blocks)).
+Each live project is a folder directly in `projects/`, as sketched in [the tree](#11-the-tree). Its [status](#114-status) is one of `planned` (where a new project starts), `in-progress`, `blocked`, `done` or `dropped`, which a person or agent sets with a command as the work moves, and it may have a due date. Its `.para/state.toml` records these facts, and `para` copies them into the `para` key of the README's frontmatter and keeps its own block in the README. Any other keys and text you put in the README stay as you wrote them ([READMEs](#53-readmes), [para-owned blocks](#52-para-owned-blocks)).
 
 A project holds its [objectives](#131-objectives) in `objectives/`, each with its [key results](#132-key-results), and its [links](#110-links) in `links/`. It can also hold [dirs](#111-dirs) and any content of your own. A project sits only in `projects/` or `archive/projects/`, and nothing else holds one at any depth, so a large effort is one project with several objectives ([kinds and containment](#22-kinds-and-containment)).
 
@@ -266,7 +266,7 @@ A dir is the basic kind of entity, a folder for material of any kind, such as a 
 
 Each live dir sits directly in `resources/`, a project, an area or another dir, and nowhere else; an archived one sits at its mirrored path in `archive/` ([archive](#17-archive)). A dir holds other dirs, its [links](#110-links) in its `links/` container and any content of your own, and no other entities ([kinds and containment](#22-kinds-and-containment)).
 
-Like a project or area, a dir has a journal that takes [notes](#18-notes-and-the-journal) and a README whose frontmatter and [block](#52-para-owned-blocks) `para` keeps, and it can carry its own [sensitivity label](#112-sensitivity-labels). [Review](#115-review) reports a dir as stale only when a `dir.stale-after` setting reaches it ([staleness](#45-staleness)).
+Like a project or area, a dir has a journal that takes [notes](#18-notes-and-the-journal) and a README whose `para` frontmatter key and [block](#52-para-owned-blocks) `para` keeps, and it can carry its own [sensitivity label](#112-sensitivity-labels). [Review](#115-review) reports a dir as stale only when a `dir.stale-after` setting reaches it ([staleness](#45-staleness)).
 
 A plain folder in a project, area or dir is content and needs nothing from `para`. Make it a dir when it needs notes, links or staleness of its own; to give it only a stricter label, a path rule in its entity's config is enough ([where labels are set](#63-where-labels-are-set)). [Adopting](#24-adopting-existing-directories) such a folder makes it a dir and keeps everything in it; a folder inside a plain folder can be adopted only once that folder is a dir.
 
@@ -360,7 +360,7 @@ Review ends by saying how many flags its suppressions leave out, and lists each 
 
 | File | Where | `para`'s part | Shows |
 | --- | --- | --- | --- |
-| `README.md` | every entity except a stub | its frontmatter keys and its block | the entity's main facts, such as its id, kind, set status and label; its children and, for a metric, a link to its measurements |
+| `README.md` | every entity except a stub | its `para` frontmatter key and its block | the entity's main facts, such as its id, kind, set status and label; its title and description, its children, a link to its history and, for a metric, a link to its measurements |
 | `AGENTS.md` | the root, each bucket and each archive bucket | its block | the tree's rules and what each label allows, for agents |
 
 A command that changes a fact rewrites every generated file that shows it in the same run ([write-through](#51-write-through)), and [`rebuild`](#78-rebuild) rewrites them all from the truth files, as after a git merge or a hand edit. Your own text outside `para`'s part is content and is kept, and anything written inside it is replaced at the next rewrite ([para-owned blocks](#52-para-owned-blocks)).
@@ -441,7 +441,7 @@ An id is the tree's prefix, a hyphen and a random code, such as `brain-7k2q`. Th
 
 `para` keeps a record of every id it has issued, to entities and to [provenance](#113-provenance) records alike, so it never reuses one and can count them. Each id gets an empty file of that name in the root's `.para/ids/`, which is never deleted, even when what it named is gone. A code whose file already exists is drawn again, and the number of files is the n above. Branches that issue ids add files with different names, so git merges the record without a conflict. If two branches draw the same code by chance, their files merge into one and two holders share the id, as below. An entity whose id has no file, such as one copied by hand from another tree with the same prefix, still answers to its id; [`doctor`](#82-doctor-findings) reports it, and [repair](#83-repair) adds the file.
 
-A command takes an id exactly as `para` prints it, never shortened. Every output names entities by id, [`list`](#74-reading) finds one by name, kind or place, and each README's frontmatter carries its entity's id ([README frontmatter](#53-readme-frontmatter)). A command refuses an id it cannot use and says why ([output and exit codes](#710-output-and-exit-codes)):
+A command takes an id exactly as `para` prints it, never shortened. Every output names entities by id, [`list`](#74-reading) finds one by name, kind or place, and each README's frontmatter carries its entity's id ([READMEs](#53-readmes)). A command refuses an id it cannot use and says why ([output and exit codes](#710-output-and-exit-codes)):
 
 - its prefix is not this tree's
 - two entities or records hold it
@@ -453,7 +453,7 @@ A git merge or a hand copy of a folder can leave two entities or records with on
 
 ### 2.4 Adopting existing directories
 
-Adopting makes a plain folder an entity. `para` adds a `.para/` and its part of the README, moves nothing and changes none of your content, so it can take over a tree that already exists.
+Adopting makes a plain folder an entity. `para` adds a `.para/` and its parts of the README, moves nothing and changes none of your content, so it can take over a tree that already exists.
 
 `adopt` takes the parent entity's id, a kind, and the names of one or more plain folders directly inside that parent; a name is enough there, since those folders are not entities yet. For example, it can make `cooking/` and `travel/` in `resources/` into dirs. Any facts the kind needs when created, such as a key result's due date, apply to every folder named. `adopt` checks every folder first, then adopts all of them or none ([safety guarantees](#81-safety-guarantees)).
 
@@ -465,7 +465,7 @@ Adopt parents first: a folder inside a plain folder waits until that folder is a
 - the name and kind do not match: a container's name is taken only by that container, and a container only by its name
 - a name is given twice or contains `/`
 - a named folder is missing, a file or a symlink, or holds something named `.para` at any depth
-- a README already there is not a plain file, or its frontmatter already uses a key `para` writes ([README frontmatter](#53-readme-frontmatter))
+- a README already there is not a plain file, or its frontmatter already has a `para` key or is not valid YAML ([READMEs](#53-readmes))
 - the parent is in the archive, which is read-only ([archive](#17-archive))
 
 No file's label loosens and no provenance is lost. Once the folder is an entity, the parent's path rules stop covering its files. So adoption gives the new entity the strictest label those rules gave any file in it, and journals it ([where labels are set](#63-where-labels-are-set)). Files those rules did not cover can end up stricter. The parent's rules stay as they are, and [`doctor`](#82-doctor-findings) warns about any rule that now matches nothing, which you can then delete. Provenance records for files in the folder, at any depth, move to the new entity from the nearest ancestor holding them, with their ids unchanged, so whatever names them as inputs still does ([provenance](#113-provenance)). A container holds no records, so when the new entity is a container they stay where they are until each file's subfolder is adopted.
@@ -569,9 +569,12 @@ These keys come first, in this order:
 | `kind` | the entity's kind, which says how to read the rest ([directory shapes](#21-directory-shapes)) |
 | `id` | the entity's id ([addressing](#23-addressing)) |
 | `title` | a title such as `"Launch website"`, present only when set, on any entity but a stub |
+| `description` | one line saying what the entity is for, such as `"Rebuild the marketing site on the new stack."`, present only when set, on any entity but a stub |
 | `created` | when the entity was created, adopted or migrated, set once and never changed ([time and the clock](#34-time-and-the-clock)) |
 
 A title is one line with at least one non-space character and no control characters, separate from the folder name: renaming one leaves the other. Clearing a title removes the key, and output then shows the folder name.
+
+A description follows the same form as a title. Both are set and cleared by command, and each change is journaled. Clearing a description removes the key.
 
 The root's `state.toml` also holds `schema`, the tree's schema version ([schema version](#93-schema-version)), and `prefix`, the prefix of its ids, which never changes. Having `kind = "root"` is what marks the tree ([the tree](#11-the-tree)).
 
@@ -834,14 +837,14 @@ A nested root directly inside an outer entity is a root in the wrong place, whic
 
 Most trees live in a git repository. `para` never reads or writes `.git/` or checks for a repository ([scope](#05-scope-and-non-goals)). A `.git/` inside the tree is content.
 
-`para` writes plain text files, each the same way every time, so a commit shows only what changed. It writes LF line endings, a whole file at a time, and reads LF, CRLF or a mix. Before appending to a file whose last line has no ending, it adds one.
+`para` writes plain text files, each the same way every time, so a commit shows only what changed. It writes LF line endings, a whole file at a time, and reads LF, CRLF or a mix. In a README or `AGENTS.md` it writes only its own lines this way and keeps yours as they are ([para-owned blocks](#52-para-owned-blocks)). Before appending to a file whose last line has no ending, it adds one.
 
 `para` never resolves a merge conflict: you resolve each one by hand. A merge can leave these behind:
 
 - **A conflict in a journal**, most often a bucket's, since each create writes to its parent's journal ([the journal](#33-the-journal)).
 - **A conflict in `state.toml` or `config.toml`.** The markers make the file unreadable, so its folder is [damaged](#21-directory-shapes). A conflict in either of the root's files stops every command, `doctor` included, until you resolve it ([the walk](#36-the-walk)).
 - **A conflict in `measurements.csv`**, handled as [recording measurements](#42-recording-measurements) describes.
-- **A conflict in a README or `AGENTS.md`**, common in a bucket's for the same reason. Markers inside `para`'s part go when [`rebuild`](#78-rebuild) rewrites that part, since it is generated. Markers anywhere else, or across the edge of `para`'s part, are yours to fix, and `doctor` reports them ([para-owned blocks](#52-para-owned-blocks)).
+- **A conflict in a README or `AGENTS.md`**, common in a bucket's for the same reason. Markers inside `para`'s block go when [`rebuild`](#78-rebuild) rewrites the block, since it is generated. Markers anywhere else, or across the edge of the block, are yours to fix; in frontmatter they make the YAML invalid, and `doctor` reports them ([para-owned blocks](#52-para-owned-blocks)).
 - **A folder left without its `state.toml`**, as when one branch removes an entity and the other changes a file in its `.para/`. The folder is damaged.
 - **Two entities with one id**, as a merge or a copy can leave ([addressing](#23-addressing)).
 - **A structure that breaks the rules**, such as a project inside a project ([kinds and containment](#22-kinds-and-containment)).
@@ -1111,19 +1114,148 @@ Two branches that suppress the same flag leave the table twice, or conflict mark
 ## 5. Generated files
 
 ### 5.1 Write-through
-When generated files are rewritten, so they are never out of date.
+
+A command that changes a fact rewrites every generated file that shows it, in the same run. It writes them after its checks pass, along with its changes to the truth files ([safety guarantees](#81-safety-guarantees)). Nothing is deferred, and no option skips it.
+
+A change reaches these files:
+
+| Change | Files rewritten |
+| --- | --- |
+| a fact of the entity's own, such as its status or due date | its README |
+| its id, title or folder name | its README and its parent's |
+| its description | its README |
+| an entity or stub arriving or leaving | the README of each parent it joins or leaves |
+| the label that covers it | the README of the entity and of every entity beneath it |
+| the sensitivity scale | the root's `AGENTS.md` |
+
+A new entity gets its README. [`init`](#73-init) also writes the `AGENTS.md` of the root and each bucket, and a new archive bucket gets its own. A file whose bytes would not change is left alone.
+
+A missing README or `AGENTS.md` is recreated whenever `para` would rewrite it, and [`doctor`](#82-doctor-findings) reports it until then. If a symlink, a folder or a file `para` cannot read stands where it must write, the command refuses before writing anything, naming it, so `para` never writes outside the tree. Replace it with a plain file or delete it.
+
+A label set on the root reaches every README in the tree, so one README anywhere beneath that is a symlink, unreadable or broken ([para-owned blocks](#52-para-owned-blocks)) stops the change. `doctor` lists them all.
+
+[`rebuild`](#78-rebuild) rewrites every generated file from the truth files. For the same truth, write-through and `rebuild` write the same bytes, so `rebuild` right after a command changes nothing. Run it after a hand edit or a merge ([git](#37-git)), and after upgrading `para`, since a new release may word or lay out these files differently and write-through rewrites only the files a change reaches. `doctor` reports any generated part that differs from what `rebuild` would write.
+
+Rewriting a generated file is never a journal event ([the journal](#33-the-journal)). Files in the archive are rewritten like any others ([archiving](#25-archiving)).
 
 ### 5.2 Para-owned blocks
-The markers that separate `para`'s text from yours, so `para` never overwrites your writing.
 
-### 5.3 README frontmatter
-The generated header on each thing's README, the main place a reader sees its facts.
+`para` shares two kinds of file with you, `README.md` and `AGENTS.md`. In each it writes one block between two marker lines:
+
+```markdown
+<!-- para:begin -->
+...
+<!-- para:end -->
+```
+
+The block is `para`'s, marker lines included. Everything outside it is yours, apart from a README's `para` frontmatter key ([READMEs](#53-readmes)). `para` writes its own lines with LF endings and keeps your bytes exactly as they are, line endings included, so a CRLF file ends up mixed ([git](#37-git)).
+
+A begin marker is a line that starts with `<!-- para:begin` and ends with `-->`. An end marker is the line `<!-- para:end -->`. Spaces at either end of a marker line are ignored, so a later release can reword the begin marker and still find the blocks an earlier one wrote. A marker line counts wherever it is, even inside a fenced code block of yours, so quote a marker with other text on its line.
+
+A file with no block gets one at the top, after any frontmatter, followed by a blank line. An existing block is rewritten where it is, so a block you move stays where you put it.
+
+`para` finds the block before it writes anything, and refuses rather than guess when:
+
+- a marker has no partner
+- there are two begin markers or two end markers
+- the end marker comes before the begin marker
+
+Only a command that must rewrite the file refuses. It names the file and points to `doctor`, which reports it. Fix the markers by hand, or delete the leftover ones and let `para` add a fresh block.
+
+Text written inside the block is replaced at the next rewrite. A git conflict inside the block goes the same way when `rebuild` rewrites it. A conflict outside the block is yours to fix, and `doctor` reports it ([git](#37-git)).
+
+[Removing](#76-writing) an entity takes `para`'s parts out of its README. It deletes the file only when nothing else is left but blank lines and empty frontmatter.
+
+### 5.3 READMEs
+
+Every entity except a stub has a `README.md`, the main place a reader without `para` sees its facts. `para`'s parts of it are the `para` key in its frontmatter and the block right after the frontmatter. Your own frontmatter keys sit beside the `para` key, and your text follows the block:
+
+```markdown
+---
+tags: [web]
+para:
+  kind: "project"
+  id: "brain-7k2q"
+  title: "Launch website"
+  description: "Rebuild the marketing site on the new stack."
+  label: "AMBER"
+  status: "in-progress"
+  status-since: "2026-10-02T16:00:00Z"
+  due: "2026-12-01T07:59:59Z"
+---
+<!-- para:begin -->
+# Launch website
+
+Rebuild the marketing site on the new stack.
+
+## Contents (para)
+
+- [designs/](designs/) dir "Mockups" brain-8k1p
+- [links/](links/) container brain-2c6v
+- [objectives/](objectives/) container brain-3f9a
+
+History: [.para/journal.jsonl](.para/journal.jsonl)
+<!-- para:end -->
+
+The old site is in `archive/`. Sam owns the copy.
+```
+
+The `para` key holds a map of what the entity is and where it stands. Its keys are `kind`, `id`, `title` and `description` when set, and `label`, then these where the entity has them, with the key names and order of [`state.toml`](#32-statetoml):
+
+- its set status, `status-since`, blocked reason and due date ([status](#114-status))
+- its archive time ([archiving](#25-archiving))
+- the keys that define its kind: a key result's or indicator's analytic, target or bounds and start ([targets](#43-targets-key-results-and-indicators)), an analytic's formula and a metric's terms ([analytics, metrics and terms](#41-analytics-metrics-and-terms)), and a link's type, ref and direction ([links](#110-links))
+
+`label` is the label that covers the entity, or `unlabelled` ([sensitivity labels](#112-sensitivity-labels)). An indicator with a range shows both bounds.
+
+The map leaves out `created`, attention, suppressions, provenance records and a source's grade, and every computed value, such as a key result's status or an analytic's value ([what is never stored](#55-what-is-never-stored)). [`show`](#74-reading) gives all of them.
+
+Strings are in double quotes, times are in UTC as stored, and numbers are written as in `state.toml`. [The example tree](#appendix-a-example-tree) shows the exact format.
+
+Frontmatter is the lines between a `---` on the file's first line, after any byte order mark, and the next `---` line. `para` keeps a byte order mark ahead of it. The `para` key runs from its line, which starts at the first column, to the next line that does too and is not blank. `para` rewrites only those lines, so your other keys keep their exact bytes, comments and order included. With no `para` key, `para` adds one at the end of the frontmatter, and a README with no frontmatter gets one at the top. A command that must rewrite the file refuses, as for a broken block ([para-owned blocks](#52-para-owned-blocks)), when:
+
+- the frontmatter is not valid YAML, or has no closing `---`
+- the `para` key appears twice
+- its value is not a map written one key per line, or an anchor or alias touches it
+
+The block opens with `# ` and the entity's title, or its folder name when no title is set, so it follows a rename or a new title. The description follows when set. Then comes the heading `## Contents (para)`, and a list follows with one line for each entity directly inside, stubs included, in path order ([review groups](#46-review-groups)). Each line gives the child's folder name as a relative link, its kind, its title in quotes when set, and its id. Links and titles are escaped where a name or title would break them. Then come a link to the entity's journal and, for a metric, a link to its `measurements.csv`. An entity with nothing inside has no list. [Adopting](#24-adopting-existing-directories) puts the block above your existing text, so you may want to delete a heading of your own that repeats the title.
 
 ### 5.4 `AGENTS.md`
-The file that orients an agent to the tree, which is how agents learn the framework.
+
+`para` writes a block in `AGENTS.md` at the root, in each bucket and in each archive bucket, and nowhere else. Many agent tools read these files, and together they cover every rule of the tree, so more files would only repeat them. Your own instructions outside the block are kept ([para-owned blocks](#52-para-owned-blocks)).
+
+The root's block tells an agent:
+
+- what the PARA method is and what each bucket holds ([the PARA method](#02-the-para-method))
+- which parts of the tree are `para`'s and which are yours ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours))
+- to change the structure only with `para`'s commands, naming the person it acts for with `--sub` and itself with `--act` ([the journal](#33-the-journal))
+- to write an entity's id alone when referring to it, and to run `para show` to see what an id names ([addressing](#23-addressing))
+- to mark a note as attention only when the upkeep it describes happened ([staleness](#45-staleness))
+- each label of the tree's scale and what it allows ([sensitivity labels](#61-sensitivity-labels))
+- after a git merge, to run `doctor`, fix what it reports, then run `rebuild` ([git](#37-git))
+
+A bucket's block says what the bucket holds and which kinds may sit where in it ([kinds and containment](#22-kinds-and-containment)), and points to the root's block for the rest. An archive bucket's block also says that the archive is read-only and what a stub is ([archive](#17-archive)).
+
+The blocks hold rules, never facts about entities, so they change only when `para` is upgraded, and the root's also when the label scale changes. [The example tree](#appendix-a-example-tree) gives their exact text.
 
 ### 5.5 What is never stored
-Values computed from the clock, measurements or file contents. They are never stored, so they are always current.
+
+These values follow the clock, measurements or file contents, so `para` works them out whenever they are needed and never stores them, in truth files or generated files ([principles](#06-principles)):
+
+- key result and indicator statuses, apart from a `dropped` you set ([derived status](#44-derived-status))
+- an analytic's value, and a key result's progress, pace and start value
+- whether work is overdue or stale ([staleness](#45-staleness))
+- a file's trust, its reliability and whether it is checked ([provenance and trust](#62-provenance-and-trust))
+
+A stored copy would go wrong with no command run, and a generated file would go out of date with no change made ([generated files](#117-generated-files)).
+
+These are also worked out, not stored, but change only through a command, so a generated file may show them:
+
+- whether work is closed ([status](#114-status))
+- the label and settings that reach an entity, which `config.toml` holds only where they are set ([config](#35-config))
+- an entity's folder name, path and parent, which are where its folder sits ([`state.toml`](#32-statetoml))
+
+A value that history decides, such as attention, is a fact that its command stores in state ([truth and projection](#31-truth-and-projection)).
 
 ## 6. Sensitivity and provenance
 
