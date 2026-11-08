@@ -57,7 +57,7 @@ These are outside `para`'s scope, and a feature that falls under one is declined
 
 - **Skills and tool-specific files**: `para` does not distribute skills (instructions packaged for an agent) or generate files for one agent tool, such as Cursor rules or `CLAUDE.md`. Distributing skills is its own problem, and tool-specific files differ from tool to tool. Other tools can layer both on a tree, and layering skills on top is the intended way to customize how agents work with it. `para` writes only its own block in `AGENTS.md`, a file many agent tools read and that you may also use for your own instructions ([`AGENTS.md`](#54-agentsmd)). [`para migrate`](#91-migrating-a-v0-tree) removes the `CLAUDE.md` blocks an earlier version wrote.
 - **Version control**: `para` never runs git or requires a repository, so it works the same in any tree and never commits for you. [Git](#37-git) covers how its files behave in a repository.
-- **Interpreting content**: `para` never judges a file by what it says, and calls no AI model. A model's answer would make commands nondeterministic, so a file's lineage comes from what a person or agent records, its classification level from the tree's rules, and its trust is computed from those records, the grades a person sets and their vouches.
+- **Interpreting content**: `para` never judges a file by what it says, and calls no AI model. A model's answer would make commands nondeterministic, so a file's lineage comes from what a person or agent records, its classification level from the tree's rules, and its trust is computed from those records, the grades a person sets and their attestations.
 - **Reaching outside the tree**: `para` never fetches or sends anything over a network, which keeps every command [deterministic](#01-what-para-is). A [link](#110-links) points to something outside the tree and is flagged when it is due to be checked or updated, and outside values enter only as [recorded measurements](#42-recording-measurements).
 - **Running on its own**: `para` has no background process, schedule or notifications, so nothing changes the tree unless someone runs a command. [`review`](#77-review) is how to ask what needs attention.
 - **Access control**: `para` does not encrypt files or set file permissions. A [classification](#112-classification) level records how far content may travel, but `para` cannot stop a readable file being copied. [What para does with classifications](#65-what-para-does-with-classifications) covers what it does instead.
@@ -228,7 +228,7 @@ You can [archive](#25-archiving) any entity except the root, a container or a st
 
 When something is archived from inside a live entity, `para` puts a stub for each live ancestor that nothing in the archive stands for yet. A stub is an entity that records the id and kind of the entity it stands for and holds only archived entities and other stubs. Stubs are `para`'s alone, so only `show` and `list` take a stub's id. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs. An entity or stub arriving at a path already held gets a numbered suffix ([archiving](#25-archiving)).
 
-The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [classification](#112-classification) level, lowering a [source's grade](#113-lineage), vouching for a file or metric, or a change of the [classification scale](#61-classification-levels). Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
+The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [classification](#112-classification) level, lowering a [source's grade](#113-lineage), attesting a file or metric, or a change of the [classification scale](#61-classification-levels). Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
 ### 1.8 Notes and the journal
 
@@ -288,13 +288,13 @@ Lineage records where content came from, as a graph: sources at its start, then 
 
 A source is an entity that stands for where material comes from, such as a sender, a website, a person or an agent, and carries a reliability grade a person sets, from `A` (reliable) to `F` (cannot be judged) by default ([config](#35-config)). Sources are kept, like terms, in `resources/sources/`, which [`init`](#73-init) creates along with your own source, since every event names one ([the journal](#33-the-journal)). A source added without a grade starts at the lowest. Setting or raising a grade is a person's act, as loosening a level is, and lowering one is allowed even in the archive.
 
-You record a file with a command after it exists, as a primary or a derived work. A primary is a copy of something from outside the tree, such as an email or a web page; it names its source, and `para` keeps its hash, so a later change to it is flagged. A derived work, such as notes or a summary, names the files it was made from by their records' ids, and stays free to change. Each input may carry a one-line note saying what was done to it, such as "kept only the signing date". Naming a file that has no record gives it a bare one, which counts as unrecorded until you record it. Naming one where no record can be written, such as in the archive, is refused. Every record names the person accountable and, when someone acted for them, such as an agent working for a person, who did the work; both are sources. An agent's source is its model and harness, and each record it makes also notes the exact model, harness version and session, given with the command, as facts that are never graded. `para` takes these names as given.
+You record a file with a command after it exists, as a primary or a derived work. A primary is a copy of something from outside the tree, such as an email or a web page; it names its source, and `para` keeps its hash, so a later change to it is flagged. A derived work, such as notes or a summary, names the files it was made from by their records' ids, and stays free to change. Each input may carry a one-line note saying what was done to it, such as "kept only the signing date". Naming a file that has no record gives it a bare one, which counts as unrecorded until you record it. Naming one where no record can be written, such as in the archive, is refused. Every record names the person accountable and, when someone acted for them, such as an agent working for a person, who did the work; both are sources, and the accountable one is always a person. A file can never be made from itself, through any chain of inputs. An agent's source is its model and harness, and each record it makes also notes the exact model, harness version and session, given with the command, as facts that are never graded. `para` takes these names as given.
 
 Measurements join the same graph. A metric may name its sources, such as a bathroom scale or a payment service. An analytic is made from what its formula names, each of which may carry a note too, and a key result or indicator from its analytic ([measurement](#15-measurement)). Changing a metric's sources so its reliability rises is a person's act too, as is any change to a record that raises a file's reliability, such as naming a better-graded source or dropping an input. A source can be archived unless a live metric names it; a record or event that names it does not prevent this.
 
-Trust has two parts, computed whenever it is shown and never stored. A file's reliability is the worst grade among its sources: for a primary, its source alone; for a derived work, the people accountable for it, anyone who acted for them, and everything it was made from, through every input. A primary that changed, a source or input that is gone, or an unrecorded input, counts as the lowest grade. A measurement's reliability is the worst grade among its metric's sources, the lowest when it names none or one is gone. The person it was recorded for, and anyone acting for them, count too. An analytic, key result or indicator takes the worst of the measurements it uses. A file is unchecked while it, or anything it was made from, holds recorded work done for a person that they have not since vouched for, and a metric while it holds such measurements. A vouch, on a file or a metric, is that person's act, with no one acting for them ([grammar](#71-grammar)), and puts the person's grade in place of every actor's for the work recorded before it. It never lifts reliability above the worst source. So a summary that an agent graded `B` writes for a person graded `A`, from an email graded `C`, reads `C, unchecked` until that person vouches for it, and `C` even then.
+Trust has two parts, computed whenever it is shown and never stored. A file's reliability is the worst grade among its sources: for a primary, its source alone; for a derived work, the people accountable for it, anyone who acted for them, and everything it was made from, through every input. A primary that changed, a source or input that is gone, or an unrecorded input, counts as the lowest grade. A metric's reliability, which each of its measurements shares, is the worst grade among its sources, the lowest when it names none or one is gone, and the people its measurements were recorded for and anyone acting for them. An analytic takes the worst of the metrics it uses, and a key result or indicator its analytic's. A file is unchecked while it, or anything it was made from, holds recorded work done for a person that they have not since attested, and a metric while anyone in its `accountable` has work they have not since attested. An attestation, on a file or a metric, is that person's act, with no one acting for them ([grammar](#71-grammar)), and puts the person's grade in place of every actor's for the work recorded before it. It never lifts reliability above the worst source. So a summary that an agent graded `B` writes for a person graded `A`, from an email graded `C`, reads `C, unchecked` until that person attests it, and `C` even then.
 
-A file's lineage record has an id, drawn and recorded like entity ids ([addressing](#23-addressing)), and sits in the `state.toml` of the entity that holds it, which is never the root, a container or a stub. Its path within that entity is a property of the record: after a rename or move, a command updates the path, and every input still resolves because it names the record's id. Like a path rule, a record never covers a file inside a child entity, with one exception: a file in a container, or in a plain folder there waiting to be adopted, keeps its record in the nearest ancestor that can hold one. Each recording, change to a record and vouch is an event in that entity's journal. A file with no record is `unrecorded`, and `para` assumes nothing about it. [`show`](#74-reading) gives what a file or entity was made from, what was made from it, and its trust, which [`list`](#74-reading) gives too. [`doctor`](#82-doctor-findings) reports a primary that changed and a record whose file is gone; a command sets its new path ([lineage and trust](#62-lineage-and-trust)).
+A file's lineage record has an id, drawn and recorded like entity ids ([addressing](#23-addressing)), and sits in the `state.toml` of the entity that holds it, which is never the root, a container or a stub. Its path within that entity is a property of the record: after a rename or move, a command updates the path, and every input still resolves because it names the record's id. Like a path rule, a record never covers a file inside a child entity, with one exception: a file in a container, or in a plain folder there waiting to be adopted, keeps its record in the nearest ancestor that can hold one. Each recording, change to a record and attestation is an event in that entity's journal. A file with no record is `unrecorded`, and `para` assumes nothing about it. [`show`](#74-reading) gives what a file or entity was made from, what was made from it, and its trust, which [`list`](#74-reading) gives too. [`doctor`](#82-doctor-findings) reports a primary that changed and a record whose file is gone; a command sets its new path ([lineage and trust](#62-lineage-and-trust)).
 
 ### 1.14 Status
 
@@ -329,9 +329,9 @@ It reports in six groups, and anything that needs attention appears in every gro
 | key results | open key results that are `at-risk` or `missed` |
 | indicators | indicators that are `breached`, `at-risk` or `no-data` |
 | stale | entities that have gone without [attention](#18-notes-and-the-journal) for longer than their `<kind>.stale-after` setting ([staleness](#45-staleness)) |
-| unchecked | files holding work done for a person that they have not since vouched for, when the file, or any file made from it directly or through other inputs, is live and outside closed work; metrics holding such measurements, when a live key result or indicator outside closed work uses them ([lineage](#113-lineage)) |
+| unchecked | files holding work done for a person that they have not since attested, when the file, or any file made from it directly or through other inputs, is live and outside closed work; metrics where anyone accountable has work they have not since attested, when a live key result or indicator outside closed work uses them ([lineage](#113-lineage)) |
 
-A missed key result stays listed, except while [suppressed](#116-suppression), until it is closed, archived or removed. The unchecked group lists the files and metrics to vouch for, wherever they sit, and names the live files, key results and indicators that use each; a file unchecked only through its inputs is not listed itself.
+A missed key result stays listed, except while [suppressed](#116-suppression), until it is closed, archived or removed. The unchecked group lists the files and metrics to attest, wherever they sit, and names the live files, key results and indicators that use each; a file unchecked only through its inputs is not listed itself.
 
 Apart from the unchecked group, review reports nothing in the archive, and nothing that is closed or sits under a closed project or objective, including its dirs, links and files. Areas never close, so their indicators and staleness always count. To pause one flag for a known reason, such as an area left alone while you travel, suppress it.
 
@@ -348,7 +348,7 @@ Suppression pauses one [review](#115-review) flag, an entity's place in one revi
 | key results | a key result `at-risk` because a launch slipped, which you still mean to reach |
 | indicators | an indicator with `no-data` while a broken tracker is replaced |
 
-Overdue and unchecked flags cannot be suppressed, since each has its own remedy: set a new due date, or vouch for the file or metric.
+Overdue and unchecked flags cannot be suppressed, since each has its own remedy: set a new due date, or attest the file or metric.
 
 A suppression leaves the entity's other flags, and everything beneath it, reported as usual. A stale flag can be suppressed before it appears, such as before a trip. A status can be suppressed only while it is flagged, and the suppression holds only for that status: one suppressed while `at-risk` is reported again if it becomes `missed`, and one suppressed for `no-data` is reported again if it turns `breached`.
 
@@ -602,9 +602,12 @@ Other keys are defined with the behaviour they serve:
 | archive time | archived entities | [archiving](#25-archiving) |
 | analytic, target (`at-least` or `at-most`), start and bounds | key results, indicators | [targets](#43-targets-key-results-and-indicators) |
 | what it computes and the metrics, terms and sources it uses | analytics, metrics | [analytics, metrics and terms](#41-analytics-metrics-and-terms) |
+| notes on the metrics its formula names | analytics | [lineage and trust](#62-lineage-and-trust) |
 | type, ref and direction | links | [links](#110-links) |
+| type (`person`, `agent` or `other`) | sources | [lineage and trust](#62-lineage-and-trust) |
 | lineage records | every kind but the root, a container and a stub | [lineage and trust](#62-lineage-and-trust) |
-| a declassification | analytics; a derived work's sits in its lineage record | [how classifications flow](#64-how-classifications-flow) |
+| `accountable`, the people its measurements were recorded for | metrics | [lineage and trust](#62-lineage-and-trust) |
+| a declassification | analytics; a derived work's sits in its lineage record | [lineage and trust](#62-lineage-and-trust) |
 | suppressions | entities that can go stale, projects, objectives, key results, indicators | [suppression](#47-suppression) |
 
 State never holds the entity's folder name, path or parent, since those are where its folder sits, nor any value [what is never stored](#55-what-is-never-stored) lists, nor anything chosen in config ([config](#35-config)).
@@ -642,7 +645,7 @@ Every event names who did it, as [sources](#113-lineage), the entities that stan
 
 - A command takes the accountable person with `--sub` and anyone acting for them with `--act`, or `PARA_SUB` and `PARA_ACT` when the flags are absent ([fields and time input](#72-fields-and-time-input)).
 - `--act` repeats for a chain: the first acts for the `sub`, and each later one for the one before.
-- Each must name a live source, not an archived one. A command that would append an event refuses without a `sub` or with an id that is not a live source.
+- Each must name a live source, not an archived one: the `sub` a person, each actor a person or an agent, and only an agent with a `model`, `harness` or `session` ([lineage and trust](#62-lineage-and-trust)). A command that would append an event refuses without a `sub` or with an id that breaks this.
 - [`init`](#73-init) and [`migrate`](#91-migrating-a-v0-tree) take your name and create your source, which their own events then name.
 - `para` does not check that the people named are who they say.
 
@@ -730,9 +733,9 @@ These are the settings:
 | --- | --- | --- | --- |
 | `time-zone` | the root only | UTC | [time and the clock](#34-time-and-the-clock) |
 | `classification-scale` | the root only | TLP 2.0 | [classification levels](#61-classification-levels) |
-| the reliability scale | the root only | `A` to `F` | [lineage and trust](#62-lineage-and-trust) |
+| `reliability-scale` | the root only | `A` to `F` | [lineage and trust](#62-lineage-and-trust) |
 | `classification` and `path-classifications` | any entity but a stub | none | [where classifications are set](#63-where-classifications-are-set) |
-| a source's grade | sources only | the lowest grade | [lineage and trust](#62-lineage-and-trust) |
+| `reliability`, a source's grade | sources only | the lowest grade | [lineage and trust](#62-lineage-and-trust) |
 | `<kind>.stale-after`, for each kind that can go stale | any entity but a stub | none (`init` writes two, below) | [staleness](#45-staleness) |
 | `key-result.grace` | any entity but a stub | 0.1 | [derived status](#44-derived-status) |
 | `key-result.pace` | any entity but a stub | 0.8 | [derived status](#44-derived-status) |
@@ -939,9 +942,9 @@ Rows are sorted by `at`, then by `event`, and the file is written the same way e
 
 A value is typed as an optional `-`, digits, and optionally a `.` and more digits, such as `7.25`, `-3` or `007.50`, so `+7`, `.5`, `5.`, `1,000`, `1e3`, NaN and infinities are refused. Its magnitude, once stored, must be below 10^15. `para` stores the nearest 64-bit float, written as the shortest decimal that reads back to it, with no exponent: `7.5`, `0.1`, `1200`, and `0` for minus zero.
 
-Recording a measurement adds its row, with a note if you give one, and logs it in the metric's journal, with who recorded it. Its claimed time is now unless you give an earlier one, which may fall before the metric was created, as when loading old readings. It is never in the future.
+Recording a measurement adds its row, with a note if you give one, and logs it in the metric's journal, with who recorded it, and adds them to the metric's `accountable` ([lineage and trust](#62-lineage-and-trust)). Its claimed time is now unless you give an earlier one, which may fall before the metric was created, as when loading old readings. It is never in the future.
 
-Correcting a measurement changes its value, its note or its claimed time, which may again be any past time. Withdrawing one deletes its row ([the journal](#33-the-journal)). After the last withdrawal, the file holds only its header. An archived metric's measurements cannot be recorded, corrected or withdrawn until you unarchive it.
+Correcting a measurement changes its value, its note or its claimed time, which may again be any past time. Withdrawing one deletes its row ([the journal](#33-the-journal)). Correcting or withdrawing one also adds who did it to the metric's `accountable`. After the last withdrawal, the file holds only its header. An archived metric's measurements cannot be recorded, corrected or withdrawn until you unarchive it.
 
 When reading the file, `para` ignores a UTF-8 byte order mark and blank lines and accepts a field in double quotes. A value in another accepted form, such as `7.50`, is read and rewritten in stored form at the next write. Hand edits and merges can leave these behind:
 
@@ -1207,11 +1210,11 @@ The `para` key holds a map of what the entity is and where it stands. Its keys a
 
 - its set status, `status-since`, blocked reason and due date ([status](#114-status))
 - its archive time ([archiving](#25-archiving))
-- the keys that define its kind: a key result's or indicator's analytic, target or bounds and start ([targets](#43-targets-key-results-and-indicators)), an analytic's formula and a metric's terms and sources ([analytics, metrics and terms](#41-analytics-metrics-and-terms)), and a link's type, ref and direction ([links](#110-links))
+- the keys that define its kind: a key result's or indicator's analytic, target or bounds and start ([targets](#43-targets-key-results-and-indicators)), an analytic's formula and a metric's terms and sources ([analytics, metrics and terms](#41-analytics-metrics-and-terms)), a source's type ([lineage and trust](#62-lineage-and-trust)), and a link's type, ref and direction ([links](#110-links))
 
 `classification` is the level that covers the entity, left out when there is none ([classification](#112-classification)). An indicator with a range shows both bounds.
 
-The map leaves out `created`, attention, suppressions, lineage records and a source's grade, and every computed value, such as a key result's status or an analytic's value ([what is never stored](#55-what-is-never-stored)). [`show`](#74-reading) gives all of them.
+The map leaves out `created`, attention, suppressions, lineage records, a metric's `accountable` and a source's grade, and every computed value, such as a key result's status or an analytic's value ([what is never stored](#55-what-is-never-stored)). [`show`](#74-reading) gives all of them.
 
 Strings are in double quotes, times are in UTC as stored, and numbers are written as in `state.toml`. [The example tree](#appendix-a-example-tree) shows the exact format.
 
@@ -1248,7 +1251,7 @@ These values follow the clock, measurements or file contents, so `para` works th
 - key result and indicator statuses, apart from a `dropped` you set ([derived status](#44-derived-status))
 - an analytic's value, and a key result's progress, pace and start value
 - whether work is overdue or stale ([staleness](#45-staleness))
-- a file's trust, its reliability and whether it is checked, and a computed value's reliability ([lineage and trust](#62-lineage-and-trust))
+- a file's or metric's trust, its reliability and whether it is checked, and a computed value's reliability ([lineage and trust](#62-lineage-and-trust))
 - a derived work's level and the level of a computed value ([how classifications flow](#64-how-classifications-flow))
 
 A stored copy would go wrong with no command run, and a generated file would go out of date with no change made ([generated files](#117-generated-files)).
@@ -1332,7 +1335,171 @@ Applying a scale change:
 A scale edited by hand gets no mapping, so any level it drops is then not in the scale. A level in config or state that is not in the scale is a value `para` cannot use. Each command that shows or compares a level covering that folder refuses, naming the folder and pointing to [`doctor`](#82-doctor-findings) ([config](#35-config)). Two changes still work: a scale change that maps it, and setting a level in its place, which is a person's act since the two cannot be compared.
 
 ### 6.2 Lineage and trust
-Sources and their grades, a metric's sources, what a file's lineage record holds (primary or derived, inputs and a note on each, the accountable person and who acted for them, with the model, harness and session for an agent), how reliability and checked or unchecked are computed for files and measurements, the notes on what an analytic's formula names, what `show` gives upstream and downstream, and vouching, so origin and trust are recorded one way.
+
+Trust is worked out from the facts of [lineage](#113-lineage) and the grades a person sets.
+
+A source is an entity in `resources/sources/`. Its `state.toml` holds a `type`, given when the source is created and never changed:
+
+| Type | Stands for |
+| --- | --- |
+| `person` | a person, who can be accountable for work |
+| `agent` | a model and harness, such as Claude Code with Opus 5.5 |
+| `other` | any other origin, such as a sender, a website or a bathroom scale |
+
+Every event's `sub` must name a person, and each actor in its `act` a person or an agent. `--model`, `--harness` and `--session` go only with an agent ([the journal](#33-the-journal)). A primary's source and a metric's sources may be of any type. [`init`](#73-init) and [`migrate`](#91-migrating-a-v0-tree) create your source as a person. `para` takes a type on trust, so it prevents mistakes, not misuse.
+
+A source's grade is the `reliability` key in its `config.toml`:
+
+```toml
+reliability = "B"
+```
+
+A source with no grade has the lowest. Setting or raising a grade is a [person's act](#71-grammar). Lowering or removing one is routine, even in the archive. Entities beneath a source never inherit its grade ([config](#35-config)).
+
+By default the grades are the Admiralty system's grades of source reliability:
+
+| Grade | Means |
+| --- | --- |
+| `A` | completely reliable |
+| `B` | usually reliable |
+| `C` | fairly reliable |
+| `D` | not usually reliable |
+| `E` | unreliable |
+| `F` | reliability cannot be judged |
+
+The root's config can replace them with `[[reliability-scale]]` entries, best first, each with a `name` and what it `means`. The last entry is the lowest grade. `para config` refuses a scale on the same grounds as a [level scale](#61-classification-levels). Changing the scale is a person's act. It takes no mapping, since grades sit only on sources and you regrade them yourself. A grade not in the scale counts as the lowest, and [`doctor`](#82-doctor-findings) reports it.
+
+A lineage record describes one file. Only a regular file inside an entity can be recorded. `para` refuses a symlink or a path through one, a README or `AGENTS.md`, and anything in a `.para/`. Records sit in the `state.toml` of the entity holding the file, as `[records.<id>]` tables in path order, one per path ([lineage](#113-lineage)). Here an email in an area is an input to a draft in a project:
+
+```toml
+# areas/legal/.para/state.toml, showing one record
+[records.brain-5h2k]
+path = "nda.eml"
+form = "primary"
+source = "brain-s7ac"
+hash = "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+
+[[records.brain-5h2k.accountable]]
+sub = "brain-s0me"
+```
+
+```toml
+# projects/blog/.para/state.toml, showing one record
+[records.brain-8d3m]
+path = "draft.md"
+form = "derived"
+inputs = [
+  { record = "brain-2p9q" },
+  { record = "brain-5h2k", note = "Kept only that a deal was signed; no names, terms or dates." },
+]
+
+[[records.brain-8d3m.accountable]]
+sub = "brain-s0me"
+attested = "2026-11-03T09:00:00Z"
+unattested = [
+  { sub = "brain-s4gt", model = "claude-opus-5-5", harness = "claude-code/3.2.1", session = "a1b2c3" },
+]
+```
+
+A record's keys, in the order `para` writes them:
+
+| Key | Holds |
+| --- | --- |
+| `path` | the file's path within the entity, with `/` between names |
+| `form` | `primary` or `derived` |
+| `source` | a primary's source id |
+| `hash` | a primary's hash when recorded |
+| `inputs` | a derived work's inputs in id order, each a `record` id and an optional `note` |
+| `declassified` | a declassification, when there is one |
+| `accountable` | in `sub` order, each person accountable for work on the file: their `sub`, when they last `attested`, and the work recorded for them since that is `unattested`, each entry one event's `act` with its whole chain |
+
+A bare record, made when an unrecorded file is named as an input, holds only `path` and counts as unrecorded. A note on an input, like every note in a record or an analytic, follows the form of a [title](#32-statetoml).
+
+A primary's `hash` is the SHA-256 of its raw bytes when recorded, written as `sha256:` and 64 lowercase hex digits. A primary whose bytes no longer match has changed.
+
+A metric keeps an `accountable` table in its `state.toml` in the same form, for the people its measurements were recorded for ([recording measurements](#42-recording-measurements)):
+
+```toml
+# resources/measurement/metrics/weight/.para/state.toml, abridged
+kind = "metric"
+id = "brain-w8t2"
+sources = ["brain-sc4l"]
+
+[[accountable]]
+sub = "brain-s0me"
+attested = "2026-11-03T09:00:00Z"
+```
+
+An analytic's notes, one for each metric its formula names, sit in a `[notes]` table in its `state.toml`, keyed by the metric's id. Setting or clearing one is an event in its journal, and a new formula drops the notes on metrics it no longer names:
+
+```toml
+formula = "sum(brain-7k2q[28d]) / sum(brain-9p3w[28d])"
+
+[notes]
+"brain-7k2q" = "Counted visits only; no addresses."
+```
+
+A declassification is a `declassified` table, in the derived work's record or in the analytic's `state.toml` ([how classifications flow](#64-how-classifications-flow)). It holds the `level`, what it covers (the file's `hash` or the analytic's `formula`), and `bound`, each bound note with its input and that input's level when bound. An analytic's entries name an `id` in place of a `record`. If `draft.md` were declassified, its record would gain:
+
+```toml
+[records.brain-8d3m.declassified]
+level = "GREEN"
+hash = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+bound = [
+  { record = "brain-5h2k", note = "Kept only that a deal was signed; no names, terms or dates.", level = "RED" },
+]
+```
+
+Four commands write records: recording a file, changing its record, recording work done on it, and attesting ([writing](#76-writing)). Each is an event in the holding entity's journal, with the full `sub` and `act`. Each adds its `sub` to `accountable` when missing, and its `act`, when there is one, to that person's `unattested`. Recording, correcting and withdrawing a measurement do the same to its metric's `accountable`. `para` never reads content, so when you or an agent work on a derived work, recording the work, and any new inputs, is how the record learns of it.
+
+Recording a file for the first time, or filling in a bare record, is routine, even for an agent, whose work then shows as unchecked. A change to an existing record is a person's act when it raises the file's reliability. `para` compares the record before and after the change, leaving out the `sub` and `act` the command itself adds, so an agent's own grade cannot hide a raise. Naming a better source, dropping an input and taking a changed primary's new hash are all raises. A change that lowers the file's level is a person's act too ([how classifications flow](#64-how-classifications-flow)). Other changes are routine.
+
+A derived work names each input once, by record id. An input is never the file itself. `para` refuses a change that would make a file come from itself through any chain of inputs, and names the chain. A loop left by a hand edit or a merge is walked once, and `doctor` reports it.
+
+A file's reliability is the worst of:
+
+- for a primary, its source's grade alone
+- for a derived work, the grade of each person in `accountable`, of every actor at every depth of each chain in their `unattested`, and the reliability of each input
+
+These each count as the lowest grade: a primary that changed, a bare record, an input whose record is gone or whose path no longer holds a regular file, and a source that is gone. An archived source keeps its grade. `para` follows inputs through every chain, visits each record once, and hashes each file at most once per command.
+
+A metric's reliability, which each of its measurements shares, is the worst of its sources' grades, the grade of each person in its `accountable`, and of every actor in their `unattested`. A metric that names no source, or one that is gone, counts as the lowest. An analytic's value takes the worst reliability of the metrics its formula names, a metric that is gone counting as the lowest, and a key result's or indicator's progress, pace and status take its analytic's. A value that cannot be computed has none.
+
+A file is unchecked while any person in its record has `unattested` work, or while anything it was made from, through any chain, is unchecked. A metric is unchecked while any person in its `accountable` has `unattested` work.
+
+An attestation says a person has checked the work done for them. It names a file's record or a metric, and is a person's act by that person, with no one acting for them, so an archived person cannot attest ([grammar](#71-grammar)). The person must be in its `accountable`. Attesting sets their `attested` to now and empties their `unattested`, as an event in the journal of the entity holding the record, or of the metric.
+
+The actors' grades then stop counting for that work. On a derived work or a metric the person's grade already counted. On a primary, attesting clears unchecked without changing reliability. Work recorded later is unattested again. Attesting is allowed in the archive.
+
+[`show`](#74-reading) gives upstream and downstream, one step each way, with each neighbour's level and reliability. An option gives the whole chain ([reading](#74-reading)):
+
+| Given | Made from | Made into |
+| --- | --- | --- |
+| a record id | its source or its inputs with their notes | the records that name it |
+| a metric | its sources with their grades | the analytics whose formulas name it |
+| an analytic | the metrics its formula names, with their notes | the key results and indicators that use it |
+| a key result or indicator | its analytic | nothing |
+| a source | nothing | the records and metrics that name it |
+
+For a record or a metric, `show` also gives each accountable person, when they last attested and their unattested work, with model, harness and session.
+
+`para` keeps no index of what names a record or entity. It finds what was made from one by reading each `state.toml` in the tree, as it finds ids, and warns that anything beneath a [damaged folder](#21-directory-shapes) may be missing. For example, with the format fixed in [output and exit codes](#710-output-and-exit-codes):
+
+```text
+$ para show brain-8d3m
+draft.md  record brain-8d3m in brain-3b6v projects/blog
+derived  RED  C, unchecked
+made from:
+  brain-2p9q  projects/blog/notes.md  derived  GREEN  B
+  brain-5h2k  areas/legal/nda.eml  primary  RED  C
+    note: Kept only that a deal was signed; no names, terms or dates.
+made into:
+  brain-9t1x  projects/blog/post.md  derived  RED  C, unchecked
+accountable:
+  brain-s0me  Max Dunn  A  attested 2026-11-03
+    unattested: brain-s4gt  Claude Code with Opus 5.5  B
+      claude-opus-5-5  claude-code/3.2.1  a1b2c3
+```
 
 ### 6.3 Where classifications are set
 
@@ -1381,7 +1548,7 @@ Loosening means lowering a level, or removing one when the level above is looser
 
 The confirmation guards against accidents only. A hand edit to `config.toml` skips it. `doctor` reports a level looser than the one above it. A hand edit that keeps that order cannot be seen, since nothing checks config against the journal ([truth and projection](#31-truth-and-projection)).
 
-Along lineage, a derived work's level is the strictest of its place level ([where classifications are set](#63-where-classifications-are-set)) and the level of each file it was made from ([lineage and trust](#62-lineage-and-trust)). Each input's level is worked out the same way, so it already includes that input's own inputs and any declassification. `para` works this out whenever the level is shown, as it does trust, and visits each input once, so a loop of inputs adds nothing. An input whose record or file is gone counts as the strictest level in the scale, so losing an input never loosens what was made from it. In a tree that sets no level anywhere, it adds nothing. An unclassified input adds nothing.
+Along lineage, a derived work's level is the strictest of its place level ([where classifications are set](#63-where-classifications-are-set)) and the level of each file it was made from ([lineage and trust](#62-lineage-and-trust)). Each input's level is worked out the same way, so it already includes that input's own inputs and any declassification. `para` works this out whenever the level is shown, as it does trust, and visits each input once, so a loop left by a hand edit or a merge adds nothing ([lineage and trust](#62-lineage-and-trust)). An input whose record or file is gone counts as the strictest level in the scale, so losing an input never loosens what was made from it. In a tree that sets no level anywhere, it adds nothing. An unclassified input adds nothing.
 
 For example, an agent writes `projects/blog/draft.md` in a `GREEN` project and records it as made from `areas/legal/nda.eml`, which is `RED`. Then `draft.md` is `RED`.
 
