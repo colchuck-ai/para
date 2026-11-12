@@ -439,7 +439,7 @@ A command refuses any change that breaks these rules, such as filing a dir in `p
 
 Commands name an entity only by its id, never by its path or name. A path says where an entity is now, and that changes whenever it is renamed, moved or archived, often by people, agents or git outside `para`, which cannot rewrite the notes, scripts and memories that mention it. An id stays the same for the entity's whole life and is never given to another, so a stale reference fails instead of reaching the wrong entity. Write the id alone when you refer to an entity, and use [`show`](#74-reading) to see what it names. The id is stored in the entity's [`state.toml`](#32-statetoml) and travels with its folder, and `para` finds an entity by reading the tree for its id ([the walk](#36-the-walk)). [Lineage](#113-lineage) records have ids too, and a derived work names its inputs by them.
 
-An id is the tree's prefix, a hyphen and a random code, such as `brain-7k2q`. The prefix is letters and digits, set when the tree is created or migrated and never changed ([`init`](#73-init), [migrating a v0 tree](#91-migrating-a-v0-tree)). The code is lowercase letters and digits, at least four characters long. New codes get longer as the tree issues more ids, so the chance of two ids ever matching stays at or below 1%: four characters cover about 180 ids, five about 1,100 and six about 6,600. Issuing a new id never changes an existing one. The exact rule: each new code has the shortest length L, at least 4, for which n² ÷ (2 × 36^L) ≤ 0.01, where 36 is the number of characters a code may use and n counts every id issued so far plus the new one. [Worked examples](#appendix-b-worked-examples) says how tests fix the codes `para` draws.
+An id is the tree's prefix, a hyphen and a random code, such as `brain-7k2q`. The prefix is 1 to 16 lowercase letters and digits, set when the tree is created or migrated and never changed ([`init`](#73-init), [migrating a v0 tree](#91-migrating-a-v0-tree)). The code is lowercase letters and digits, at least four characters long. New codes get longer as the tree issues more ids, so the chance of two ids ever matching stays at or below 1%: four characters cover about 180 ids, five about 1,100 and six about 6,600. Issuing a new id never changes an existing one. The exact rule: each new code has the shortest length L, at least 4, for which n² ÷ (2 × 36^L) ≤ 0.01, where 36 is the number of characters a code may use and n counts every id issued so far plus the new one. [Worked examples](#appendix-b-worked-examples) says how tests fix the codes `para` draws.
 
 `para` keeps a record of every id it has issued, to entities and to [lineage](#113-lineage) records alike, so it never reuses one and can count them. Each id gets an empty file of that name in the root's `.para/ids/`, which is never deleted, even when what it named is gone. A code whose file already exists is drawn again, and the number of files is the n above. Branches that issue ids add files with different names, so git merges the record without a conflict. If two branches draw the same code by chance, their files merge into one and two holders share the id, as below. An entity whose id has no file, such as one copied by hand from another tree with the same prefix, still answers to its id; [`doctor`](#82-doctor-findings) reports it, and [repair](#83-repair) adds the file.
 
@@ -474,7 +474,7 @@ No file's level loosens and no lineage is lost. Once the folder is an entity, th
 
 To bring in a whole tree:
 
-1. Run [`init`](#73-init) in its top folder. After you confirm, or with `--force`, `init` makes that folder the root and makes any `projects/`, `areas/`, `resources/` and `archive/` already there buckets, creating those missing. It makes `projects/`, `areas/` and `resources/` inside `archive/` archive buckets even before anything is archived, and adds `para`'s part to any README or `AGENTS.md` already in these folders. It refuses where a folder could not be adopted, such as a symlinked bucket, and in a v0 tree points to [`migrate`](#91-migrating-a-v0-tree). Loose files in a bucket stay content that `doctor` reports.
+1. Run [`init`](#73-init) in its top folder. After you confirm, or with `--force`, `init` makes that folder the root and makes any `projects/`, `areas/`, `resources/` and `archive/` already there buckets, creating those missing. It makes any `projects/`, `areas/` and `resources/` already inside `archive/` archive buckets, and adds `para`'s part to any README or `AGENTS.md` already in these folders. It refuses where a folder could not be adopted, such as a symlinked bucket, and in a v0 tree points to [`migrate`](#91-migrating-a-v0-tree). Loose files in a bucket stay content that `doctor` reports.
 2. Move any folder under `archive/` by hand to the matching live bucket, since nothing in the archive can be adopted.
 3. Adopt the folders, parents first, running `doctor` after each round to list what is still plain, such as the subfolders of a newly adopted container.
 4. [Archive](#25-archiving) again what came from `archive/`, once its subfolders are adopted and its level is set, since the archive is read-only.
@@ -624,7 +624,7 @@ A key `para` does not know, such as one added by hand, is kept with its value, w
 
 A `state.toml` that cannot be parsed, or whose kind cannot be read, makes a [damaged folder](#21-directory-shapes). A known key with a missing or bad value, such as a `created` that is not a time, makes each command that needs it refuse, naming the folder and pointing to `doctor`, which reports it. A bad [suppression](#47-suppression) is ignored instead. An entity without a valid `id` is skipped, with a warning, when a command looks for an id, and only commands that act on it refuse.
 
-The root's `prefix` must be ASCII letters and digits. Otherwise every command but `doctor` refuses, since every new id would carry it, and [repair](#83-repair) restores it from the names of the issued ids in `ids/`. How `para` treats a `schema` it does not read, letting `migrate` upgrade an older one, is in [schema version](#93-schema-version).
+The root's `prefix` must be 1 to 16 lowercase ASCII letters and digits. Otherwise every command but `doctor` refuses, since every new id would carry it, and [repair](#83-repair) restores it from the names of the issued ids in `ids/`. How `para` treats a `schema` it does not read, letting `migrate` upgrade an older one, is in [schema version](#93-schema-version).
 
 ### 3.3 The journal
 
@@ -643,7 +643,7 @@ The type's own fields follow, in the order given by the section that defines tha
 
 Every event names who did it, as [sources](#113-lineage), the entities that stand for people and agents:
 
-- A command takes the accountable person with `--sub` and anyone acting for them with `--act`, or `PARA_SUB` and `PARA_ACT` when the flags are absent ([fields and time input](#72-fields-and-time-input)).
+- A command takes the accountable person with `--sub` and anyone acting for them with `--act`, or `PARA_SUB` and `PARA_ACT` when the flags are absent ([grammar](#71-grammar)).
 - `--act` repeats for a chain: the first acts for the `sub`, and each later one for the one before.
 - Each must name a live source, not an archived one: the `sub` a person, each actor a person or an agent, and only an agent with a `model`, `harness` or `session` ([lineage and trust](#62-lineage-and-trust)). A command that would append an event refuses without a `sub` or with an id that breaks this.
 - [`init`](#73-init) and [`migrate`](#91-migrating-a-v0-tree) take your name and create your source, which their own events then name.
@@ -694,8 +694,8 @@ Every time `para` stores is a moment in UTC, truncated to the second and written
 
 The tree has one time zone, the `time-zone` setting in the root's `config.toml`, an IANA name such as `America/Los_Angeles` ([config](#35-config)). It decides only how commands read and show times ([fields and time input](#72-fields-and-time-input)):
 
-- A time you type without an offset is in the tree's zone, and one with an offset is converted. A local time that a daylight saving change repeats means its earlier moment, and one the change skips is refused.
-- A date you type without a time means the last second of that day in the tree's zone, the later one if it repeats. In Los Angeles, `--due 2026-11-05` stores `2026-11-06T07:59:59Z`.
+- A time you type without an offset is in the tree's zone, and one with an offset is converted. A local time that a daylight saving change repeats means its earlier moment, and one the change skips is refused, except for a date typed alone ([fields and time input](#72-fields-and-time-input)).
+- A date you type without a time means the last second of that day for a deadline, and the first second for any other time ([fields and time input](#72-fields-and-time-input)).
 - Command output shows times in the tree's zone, and a deadline at the last second of a day in that zone as just that date. After the zone changes, an older deadline may show as a full time.
 
 Changing the zone changes no stored time. Generated files, such as README frontmatter with its due dates, show full UTC times, so they never depend on the zone.
@@ -1486,7 +1486,7 @@ For a record or a metric, `show` also gives each accountable person, when they l
 `para` keeps no index of what names a record or entity. It finds what was made from one by reading each `state.toml` in the tree, as it finds ids, and warns that anything beneath a [damaged folder](#21-directory-shapes) may be missing. For example, with the format fixed in [output and exit codes](#710-output-and-exit-codes):
 
 ```text
-$ para show brain-8d3m
+$ para show record brain-8d3m
 draft.md  record brain-8d3m in brain-3b6v projects/blog
 derived  RED  C, unchecked
 made from:
@@ -1625,13 +1625,149 @@ A file with no lineage record, or a metric with no sources, counts as the lowest
 ## 7. Command line
 
 ### 7.1 Grammar
-The shape every command follows, so the CLI can be learned once, including the three tiers of change (routine; destructive, confirmed unless `--force`; loosening, a person's act with no one acting, confirmed unless `--force`), what `--force` and `--dry-run` do, and how a confirmation behaves without a terminal.
+
+Every command has one shape:
+
+```text
+para <verb> [<kind> <id>] [<argument> ...] [<option> ...]
+```
+
+The verb says what to do. A command that acts on an entity or a [lineage record](#62-lineage-and-trust) names its kind, then its id ([addressing](#23-addressing)). The kind is one of those in [directory shapes](#21-directory-shapes), or `record`. Other arguments are values the verb needs, such as a note's text, and any other ids, such as a new entity's parent, which take no kind:
+
+```text
+para add project brain-0p1r launch-website --title "Launch website"
+para set project brain-7k2q --status in-progress
+para archive project brain-7k2q
+para attest record brain-8d3m
+```
+
+A kind that does not match the id's is refused, naming the id's kind, so a mistyped id fails before it changes anything. `add` and [`adopt`](#24-adopting-existing-directories) name the kind they make. Help is given for each verb and kind, such as `para set project --help`, and lists only the options that kind takes.
+
+Options are long, such as `--title`, and are written `--title "Launch website"` or `--title="Launch website"`. They may come before or after the arguments. The word after an option that takes a value is always its value, even when it starts with `-`, as in `--at-least -3`. `--` ends the options, so an argument after it may start with `-`. A command refuses an option it does not take, and an option given twice, except `--act`.
+
+These options apply to every command that uses them:
+
+| Option | Variable | Gives |
+| --- | --- | --- |
+| `--root <dir>` | `PARA_ROOT` | the tree's root ([the walk](#36-the-walk)) |
+| `--sub <id>` | `PARA_SUB` | the person accountable ([the journal](#33-the-journal)) |
+| `--act <id>` | `PARA_ACT` | someone acting for them, repeated for a chain |
+| `--model`, `--harness`, `--session` | `PARA_MODEL`, `PARA_HARNESS`, `PARA_SESSION` | the last actor's model id, harness and version, and session |
+| `--classification-at-most <level>` | `PARA_CLASSIFICATION_AT_MOST` | a read ceiling ([what para does with classifications](#65-what-para-does-with-classifications)) |
+| `--json` | none | output as JSON ([output and exit codes](#710-output-and-exit-codes)) |
+| `--dry-run` | none | a rehearsal, below |
+| `--force` | none | skips the question, below |
+
+`PARA_ACT` holds ids separated by spaces, first to last, and `--act` replaces the whole chain. `--model`, `--harness` and `--session` describe the last actor in the chain, the one running the command, which must be an agent ([lineage and trust](#62-lineage-and-trust)). With no actor, these flags are refused and their variables ignored.
+
+A variable stands in for its option, and the option wins when both are given. So a variable counts as an argument, and a command stays deterministic ([what para is](#01-what-para-is)). An empty variable counts as unset. A variable a command does not use is ignored, so a harness can set the who once for a whole session. `PARA_NOW` sets the clock ([time and the clock](#34-time-and-the-clock)).
+
+Every change falls in one of three tiers:
+
+| Tier | Changes | Who may run it | Asks first |
+| --- | --- | --- | --- |
+| routine | most changes, such as a note or a new project | anyone | never |
+| confirmed | changes that lose history, such as [`remove`](#76-writing), or take over folders you already have, such as [`init`](#73-init) over existing buckets | anyone | unless `--force` |
+| person's act | changes that lower a level or raise trust ([how classifications flow](#64-how-classifications-flow), [lineage and trust](#62-lineage-and-trust)) | a person, with no one acting for them | unless `--force` |
+
+Each command's section names the tier of each change it makes. Whatever its tier, a change that would break a rule is refused before anything is written ([safety guarantees](#81-safety-guarantees)).
+
+A person's act needs a `sub` that names a person and no `act`. In an agent's session, where `PARA_ACT` is set, a person runs one with `PARA_ACT` empty. `para` takes the names as given, so this guards against accidents only.
+
+Before a change that asks, `para` prints what `--dry-run` would print, then asks once, `Proceed? [y/N]`, however many of its changes need asking. Only `y` or `yes`, in any case, goes ahead. Any other answer, or the end of input, cancels and writes nothing. Asking needs a terminal. When standard input is not one, the command refuses and says to add `--force`.
+
+`--force` skips the question and nothing else. It never lets anyone run a change their tier does not allow. The journal event of a person's act says whether it was forced.
+
+`--dry-run`, on every command that writes, runs every check, prints what the command would change and writes nothing. It never asks, so it needs no terminal and ignores `--force`. It exits as the real run would, with one exception: it skips the check of who may run a person's act, and says when the real run needs a person with no one acting. So an agent can preview such a change for its person.
 
 ### 7.2 Fields and time input
-The fields a command can set and how dates are typed, so input is consistent.
+
+A field is a fact you set by command. Its option is named after its key in [`state.toml`](#32-statetoml):
+
+| Field | Kinds | Required | Fixed | Form |
+| --- | --- | --- | --- | --- |
+| `title`, `description` | any entity but a stub | no | no | one line ([`state.toml`](#32-statetoml)) |
+| `status` | projects, objectives, and key results (`dropped` only) | no | no | a status ([status](#114-status)) |
+| `due` | projects, objectives, key results | on key results | no | a time |
+| `analytic` | key results, indicators | yes | no | an id |
+| `at-least`, `at-most` | key results, indicators | see below | no | a number ([recording measurements](#42-recording-measurements)) |
+| `start` | key results | no | no | a time |
+| `formula` | analytics | yes | no | a formula ([analytics, metrics and terms](#41-analytics-metrics-and-terms)) |
+| `terms`, `sources` | metrics | no | no | ids |
+| `type`, `direction` | links | yes | yes | [links](#110-links) |
+| `ref` | links | yes | no | [links](#110-links) |
+| `type` | sources | yes | yes | `person`, `agent` or `other` ([lineage and trust](#62-lineage-and-trust)) |
+
+`add` takes the fields when it makes an entity, and `set` changes them later, except a fixed field, which only `add` takes. `unset` names the fields to clear, such as `para unset project brain-7k2q title due`. A required field cannot be cleared, and neither can a project's or objective's status; set `planned` instead. An empty value is refused.
+
+A key result has exactly one of `at-least` and `at-most`, so setting one replaces the other. An indicator has one or both. A change that would leave either with neither is refused ([targets](#43-targets-key-results-and-indicators)).
+
+A list field takes ids separated by commas, such as `--sources brain-sc4l,brain-x2pa`, and replaces the whole list. An empty item or a repeated id is refused. Setting a field to the value it already holds writes nothing and records no event, and the command says so.
+
+Other facts have commands of their own, such as notes, measurements, lineage records, attestations and suppressions ([writing](#76-writing)). Facts `para` keeps itself, such as `created`, `status-since`, attention and archive times, are never set by hand.
+
+A time is typed in one of these forms:
+
+| Form | Example |
+| --- | --- |
+| a date | `2026-11-05` |
+| a date and a time to the minute | `2026-11-05T14:30` |
+| a date and a time to the second | `2026-11-05T14:30:05` |
+| a date and a time with an offset or `Z` | `2026-11-05T14:30-08:00`, `2026-11-05T22:30:05Z` |
+
+`T` and `Z` are capitals, and an offset is written `+HH:MM` or `-HH:MM`. A date or time that does not exist, such as `2026-02-30` or `24:00`, is refused, and so is a second of `60`. A time without an offset is in the tree's time zone ([time and the clock](#34-time-and-the-clock)).
+
+A date alone means:
+
+- for a deadline, which is `due` or a suppression's end, the last second of that day
+- for any other time, such as a backdated note's `--at` or a key result's `start`, the first second of that day, so today's date always works for `--at`
+
+When a daylight saving change skips that second, the date means the nearest second of that day that exists. When a change repeats it, a deadline takes the later moment and any other time the earlier. In Los Angeles, `--due 2026-11-05` stores `2026-11-06T07:59:59Z`, and `--at 2026-11-05` stores `2026-11-05T08:00:00Z`.
+
+There are no relative times, such as "yesterday". Durations and numbers are typed as [time and the clock](#34-time-and-the-clock) and [recording measurements](#42-recording-measurements) say, and level and grade names exactly as the scale gives them.
 
 ### 7.3 `init`
-Creating a tree, the one command that runs before a tree exists.
+
+`init` creates a tree. It is the one command that runs where no tree exists yet:
+
+```text
+para init [<dir>] --source <name> [--source-title <title>] [--reliability <grade>]
+          [--prefix <prefix>] [--time-zone <zone>] [--title <title>]
+```
+
+`<dir>` is the folder that becomes the root: the current directory by default, or a folder `init` creates when it is missing and its parent exists. A symlink is resolved, as in [the walk](#36-the-walk), and a path that is a file is refused. `init` refuses `--root` and ignores `PARA_ROOT`. It refuses inside a tree, and in a v0 tree it names [`migrate`](#91-migrating-a-v0-tree).
+
+It makes:
+
+- the root, with the title from `--title` if given, and a `config.toml` holding the time zone and two staleness settings ([config](#35-config))
+- the buckets `projects/`, `areas/`, `resources/` and `archive/` ([buckets](#12-buckets))
+- `resources/sources/` and your source in it, a person with the folder name `--source` and the title `--source-title` if given ([lineage and trust](#62-lineage-and-trust))
+- each folder's README, and `AGENTS.md` in the root and each bucket ([generated files](#5-generated-files))
+
+```text
+$ para init brain --source max --source-title "Max Dunn" --reliability A
+would create  brain/                          brain-0a1b  root
+              brain/projects/                 brain-3c4d  container
+              brain/areas/                    brain-5e6f  container
+              brain/resources/                brain-7g8h  container
+              brain/archive/                  brain-9j0k  container
+              brain/resources/sources/        brain-1m2n  container
+              brain/resources/sources/max/    brain-s0me  source  person
+would grade   brain-s0me as A (a person's act)
+prefix brain, time zone America/Los_Angeles (from your system)
+Proceed? [y/N] y
+created ...
+```
+
+`init` issues the ids in that order: the root, the four buckets, any archive buckets it takes over (`projects/`, `areas/`, then `resources/`), `sources/`, then your source. So tests can predict them ([worked examples](#appendix-b-worked-examples)).
+
+`init` writes an `init` event in the root's journal, and a `created` event in each folder it makes or an `adopted` event in each it takes over, all with one time ([the journal](#33-the-journal)). The events name your new source as their `sub`, since no other source exists yet. So `init` takes no `--sub` or `--act`.
+
+The prefix is `--prefix`, or else the root folder's name, lowercased, keeping only `a` to `z` and `0` to `9`, and cut to 16 characters. `init` refuses when nothing is left, saying to give `--prefix`. A prefix is 1 to 16 lowercase letters and digits, and never changes ([addressing](#23-addressing)). The time zone is `--time-zone`, or else your system's, and `init` says which ([time and the clock](#34-time-and-the-clock)).
+
+`--reliability` grades your source, as your [person's act](#71-grammar), and is refused when `PARA_ACT` is set, since then an agent is running `init`, except in a dry run, which says a person must run it. Without `--reliability`, your source starts at the lowest grade, and `init` says how to grade it with [`para config`](#79-config). `--source` takes a folder name as any new entity does ([writing](#76-writing)).
+
+`init` can run in a folder that already holds files. Your own files at the root stay yours. Existing buckets, and `projects/`, `areas/` and `resources/` inside an existing `archive/`, are taken over as [adopting existing directories](#24-adopting-existing-directories) says. Taking them over is a confirmed change, so `init` lists them and asks unless `--force`. A plain `resources/sources/` is taken over as the sources container in the same step, and its folders stay content until adopted. `init` refuses where `--source` names a folder that already exists there.
 
 ### 7.4 Reading
 The commands that show and list things, an entity's history included, the most common way into a tree.
