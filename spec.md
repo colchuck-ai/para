@@ -848,7 +848,7 @@ Most trees live in a git repository. `para` never reads or writes `.git/` or che
 `para` never resolves a merge conflict: you resolve each one by hand. A merge can leave these behind:
 
 - **A conflict in a journal**, most often a bucket's, since each create writes to its parent's journal ([the journal](#33-the-journal)).
-- **A conflict in `state.toml` or `config.toml`.** The markers make the file unreadable, so its folder is [damaged](#21-directory-shapes). A conflict in either of the root's files stops every command, `doctor` included, until you resolve it ([the walk](#36-the-walk)).
+- **A conflict in `state.toml` or `config.toml`.** The markers make the file unreadable, so its folder is [damaged](#21-directory-shapes). A conflict in either of the root's files stops every command, `doctor` included, until you resolve it ([the walk](#36-the-walk)). To resolve a conflict in `state.toml`, each branch's journal shows what changed on that side and why.
 - **A conflict in `measurements.csv`**, handled as [recording measurements](#42-recording-measurements) describes.
 - **A conflict in a README or `AGENTS.md`**, common in a bucket's for the same reason. Markers inside `para`'s block go when [`rebuild`](#78-rebuild) rewrites the block, since it is generated. Markers anywhere else, or across the edge of the block, are yours to fix; in frontmatter they make the YAML invalid, and `doctor` reports them ([para-owned blocks](#52-para-owned-blocks)).
 - **A folder left without its `state.toml`**, as when one branch removes an entity and the other changes a file in its `.para/`. The folder is damaged.
