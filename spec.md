@@ -228,7 +228,7 @@ You can [archive](#25-archiving) any entity except the root, a container or a st
 
 When something is archived from inside a live entity, `para` puts a stub for each live ancestor that nothing in the archive stands for yet. A stub is an entity that records the id and kind of the entity it stands for and holds only archived entities and other stubs. Stubs are `para`'s alone, so only `show` and `list` take a stub's id. Archiving `projects/launch-website/objectives/grow-traffic/` alone puts stubs at `archive/projects/launch-website/` and at its `objectives/`. When the project is archived later, it and its `objectives/` replace their stubs. An entity or stub arriving at a path already held gets a numbered suffix ([archiving](#25-archiving)).
 
-The archive is read-only: an archived entity can be shown, listed, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [classification](#112-classification) level, lowering a [source's grade](#113-lineage), attesting a file or metric, or a change of the [classification scale](#61-classification-levels). Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
+The archive is read-only: an archived entity can be shown, listed, have its history read, unarchived or [removed](#76-writing), and any other command, even adding a note, needs it unarchived first, except tightening a [classification](#112-classification) level, lowering a [source's grade](#113-lineage), attesting a file or metric, or a change of the [classification scale](#61-classification-levels). Unarchiving moves it back to its live path with everything beneath it and any archived ancestors it needs, leaves stubs for anything still archived, and removes stubs left with nothing beneath them.
 
 ### 1.8 Notes and the journal
 
@@ -250,7 +250,7 @@ An entity's attention keeps it from going [stale](#45-staleness). Its attention 
 
 ### 1.9 History
 
-An entity's history is its journal, a file of JSON lines that any agent or text viewer can read without running `para`. `para` also shows it on request, newest first ([reading](#74-reading)).
+An entity's history is its journal, a file of JSON lines that any agent or text viewer can read without running `para`. [`para history`](#74-reading) also shows it, newest first.
 
 ### 1.10 Links
 
@@ -1487,18 +1487,38 @@ For a record or a metric, `show` also gives each accountable person, when they l
 
 ```text
 $ para show record brain-8d3m
-draft.md  record brain-8d3m in brain-3b6v projects/blog
-derived  RED  C, unchecked
-made from:
+File:            draft.md
+Record:          brain-8d3m
+Entity:          projects/blog/ (brain-3b6v)
+Form:            derived
+Classification:  RED
+Reliability:     C, unchecked
+Made from:
   brain-2p9q  projects/blog/notes.md  derived  GREEN  B
-  brain-5h2k  areas/legal/nda.eml  primary  RED  C
+  brain-5h2k  areas/legal/nda.eml     primary  RED    C
     note: Kept only that a deal was signed; no names, terms or dates.
-made into:
-  brain-9t1x  projects/blog/post.md  derived  RED  C, unchecked
-accountable:
+Made into:
+  brain-9t1x  projects/blog/post.md   derived  RED    C, unchecked
+Accountable:
   brain-s0me  Max Dunn  A  attested 2026-11-03
     unattested: brain-s4gt  Claude Code with Opus 5.5  B
       claude-opus-5-5  claude-code/3.2.1  a1b2c3
+```
+
+With `--chain`, the lists follow every step:
+
+```text
+Made from:
+  brain-2p9q  projects/blog/notes.md       derived  GREEN  B
+    brain-7c1d  projects/blog/interview.txt  primary  GREEN  B
+      brain-sj2k  Jane Roe     source  person  B
+  brain-5h2k  areas/legal/nda.eml          primary  RED    C
+    note: Kept only that a deal was signed; no names, terms or dates.
+    brain-s7ac  Acme legal   source  other   C
+Made into:
+  brain-9t1x  projects/blog/post.md        derived  RED    C, unchecked
+    brain-4w6y  projects/newsletter/issue-12.md  derived  RED  C, unchecked
+      brain-2p9q  (see above)
 ```
 
 ### 6.3 Where classifications are set
@@ -1594,7 +1614,7 @@ A parent's README lists each child entity. When a child's level is stricter than
 
 The folder name still shows, as it does on disk, so keep secrets out of folder names.
 
-`list`, `show` and `review` take a ceiling, given as `--classification-at-most` with a level or in the `PARA_CLASSIFICATION_AT_MOST` variable, the flag winning. They then leave out every entity, file and computed value that is stricter than the ceiling or unclassified, and say how many they left out. Anything worked out from what they leave out, such as a count or a list of what was made from a file, is worked out without it. A ceiling naming a level not in the scale refuses ([filters, sorting, limiting](#75-filters-sorting-limiting)). A person can start an agent with the variable set, so stricter content stays out of what it reads from `para`. Whoever runs a command can drop the ceiling, so it guards against accidents only.
+`list`, `show`, `history` and `review` take a ceiling, given as `--classification-at-most` with a level or in the `PARA_CLASSIFICATION_AT_MOST` variable, the flag winning. They then leave out every entity, file and computed value that is stricter than the ceiling or unclassified, and say how many they left out. Counts and lists, such as what was made from a file, skip what they leave out. Levels and reliability are still worked out from the whole tree, so hiding an input never makes a value look looser or more reliable. A ceiling naming a level not in the scale refuses. A person can start an agent with the variable set, so stricter content stays out of what it reads from `para`. Whoever runs a command can drop the ceiling, so it guards against accidents only.
 
 The root's `AGENTS.md` gives each level and what it allows, then tells agents ([`AGENTS.md`](#54-agentsmd)):
 
@@ -1632,7 +1652,7 @@ Every command has one shape:
 para <verb> [<kind> <id>] [<argument> ...] [<option> ...]
 ```
 
-The verb says what to do. A command that acts on an entity or a [lineage record](#62-lineage-and-trust) names its kind, then its id ([addressing](#23-addressing)). The kind is one of those in [directory shapes](#21-directory-shapes), or `record`. Other arguments are values the verb needs, such as a note's text, and any other ids, such as a new entity's parent, which take no kind:
+The verb says what to do. A command that acts on an entity or a [lineage record](#62-lineage-and-trust) names its kind, then its id ([addressing](#23-addressing)). The kind is one of those in [directory shapes](#21-directory-shapes), or `record`. Only [`show`](#74-reading) also takes `file`, followed by a path. Other arguments are values the verb needs, such as a note's text, and any other ids, such as a new entity's parent, which take no kind:
 
 ```text
 para add project brain-0p1r launch-website --title "Launch website"
@@ -1770,10 +1790,167 @@ The prefix is `--prefix`, or else the root folder's name, lowercased, keeping on
 `init` can run in a folder that already holds files. Your own files at the root stay yours. Existing buckets, and `projects/`, `areas/` and `resources/` inside an existing `archive/`, are taken over as [adopting existing directories](#24-adopting-existing-directories) says. Taking them over is a confirmed change, so `init` lists them and asks unless `--force`. A plain `resources/sources/` is taken over as the sources container in the same step, and its folders stay content until adopted. `init` refuses where `--source` names a folder that already exists there.
 
 ### 7.4 Reading
-The commands that show and list things, an entity's history included, the most common way into a tree.
+
+Three commands read a tree: `show` gives one thing in full, `list` gives many things one line each, and `history` gives an entity's journal. They change nothing, so they take no `--sub` or `--act`. They read archived entities too, by id or with `--archived`. Each leaves out a [damaged folder](#21-directory-shapes) and everything beneath it, and warns that it did. Each takes a read ceiling ([what para does with classifications](#65-what-para-does-with-classifications), [filters, sorting, limiting](#75-filters-sorting-limiting)). The examples show the text form; [output and exit codes](#710-output-and-exit-codes) fixes it and the JSON form.
+
+```text
+para show <kind> <id> [--chain]
+para show file <path> [--chain]
+```
+
+`show` takes any entity, stubs included, or a lineage record. For an entity it gives:
+
+- its title, or folder name when it has none, its description, and its id, kind and path
+- its parent's id and path, unless it is the root
+- the level covering it and where that level is set, or a dash when none does ([classification](#112-classification))
+- its fields ([fields and time input](#72-fields-and-time-input)), `created`, and any archive time
+- its status, set or computed, with `status-since`, a blocked reason and whether it is overdue ([status](#114-status))
+- its attention time and whether it is stale, naming the setting and the folder that sets it ([staleness](#45-staleness))
+- each suppression, with its note and end, and whether it leaves out a flag now ([suppression](#47-suppression))
+- what it uses and what uses it, one step each way, with each one's level and reliability ([measurement](#15-measurement), [lineage and trust](#62-lineage-and-trust))
+- the children its README lists, one line each, with their titles ([READMEs](#53-readmes))
+
+```text
+$ para show project brain-7k2q
+Title:           Launch website
+Description:     Rebuild the marketing site on the new stack.
+Id:              brain-7k2q
+Kind:            project
+Path:            projects/launch-website/
+Parent:          projects/ (brain-3c4d)
+Classification:  AMBER (set here)
+Status:          in-progress since 2026-10-02
+Due:             2026-12-01
+Created:         2026-09-14 10:00
+Attention:       2026-10-20 09:12
+Stale:           yes (project.stale-after 14d, set on the root brain-0a1b)
+Suppressed:      stale until 2026-11-30, "Waiting on design review"
+Contents:
+  designs/      dir        brain-8k1p  "Mockups"
+  links/        container  brain-2c6v
+  objectives/   container  brain-3f9a
+```
+
+In text, `show` gives one `Label: value` line for each fact, with the labels aligned. A list, such as its contents or what it was made from, sits indented under a label of its own.
+
+`--chain` follows what it uses and what uses it through every step, both ways. Each step sits two spaces deeper than the one it came from. A record or entity already shown is given again as its id and `(see above)`, without its chain, so each is shown once and a loop ends.
+
+Some kinds give more:
+
+| Kind | Also gives |
+| --- | --- |
+| key result | its analytic's value, the start value, progress, pace and status, each with its level and reliability ([derived status](#44-derived-status)) |
+| indicator | its analytic's value and its status, each with its level and reliability |
+| analytic | its value, with its level and reliability, its notes and any declassification |
+| metric | its reliability, whether it is unchecked, its `accountable`, how many measurements it has, the newest, and the path of its `measurements.csv` |
+| source | its grade |
+| stub | the id and kind of the entity it stands for |
+
+A metric's measurements are listed only in its `measurements.csv`, which any spreadsheet or text tool reads ([recording measurements](#42-recording-measurements)). Its `event` column gives the id that correcting a row needs.
+
+Where an id the entity names has been removed, `show` names the missing id ([derived status](#44-derived-status)). It says when a declassification is void, and why ([how classifications flow](#64-how-classifications-flow)).
+
+For a record, `show` gives its file, form, level and reliability, what it was made from and made into, and each accountable person, as [lineage and trust](#62-lineage-and-trust) shows.
+
+`show file` takes the path of a file, from the current folder or absolute. It is the one place a path stands in for an id, since a file with no record has no id. `..` steps up a folder, and names match exactly, case included ([the walk](#36-the-walk)). The file must be a regular file in this tree, beneath an entity, reached through no symlink, and outside any `.para/`, nested tree or damaged folder. Otherwise `show file` refuses, saying why.
+
+It names the entity holding the file and gives the file's level and where the level comes from: a path rule, the entity's place level, or its inputs and any declassification ([where classifications are set](#63-where-classifications-are-set)). A recorded file then shows as `show record` would, wherever its record is kept ([lineage](#113-lineage)). Any other file shows as `unrecorded`.
+
+```text
+$ para show file projects/blog/notes.md
+File:            notes.md
+Entity:          projects/blog/ (brain-3b6v)
+Classification:  GREEN (place level of brain-3b6v)
+Record:          none, unrecorded
+```
+
+```text
+para list [<kind>] [<filter> ...] [--sort <order>] [--reverse] [--limit <n>]
+```
+
+`list` gives every live entity in the tree, wherever it runs, except the root, containers and stubs, one line each, in path order ([review groups](#46-review-groups)). Naming a kind narrows it to that kind. `container` and `stub` list those, and `record` lists lineage records. Filters narrow it further ([filters, sorting, limiting](#75-filters-sorting-limiting)).
+
+In text, `list` starts with a header row naming its columns. An entity's line gives its id, path, kind, title in quotes when set, status, level and due date, with a dash for a missing status or level. A computed status carries its level and reliability. Its marks are `overdue`, `stale`, `suppressed` and `archived`, and for a metric or analytic its reliability, such as `reliability B`, with a metric's `unchecked`. A record's line gives its id, its file's path, `record`, its form, level and reliability, and `unchecked` when it is.
+
+```text
+$ para list project
+ID          PATH                      KIND     TITLE             STATUS       LEVEL  DUE         MARKS
+brain-9x3d  projects/acme-deal/       project  "Acme deal"       blocked      RED    2026-11-20
+brain-2m4n  projects/blog/            project  "Blog relaunch"   planned      GREEN  -
+brain-6p8q  projects/garage/          project  "Clean garage"    done         -      -
+brain-7k2q  projects/launch-website/  project  "Launch website"  in-progress  AMBER  2026-12-01  stale, suppressed
+brain-1r3s  projects/taxes-2026/      project  "Taxes 2026"      in-progress  RED    2027-04-15
+
+$ para list record --in brain-3b6v
+ID          PATH                    KIND    FORM     LEVEL  RELIABILITY  MARKS
+brain-8d3m  projects/blog/draft.md  record  derived  RED    C            unchecked
+brain-2p9q  projects/blog/notes.md  record  derived  GREEN  B
+```
+
+```text
+para history <kind> <id> [--since <time>] [--until <time>] [--type <type>[,<type> ...]] [--limit <n>]
+```
+
+`history` gives an entity's journal, newest first by when each event was written, a later line in the file first when two share a time ([the journal](#33-the-journal)). A stub has no journal, so `history` refuses one. For a record, it gives every event that names it, from every journal in the tree, so events from before the record moved to another entity stay in view. Each entry then names the entity whose journal holds it. Events from several journals that share a time go by the holding entity's path, in path order.
+
+In text, `history` starts with a header row naming its columns, then gives one line per event: its time, type, event id, who, the time it claims, and its details. For a record, the holding entity's id follows the event id. Who is the `sub`, then each actor in its `act` after `via`. Sources are named by id alone, since each sits in `resources/sources/`. The claimed time is a backdated note's or measurement's, or a dash. The details are the type's own fields, such as a note's text or a status's old and new values, with `attention` on a note marked as attention.
+
+A note shows its values as written. A corrected note says which correction last changed it, or that it is withdrawn, and each correction is an entry of its own.
+
+```text
+$ para history project brain-7k2q --limit 3
+TIME              TYPE        EVENT     WHO                        CLAIMS      DETAILS
+2026-11-12 09:20  correction  k2p9x4m1  brain-s0me                 -           corrects b3n8w1pz: claims 2026-11-09
+2026-11-12 09:14  note        q7m2k9xa  brain-s0me                 -           "Waiting on design review"
+2026-11-12 09:10  note        b3n8w1pz  brain-s0me via brain-s4gt  2026-11-10  attention, corrected by k2p9x4m1, "Shipped the new header"
+and 41 more
+```
 
 ### 7.5 Filters, sorting, limiting
-How to narrow and order results, so large trees stay usable.
+
+Filters narrow what `list` and `history` give, so a large tree stays usable:
+
+| Filter | On | Keeps |
+| --- | --- | --- |
+| `<kind>` | `list` | entries of that kind |
+| `--in <id>` | `list` | entries beneath that entity, at any depth |
+| `--here` | `list` | entries beneath the nearest entity at or above the current folder |
+| `--archived` | `list` | the archive as well, each archived entry marked |
+| `--name <text>` | `list` | entries whose folder name or title contains the text; for a record, the last name in its file's path |
+| `--status <status>[,<status> ...]` | `list` | entries with any of those statuses, set or computed |
+| `--since <time>`, `--until <time>` | `history` | events written at or after, or at or before, that time |
+| `--type <type>[,<type> ...]` | `history` | events of those types, such as `note` |
+
+`--in` and `--here` cannot be given together. Given an archived entity or a stub, or run in the archive, they reach into the archive without `--archived`. A record is beneath the entity that holds it. `--here` refuses when the current folder is outside the tree, or inside a nested tree, a damaged folder or a `.para/`.
+
+`--name` ignores case, comparing by Unicode simple case folding, so `--name web` finds `launch-website` and `"Web Shop"`.
+
+`--status` refuses a word that is not a status of the kind named, or of any kind when none is ([status](#114-status)). A suppressed status still matches.
+
+Times are typed as [fields and time input](#72-fields-and-time-input) says, except that a date alone given to `--until` means the last second of that day, as a deadline does. A `--since` later than `--until` gives nothing.
+
+Filters combine, and an entry must match every one. Within one filter, commas mean any of the values. An entry with no such value, such as a dir with no status, never matches. With the five projects above, `para list project --status in-progress --name tax` gives only `brain-1r3s`.
+
+`--sort` picks another order for `list`:
+
+| Order | First |
+| --- | --- |
+| `path` | the default |
+| `due` | soonest due |
+| `created` | oldest |
+| `attention` | longest untended |
+
+Entries without the value, such as projects with no due date, come after the rest. Ties go by path. `--reverse` flips the whole order. `history` keeps its own order.
+
+`--limit <n>`, on `list` and `history`, takes a whole number of at least 1. It keeps the first n entries after filtering and ordering, then says how many more there were.
+
+Under a read ceiling, `show`, `list` and `history` leave out what it leaves out, as [what para does with classifications](#65-what-para-does-with-classifications) says:
+
+- `list` counts what it left out among the entries its kind and place would have given, before `--name` and `--status`.
+- `show` or `history` given something the ceiling leaves out shows nothing of it and says so.
+- `history record` leaves out, and counts, each event held in the journal of an entity the ceiling leaves out.
+- Lists in `show`, such as its children or what was made from it, skip what the ceiling leaves out.
+- A `history` event that names an entity, file or record the ceiling leaves out gives it as its id and kind alone.
 
 ### 7.6 Writing
 The commands that change a tree, each a safe, checked operation.
