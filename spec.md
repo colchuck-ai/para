@@ -126,7 +126,7 @@ Each bucket directly holds:
 | --- | --- |
 | `projects/` | [projects](#13-projects) |
 | `areas/` | [areas](#14-areas) |
-| `resources/` | [dirs](#111-dirs), the [measurement library](#15-measurement) in `measurement/` and the [sources](#113-lineage) in `sources/` ([resources](#16-resources)) |
+| `resources/` | [dirs](#111-dirs), the [measurement library](#15-measurement) in `measurement/` and the [sources](#113-lineage) in `people/`, `agents/` and `origins/` ([resources](#16-resources)) |
 | `archive/` | the archive buckets `projects/`, `areas/` and `resources/` |
 
 Each archive bucket holds the projects, areas or dirs archived from the matching bucket, and the [stubs](#17-archive) that stand in for an ancestor so an archived entity keeps its path.
@@ -214,7 +214,7 @@ A term defines a word that metrics share, such as what counts as a critical bug,
 
 ### 1.6 Resources
 
-A resource, the third of the [PARA categories](#02-the-para-method), is reference material on a topic, such as cooking or a programming language. Each resource is a [dir](#111-dirs) in `resources/`, since a resource has no kind of its own, and dirs nest to any depth, so cooking can hold baking. `resources/` also holds the [measurement library](#15-measurement) once you add the first analytic, metric or term, and the [sources](#113-lineage) once you add the first source.
+A resource, the third of the [PARA categories](#02-the-para-method), is reference material on a topic, such as cooking or a programming language. Each resource is a [dir](#111-dirs) in `resources/`, since a resource has no kind of its own, and dirs nest to any depth, so cooking can hold baking. `resources/` also holds the [measurement library](#15-measurement) once you add the first analytic, metric or term, and the [sources](#113-lineage): `people/`, which [`init`](#73-init) creates, and `agents/` and `origins/` once you add the first of each.
 
 A resource is not a commitment, so it has no [status](#114-status) or due date, and [review](#115-review) never reports it as stale unless you set a staleness period for dirs in [config](#35-config), on it or on a folder above it ([staleness](#45-staleness)).
 
@@ -238,7 +238,7 @@ The journal is a log. Current values live in the entity's state, config and, for
 
 Each event goes to the folder it happened to; a child arriving or leaving is its parent's event, so a move gives the old and new parent one each ([principles](#06-principles)). [Removing](#76-writing) an entity deletes its journal, and its parent's journal records the removal (a stub, having none, records nothing).
 
-A note is a short dated entry in an entity's journal, such as "waiting on the design review", and every entity that keeps a journal takes them. You add one with its own command, and any command that changes an entity can carry one to say why.
+A note is a short dated entry in an entity's journal, such as "waiting on the design review", and every entity that keeps a journal takes them. You add one with its own command. Any command that changes an entity can also carry a note saying why, which is part of that command's event and cannot be corrected.
 
 An entity's attention keeps it from going [stale](#45-staleness). Its attention time is the latest of:
 
@@ -286,9 +286,9 @@ Content no level covers is unclassified, and `para` assumes nothing about it, so
 
 Lineage records where content came from, as a graph: sources at its start, then the files and measurements that come from them, then what is made from those. `para` records the graph as facts, a person grades the sources, and `para` computes trust from those two, never from what a file says ([scope and non-goals](#05-scope-and-non-goals)). Classification flows along the same graph ([how classifications flow](#64-how-classifications-flow)).
 
-A source is an entity that stands for where material comes from, such as a sender, a website, a person or an agent, and carries a reliability grade a person sets, from `A` (reliable) to `F` (cannot be judged) by default ([config](#35-config)). Sources are kept, like terms, in `resources/sources/`, which [`init`](#73-init) creates along with your own source, since every event names one ([the journal](#33-the-journal)). A source added without a grade starts at the lowest. Setting or raising a grade is a person's act, as loosening a level is, and lowering one is allowed even in the archive.
+A source is an entity that stands for where material comes from, and carries a reliability grade a person sets, from `A` (reliable) to `F` (cannot be judged) by default ([config](#35-config)). It is one of three kinds: a person, who can be accountable for work; an agent, a model and harness that acts for a person; or an origin, any other place content comes from, such as a sender, a website or a bathroom scale. Each kind has its own container in `resources/`: `people/`, `agents/` and `origins/`. [`init`](#73-init) creates `people/` with you in it, since every event names a person ([the journal](#33-the-journal)). A source added without a grade starts at the lowest. Setting or raising a grade is a person's act, as loosening a level is, and lowering one is allowed even in the archive.
 
-You record a file with a command after it exists, as a primary or a derived work. A primary is a copy of something from outside the tree, such as an email or a web page; it names its source, and `para` keeps its hash, so a later change to it is flagged. A derived work, such as notes or a summary, names the files it was made from by their records' ids, and stays free to change. Each input may carry a one-line note saying what was done to it, such as "kept only the signing date". Naming a file that has no record gives it a bare one, which counts as unrecorded until you record it. Naming one where no record can be written, such as in the archive, is refused. Every record names the person accountable and, when someone acted for them, such as an agent working for a person, who did the work; both are sources, and the accountable one is always a person. A file can never be made from itself, through any chain of inputs. An agent's source is its model and harness, and each record it makes also notes the exact model, harness version and session, given with the command, as facts that are never graded. `para` takes these names as given.
+You record a file with a command after it exists, as a primary or a derived work. A primary is a copy of something from outside the tree, such as an email or a web page; it names its source, and `para` keeps its hash, so a later change to it is flagged. A derived work, such as notes or a summary, names the files it was made from by their records' ids, and stays free to change. Each input may carry a one-line note saying what was done to it, such as "kept only the signing date". Naming a file that has no record gives it a bare one, which counts as unrecorded until you record it. Naming one where no record can be written, such as in the archive, is refused. Every record names the person accountable and, when someone acted for them, such as an agent working for a person, who did the work; both are sources, and the accountable one is always a person. A file can never be made from itself, through any chain of inputs. An agent stands for a model and harness, and each record it makes also notes the exact model, harness version and session, given with the command, as facts that are never graded. `para` takes these names as given.
 
 Measurements join the same graph. A metric may name its sources, such as a bathroom scale or a payment service. An analytic is made from what its formula names, each of which may carry a note too, and a key result or indicator from its analytic ([measurement](#15-measurement)). Changing a metric's sources so its reliability rises is a person's act too, as is any change to a record that raises a file's reliability, such as naming a better-graded source or dropping an input. A source can be archived unless a live metric names it; a record or event that names it does not prevent this.
 
@@ -389,9 +389,9 @@ An entity's kind is the `kind` in its `state.toml`, matched exactly, case includ
 | Kind | What it is |
 | --- | --- |
 | `root` | the top of the tree ([the tree](#11-the-tree)) |
-| `container` | a bucket (`projects/`, `areas/`, `resources/`, `archive/`), an archive bucket (`projects/`, `areas/` or `resources/` in `archive/`), or one of `objectives/`, `key-results/`, `standards/`, `indicators/`, `links/`, `measurement/`, `analytics/`, `metrics/`, `terms/` and `sources/` |
+| `container` | a bucket (`projects/`, `areas/`, `resources/`, `archive/`), an archive bucket (`projects/`, `areas/` or `resources/` in `archive/`), or one of `objectives/`, `key-results/`, `standards/`, `indicators/`, `links/`, `measurement/`, `analytics/`, `metrics/`, `terms/`, `people/`, `agents/` and `origins/` |
 | `stub` | a stand-in in `archive/` for an ancestor of an archived entity, one that is live or was removed ([archiving](#25-archiving)) |
-| `project`, `objective`, `key-result`, `area`, `standard`, `indicator`, `analytic`, `metric`, `term`, `source`, `link`, `dir` | the other kinds toured in [chapter 1](#1-components) |
+| `project`, `objective`, `key-result`, `area`, `standard`, `indicator`, `analytic`, `metric`, `term`, `person`, `agent`, `origin`, `link`, `dir` | the other kinds toured in [chapter 1](#1-components) |
 
 A damaged folder, such as one whose `state.toml` is missing, has no `kind` or names an unknown kind such as `Project`, or whose `.para` is a file, or whose `config.toml` cannot be read, is never guessed at. A command that would change it or anything beneath it refuses, naming the folder and pointing to [`doctor`](#82-doctor-findings), which reports it; [`show`](#74-reading), [`list`](#74-reading) and [`review`](#77-review) leave it and everything beneath it out and warn that they did. A v0 tree is not classified this way, since only [`migrate`](#91-migrating-a-v0-tree) works on it.
 
@@ -404,7 +404,7 @@ Every entity except the root sits directly inside another entity, so entities fo
 | the root | the buckets `projects/`, `areas/`, `resources/` and `archive/` |
 | `projects/` | projects |
 | `areas/` | areas |
-| `resources/` | dirs, and the containers `measurement/` and `sources/` |
+| `resources/` | dirs, and the containers `measurement/`, `people/`, `agents/` and `origins/` |
 | `archive/` | the archive buckets `projects/`, `areas/` and `resources/` |
 | a project | the containers `objectives/` and `links/`, and dirs |
 | `objectives/` | objectives |
@@ -417,8 +417,8 @@ Every entity except the root sits directly inside another entity, so entities fo
 | a dir | the container `links/`, and dirs |
 | `links/` | links |
 | `measurement/` | the containers `analytics/`, `metrics/` and `terms/` |
-| `analytics/`, `metrics/`, `terms/`, `sources/` | analytics, metrics, terms or sources, as its name says |
-| a key result, indicator, analytic, metric, term, source or link | no entities |
+| `analytics/`, `metrics/`, `terms/`, `people/`, `agents/`, `origins/` | analytics, metrics, terms, people, agents or origins, as its name says |
+| a key result, indicator, analytic, metric, term, person, agent, origin or link | no entities |
 
 The four buckets always exist. Everything else in the table is optional, so a project may have no objectives and an objective no key results, just as an area may have no standards.
 
@@ -486,8 +486,9 @@ Archiving moves an entity out of the live buckets into `archive/`, with its hist
 `archive` takes an entity's id and moves it, with everything beneath it, into the matching archive bucket, creating that bucket the first time. The entity lands under whatever in the archive stands for its live parent, matched by id: the parent's archived self, or a stub recording the parent's id. Where nothing does, `para` adds a stub for the parent, and so on up to the archive bucket, so an entity's archived path mirrors its live one. A stub recording the id of the entity or of anything beneath it is replaced by that entity, which keeps what the stub held and takes the stub's folder name, saying so when it differs from its own. A stub for a removed descendant has nothing to replace it, so it stays where it is, now inside an archived entity. `archive` refuses, saying why, when:
 
 - the entity is the root, a stub or already archived
+- it is the last live person ([writing](#761-entities))
 - the entity is a container, naming its entities and, where it can be archived, its parent
-- a live entity uses an analytic, metric or term that would move, unless that user moves too ([measurement](#15-measurement))
+- a live entity uses an analytic, metric, term or source that would move, unless that user moves too ([measurement](#15-measurement))
 - the level covering it would loosen, as when `projects/` is `RED` and `archive/projects/` has none, or a level it carries would be looser than the one above it in its new place ([classification](#112-classification)); tighten the archive's level or the entity's own, then run it again
 
 `unarchive` takes an archived entity's id and moves it back under its live parent, with everything beneath it, including descendants archived on their own before it. Archived ancestors it needs come back live too. Stubs stay for anything still archived, such as what sits beneath the stub of a removed descendant, which has no live place to return to. `unarchive` refuses, saying why, when:
@@ -604,7 +605,6 @@ Other keys are defined with the behaviour they serve:
 | what it computes and the metrics, terms and sources it uses | analytics, metrics | [analytics, metrics and terms](#41-analytics-metrics-and-terms) |
 | notes on the metrics its formula names | analytics | [lineage and trust](#62-lineage-and-trust) |
 | type, ref and direction | links | [links](#110-links) |
-| type (`person`, `agent` or `other`) | sources | [lineage and trust](#62-lineage-and-trust) |
 | lineage records | every kind but the root, a container and a stub | [lineage and trust](#62-lineage-and-trust) |
 | `accountable`, the people its measurements were recorded for | metrics | [lineage and trust](#62-lineage-and-trust) |
 | a declassification | analytics; a derived work's sits in its lineage record | [lineage and trust](#62-lineage-and-trust) |
@@ -634,19 +634,19 @@ Each entity's journal is `.para/journal.jsonl`, the log of everything done to it
 | --- | --- |
 | `time` | when `para` wrote it ([time and the clock](#34-time-and-the-clock)) |
 | `id` | the event's id, eight random lowercase letters and digits, unique within its journal, so a correction can name it |
-| `type` | what happened, such as `created`, `note` or `status` |
+| `type` | what happened, such as `created`, `note` or `set` |
 | `sub` | the source id of the person accountable for it, missing only on events converted from a v0 tree, which carry `"v0": true` instead |
 | `act` | present only when someone acted for that person: an object with the actor's source id as its `sub`, an optional `model`, `harness` and `session`, and an optional `act` of its own for a chain ([lineage](#113-lineage)) |
 | `at` | the earlier time a backdated note or measurement claims, present only when given |
 
 The type's own fields follow, in the order given by the section that defines that behaviour, as for state keys ([`state.toml`](#32-statetoml)). [The example tree](#appendix-a-example-tree) shows the exact format.
 
-Every event names who did it, as [sources](#113-lineage), the entities that stand for people and agents:
+Every event names who did it, as people and agents, two kinds of [source](#113-lineage):
 
 - A command takes the accountable person with `--sub` and anyone acting for them with `--act`, or `PARA_SUB` and `PARA_ACT` when the flags are absent ([grammar](#71-grammar)).
 - `--act` repeats for a chain: the first acts for the `sub`, and each later one for the one before.
 - Each must name a live source, not an archived one: the `sub` a person, each actor a person or an agent, and only an agent with a `model`, `harness` or `session` ([lineage and trust](#62-lineage-and-trust)). A command that would append an event refuses without a `sub` or with an id that breaks this.
-- [`init`](#73-init) and [`migrate`](#91-migrating-a-v0-tree) take your name and create your source, which their own events then name.
+- [`init`](#73-init) and [`migrate`](#91-migrating-a-v0-tree) take your name and create your person, which their own events then name.
 - `para` does not check that the people named are who they say.
 
 A note or a measurement can claim an earlier time than when it was written, such as a reading taken yesterday. The claimed time goes in `at` and can never be in the future. A note's can also not be before the entity's `created` time, so a backdated note cannot make old neglect look tended. Every other event is dated when it is written, and a command refuses `at` on it.
@@ -672,7 +672,7 @@ A measurement is corrected or withdrawn in `measurements.csv` itself, and the jo
 
 Attention can change when you correct or withdraw a note that is, or becomes, an attention note, and when you correct or withdraw a measurement. The command then reads the journal and `measurements.csv` and resets the attention time ([notes and the journal](#18-notes-and-the-journal)).
 
-A blocked reason in state is its own fact. Correcting the note it came from leaves it, and setting `blocked` again with a new note replaces it.
+A blocked reason in state is its own fact, taken from the note that setting `blocked` carries. Only setting `blocked` again with a new note changes it.
 
 A line is readable when it is a JSON object with a `time` and a `type`. Problems are handled like this:
 
@@ -1210,7 +1210,7 @@ The `para` key holds a map of what the entity is and where it stands. Its keys a
 
 - its set status, `status-since`, blocked reason and due date ([status](#114-status))
 - its archive time ([archiving](#25-archiving))
-- the keys that define its kind: a key result's or indicator's analytic, target or bounds and start ([targets](#43-targets-key-results-and-indicators)), an analytic's formula and a metric's terms and sources ([analytics, metrics and terms](#41-analytics-metrics-and-terms)), a source's type ([lineage and trust](#62-lineage-and-trust)), and a link's type, ref and direction ([links](#110-links))
+- the keys that define its kind: a key result's or indicator's analytic, target or bounds and start ([targets](#43-targets-key-results-and-indicators)), an analytic's formula and a metric's terms and sources ([analytics, metrics and terms](#41-analytics-metrics-and-terms)), and a link's type, ref and direction ([links](#110-links))
 
 `classification` is the level that covers the entity, left out when there is none ([classification](#112-classification)). An indicator with a range shows both bounds.
 
@@ -1338,15 +1338,15 @@ A scale edited by hand gets no mapping, so any level it drops is then not in the
 
 Trust is worked out from the facts of [lineage](#113-lineage) and the grades a person sets.
 
-A source is an entity in `resources/sources/`. Its `state.toml` holds a `type`, given when the source is created and never changed:
+A source is one of three kinds, each in its own container in `resources/`:
 
-| Type | Stands for |
-| --- | --- |
-| `person` | a person, who can be accountable for work |
-| `agent` | a model and harness, such as Claude Code with Opus 5.5 |
-| `other` | any other origin, such as a sender, a website or a bathroom scale |
+| Kind | Container | Stands for |
+| --- | --- | --- |
+| `person` | `people/` | a person, who can be accountable for work |
+| `agent` | `agents/` | a model and harness, such as Claude Code with Opus 5.5 |
+| `origin` | `origins/` | any other place content comes from, such as a sender, a website or a bathroom scale |
 
-Every event's `sub` must name a person, and each actor in its `act` a person or an agent. `--model`, `--harness` and `--session` go only with an agent ([the journal](#33-the-journal)). A primary's source and a metric's sources may be of any type. [`init`](#73-init) and [`migrate`](#91-migrating-a-v0-tree) create your source as a person. `para` takes a type on trust, so it prevents mistakes, not misuse.
+Every event's `sub` must name a person, and each actor in its `act` a person or an agent. `--model`, `--harness` and `--session` go only with an agent ([the journal](#33-the-journal)). A primary's source and a metric's sources may be of any of the three kinds. [`init`](#73-init) and [`migrate`](#91-migrating-a-v0-tree) create your person. `para` cannot check that a person is one, so this prevents mistakes, not misuse.
 
 A source's grade is the `reliability` key in its `config.toml`:
 
@@ -1511,10 +1511,10 @@ With `--chain`, the lists follow every step:
 Made from:
   brain-2p9q  projects/blog/notes.md       derived  GREEN  B
     brain-7c1d  projects/blog/interview.txt  primary  GREEN  B
-      brain-sj2k  Jane Roe     source  person  B
+      brain-sj2k  Jane Roe     person  B
   brain-5h2k  areas/legal/nda.eml          primary  RED    C
     note: Kept only that a deal was signed; no names, terms or dates.
-    brain-s7ac  Acme legal   source  other   C
+    brain-s7ac  Acme legal   origin  C
 Made into:
   brain-9t1x  projects/blog/post.md        derived  RED    C, unchecked
     brain-4w6y  projects/newsletter/issue-12.md  derived  RED  C, unchecked
@@ -1595,7 +1595,7 @@ A declassification covers the content as it was. For a file, state keeps its has
 
 A change to a record or a formula that would lower a work's level, such as dropping a stricter input, re-recording a derived work as a primary or dropping a stricter metric from a formula, is a person's act like declassifying. An agent making it is refused, naming the person who must. It needs no note, since the work no longer claims to come from what was dropped, and its journal event names each dropped input. Dropping an input with a bound note voids the declassification.
 
-A source's own level classifies only its folder. A source stands for an origin, not content, so nothing that names it takes its level.
+A source's own level classifies only its folder. A source stands for where content comes from, not content, so nothing that names it takes its level.
 
 Trust flows the opposite way: it only falls as content is derived, and every change that raises it is a person's act ([lineage and trust](#62-lineage-and-trust)).
 
@@ -1675,6 +1675,7 @@ These options apply to every command that uses them:
 | `--model`, `--harness`, `--session` | `PARA_MODEL`, `PARA_HARNESS`, `PARA_SESSION` | the last actor's model id, harness and version, and session |
 | `--classification-at-most <level>` | `PARA_CLASSIFICATION_AT_MOST` | a read ceiling ([what para does with classifications](#65-what-para-does-with-classifications)) |
 | `--json` | none | output as JSON ([output and exit codes](#710-output-and-exit-codes)) |
+| `--note <text>` | none | why, on a command that changes an entity ([writing](#76-writing)) |
 | `--dry-run` | none | a rehearsal, below |
 | `--force` | none | skips the question, below |
 
@@ -1716,7 +1717,6 @@ A field is a fact you set by command. Its option is named after its key in [`sta
 | `terms`, `sources` | metrics | no | no | ids |
 | `type`, `direction` | links | yes | yes | [links](#110-links) |
 | `ref` | links | yes | no | [links](#110-links) |
-| `type` | sources | yes | yes | `person`, `agent` or `other` ([lineage and trust](#62-lineage-and-trust)) |
 
 `add` takes the fields when it makes an entity, and `set` changes them later, except a fixed field, which only `add` takes. `unset` names the fields to clear, such as `para unset project brain-7k2q title due`. A required field cannot be cleared, and neither can a project's or objective's status; set `planned` instead. An empty value is refused.
 
@@ -1751,7 +1751,7 @@ There are no relative times, such as "yesterday". Durations and numbers are type
 `init` creates a tree. It is the one command that runs where no tree exists yet:
 
 ```text
-para init [<dir>] --source <name> [--source-title <title>] [--reliability <grade>]
+para init [<dir>] --person <name> [--person-title <title>] [--reliability <grade>]
           [--prefix <prefix>] [--time-zone <zone>] [--title <title>]
 ```
 
@@ -1761,33 +1761,33 @@ It makes:
 
 - the root, with the title from `--title` if given, and a `config.toml` holding the time zone and two staleness settings ([config](#35-config))
 - the buckets `projects/`, `areas/`, `resources/` and `archive/` ([buckets](#12-buckets))
-- `resources/sources/` and your source in it, a person with the folder name `--source` and the title `--source-title` if given ([lineage and trust](#62-lineage-and-trust))
+- `resources/people/` and your person in it, with the folder name `--person` and the title `--person-title` if given ([lineage and trust](#62-lineage-and-trust))
 - each folder's README, and `AGENTS.md` in the root and each bucket ([generated files](#5-generated-files))
 
 ```text
-$ para init brain --source max --source-title "Max Dunn" --reliability A
+$ para init brain --person max --person-title "Max Dunn" --reliability A
 would create  brain/                          brain-0a1b  root
               brain/projects/                 brain-3c4d  container
               brain/areas/                    brain-5e6f  container
               brain/resources/                brain-7g8h  container
               brain/archive/                  brain-9j0k  container
-              brain/resources/sources/        brain-1m2n  container
-              brain/resources/sources/max/    brain-s0me  source  person
+              brain/resources/people/         brain-1m2n  container
+              brain/resources/people/max/     brain-s0me  person
 would grade   brain-s0me as A (a person's act)
 prefix brain, time zone America/Los_Angeles (from your system)
 Proceed? [y/N] y
 created ...
 ```
 
-`init` issues the ids in that order: the root, the four buckets, any archive buckets it takes over (`projects/`, `areas/`, then `resources/`), `sources/`, then your source. So tests can predict them ([worked examples](#appendix-b-worked-examples)).
+`init` issues the ids in that order: the root, the four buckets, any archive buckets it takes over (`projects/`, `areas/`, then `resources/`), `people/`, then your person. So tests can predict them ([worked examples](#appendix-b-worked-examples)).
 
-`init` writes an `init` event in the root's journal, and a `created` event in each folder it makes or an `adopted` event in each it takes over, all with one time ([the journal](#33-the-journal)). The events name your new source as their `sub`, since no other source exists yet. So `init` takes no `--sub` or `--act`.
+`init` writes an `init` event in the root's journal, a `created` event in each folder it makes or an `adopted` event in each it takes over, and a `child-added` event in each folder's parent, all with one time ([the journal](#33-the-journal)). The events name your new person as their `sub`, since no other source exists yet. So `init` takes no `--sub` or `--act`.
 
 The prefix is `--prefix`, or else the root folder's name, lowercased, keeping only `a` to `z` and `0` to `9`, and cut to 16 characters. `init` refuses when nothing is left, saying to give `--prefix`. A prefix is 1 to 16 lowercase letters and digits, and never changes ([addressing](#23-addressing)). The time zone is `--time-zone`, or else your system's, and `init` says which ([time and the clock](#34-time-and-the-clock)).
 
-`--reliability` grades your source, as your [person's act](#71-grammar), and is refused when `PARA_ACT` is set, since then an agent is running `init`, except in a dry run, which says a person must run it. Without `--reliability`, your source starts at the lowest grade, and `init` says how to grade it with [`para config`](#79-config). `--source` takes a folder name as any new entity does ([writing](#76-writing)).
+`--reliability` grades your person, as your [person's act](#71-grammar), and is refused when `PARA_ACT` is set, since then an agent is running `init`, except in a dry run, which says a person must run it. Without `--reliability`, your person starts at the lowest grade, and `init` says how to grade it with [`para config`](#79-config). `--person` takes a folder name as any new entity does ([writing](#76-writing)).
 
-`init` can run in a folder that already holds files. Your own files at the root stay yours. Existing buckets, and `projects/`, `areas/` and `resources/` inside an existing `archive/`, are taken over as [adopting existing directories](#24-adopting-existing-directories) says. Taking them over is a confirmed change, so `init` lists them and asks unless `--force`. A plain `resources/sources/` is taken over as the sources container in the same step, and its folders stay content until adopted. `init` refuses where `--source` names a folder that already exists there.
+`init` can run in a folder that already holds files. Your own files at the root stay yours. Existing buckets, and `projects/`, `areas/` and `resources/` inside an existing `archive/`, are taken over as [adopting existing directories](#24-adopting-existing-directories) says. Taking them over is a confirmed change, so `init` lists them and asks unless `--force`. A plain `resources/people/` is taken over as the people container in the same step, and its folders stay content until adopted. `init` refuses where `--person` names a folder that already exists there.
 
 ### 7.4 Reading
 
@@ -1843,7 +1843,7 @@ Some kinds give more:
 | indicator | its analytic's value and its status, each with its level and reliability |
 | analytic | its value, with its level and reliability, its notes and any declassification |
 | metric | its reliability, whether it is unchecked, its `accountable`, how many measurements it has, the newest, and the path of its `measurements.csv` |
-| source | its grade |
+| person, agent, origin | its grade |
 | stub | the id and kind of the entity it stands for |
 
 A metric's measurements are listed only in its `measurements.csv`, which any spreadsheet or text tool reads ([recording measurements](#42-recording-measurements)). Its `event` column gives the id that correcting a row needs.
@@ -1893,7 +1893,7 @@ para history <kind> <id> [--since <time>] [--until <time>] [--type <type>[,<type
 
 `history` gives an entity's journal, newest first by when each event was written, a later line in the file first when two share a time ([the journal](#33-the-journal)). A stub has no journal, so `history` refuses one. For a record, it gives every event that names it, from every journal in the tree, so events from before the record moved to another entity stay in view. Each entry then names the entity whose journal holds it. Events from several journals that share a time go by the holding entity's path, in path order.
 
-In text, `history` starts with a header row naming its columns, then gives one line per event: its time, type, event id, who, the time it claims, and its details. For a record, the holding entity's id follows the event id. Who is the `sub`, then each actor in its `act` after `via`. Sources are named by id alone, since each sits in `resources/sources/`. The claimed time is a backdated note's or measurement's, or a dash. The details are the type's own fields, such as a note's text or a status's old and new values, with `attention` on a note marked as attention.
+In text, `history` starts with a header row naming its columns, then gives one line per event: its time, type, event id, who, the time it claims, and its details. For a record, the holding entity's id follows the event id. Who is the `sub`, then each actor in its `act` after `via`. People and agents are named by id alone, since each sits in `resources/people/` or `resources/agents/`. The claimed time is a backdated note's or measurement's, or a dash. The details are the type's own fields, such as a note's text or a status's old and new values, with `attention` on a note marked as attention.
 
 A note shows its values as written. A corrected note says which correction last changed it, or that it is withdrawn, and each correction is an entry of its own.
 
@@ -1953,7 +1953,99 @@ Under a read ceiling, `show`, `list` and `history` leave out what it leaves out,
 - A `history` event that names an entity, file or record the ceiling leaves out gives it as its id and kind alone.
 
 ### 7.6 Writing
-The commands that change a tree, each a safe, checked operation.
+
+Every command that changes a tree follows [grammar](#71-grammar): it checks everything before it writes, takes the who options and `--dry-run`, and asks first by tier. Each change's tier is named below with its command. Each command writes its events to the journals the change reaches ([the journal](#33-the-journal)) and rewrites every generated file that shows what changed ([write-through](#51-write-through)). In the archive, only the commands [archive](#17-archive) lists may run. A command that would change nothing, such as a rename to the current name, writes nothing, its note included, and says so.
+
+A command that changes an entity takes `--note <text>`, one line saying why, in the form of a [title](#32-statetoml). The note is a `note` field on the named entity's event, or for `remove` on its parent's `child-removed`, and is refused where there is no journal to hold it. It never counts as attention, and it cannot be corrected, since only notes added with their own command can ([notes and measurements](#762-notes-and-measurements)).
+
+#### 7.6.1 Entities
+
+These commands make, change, move and remove entities:
+
+| Command | Does | Tier |
+| --- | --- | --- |
+| `add <kind> <parent-id> <name>` | makes an entity | routine |
+| [`adopt <kind> <parent-id> <name> ...`](#24-adopting-existing-directories) | makes plain folders entities | routine |
+| `set <kind> <id>`, `unset <kind> <id> <field> ...` | changes or clears its fields ([fields and time input](#72-fields-and-time-input)) | routine, except below |
+| `rename <kind> <id> <name>` | changes its folder name | routine |
+| `move <kind> <id> <parent-id>` | puts it under another parent | routine |
+| [`archive <kind> <id>`](#25-archiving) | moves it into the archive | routine |
+| [`unarchive <kind> <id> [<parent-id>]`](#25-archiving) | brings it back | routine |
+| `remove <kind> <id>` | removes `para`'s side of it | confirmed |
+
+`add` takes any kind but the root, a container or a stub. Buckets come from [`init`](#73-init), and other containers appear when their first child arrives.
+
+The parent is the id of a live entity that will hold the new one, either directly or with only containers between them. `para` files the new entity in the right container under it, creating any that are missing, as [archiving](#25-archiving) does for a new parent. So `para add objective brain-7k2q traffic` files the objective in the project's `objectives/`, and `para add metric brain-7g8h weight`, given `resources/`, files the metric in `resources/measurement/metrics/`. Giving the container itself works too. `add` refuses a parent where the kind may not sit, or where another entity would lie between them, such as a project for a key result, which needs its objective ([kinds and containment](#22-kinds-and-containment)).
+
+Here `brain-5t2v` is the objective `traffic`:
+
+```text
+$ para add key-result brain-5t2v visitors --due 2026-12-01 --analytic brain-4n8r --at-least 200
+created  projects/launch-website/objectives/traffic/key-results/          brain-6w3k  container
+created  projects/launch-website/objectives/traffic/key-results/visitors/ brain-2q7d  key-result
+```
+
+`add` takes the kind's fields, and refuses without a required one ([fields and time input](#72-fields-and-time-input)). A new metric gets a `measurements.csv` holding only its header, and a new source starts at the lowest grade ([lineage and trust](#62-lineage-and-trust)). `add` and `set` refuse a link whose type, ref and direction match another link in the same `links/`.
+
+A name `para` creates, with `add`, `rename` or `init --person`, uses only lowercase `a` to `z`, `0` to `9` and `-`, starts and ends with a letter or digit, and is at most 64 characters, such as `taxes-2026`. Wording such as `Taxes 2026` goes in the title. `add` refuses a name already used in that folder, compared as the filesystem compares names, and a [reserved container name](#22-kinds-and-containment). An existing plain folder is never taken over; [adopt](#24-adopting-existing-directories) it instead.
+
+`set` and `unset` follow [fields and time input](#72-fields-and-time-input). They refuse a field value naming a missing, archived or wrong-kind entity ([measurement](#15-measurement)), a due date that breaks the rule for key results ([targets](#43-targets-key-results-and-indicators)), and `blocked` without `--note`. The note becomes the blocked reason ([status](#114-status)). Setting `blocked` again with a new note is a change, unlike setting any other field to the value it holds: it replaces the reason, keeps `status-since`, and writes a `set` event whose `changes` hold the old and new reason. Two changes are a person's act:
+
+- changing or clearing a metric's sources so its reliability rises ([lineage and trust](#62-lineage-and-trust))
+- a new formula that lowers an analytic's level ([how classifications flow](#64-how-classifications-flow))
+
+When one command makes such a change along with routine ones, the whole command is a person's act, and it asks once.
+
+`rename` gives a new folder name in the same parent. `move` puts the entity under another live parent, filed as `add` files it, keeping its name. Both refuse:
+
+- the root, a container, a stub or an archived entity
+- a name already taken in the new place, or a reserved container name there; the entity's own folder never counts, so a change of case alone works
+- for `move`, a parent where the kind may not sit, the entity itself or anything beneath it, a due date that would break the rule for key results, and a level that would loosen for anything that moves ([how classifications flow](#64-how-classifications-flow))
+
+Everything beneath moves with it, lineage records included. Its stubs, and those of anything beneath it, follow, with what is archived beneath them, and a stub whose new path is taken gets a suffix ([archiving](#25-archiving)).
+
+`remove` takes any entity but the root, a container or a stub, live or archived. It deletes the `.para/` of the entity and of every entity beneath it, and takes `para`'s parts out of each README ([para-owned blocks](#52-para-owned-blocks)). Your files stay as they are, now plain content ([structure is para's, content is yours](#03-structure-is-paras-content-is-yours)). A folder left holding nothing is deleted, deepest first. One that holds any file of yours stays, and so does one that was already empty.
+
+With the `.para/` folders go their journals, lineage records and, for a metric, its measurements. The ids are never issued again ([addressing](#23-addressing)). Stubs for the entity and anything beneath it stay ([archiving](#25-archiving)). To keep the history, archive it instead.
+
+`remove` refuses while a live entity outside what it removes uses an analytic, metric, term or source inside it, naming each user ([measurement](#15-measurement)). An archived user is left naming a missing id ([derived status](#44-derived-status)). A record elsewhere that names a removed record as an input then counts that input as gone ([lineage and trust](#62-lineage-and-trust)).
+
+`remove` and `archive` refuse a change that would leave no live person, since every change needs one as its `sub` ([the journal](#33-the-journal)). Add another person first.
+
+Removing is a confirmed change, so `remove` lists what it would remove, delete and lose, and the files that stay, then asks:
+
+```text
+$ para remove dir brain-8k1p
+would remove  projects/launch-website/designs/        brain-8k1p  dir
+              projects/launch-website/designs/links/  brain-9c2f  container
+would delete  projects/launch-website/designs/links/
+would lose    1 lineage record, 12 journal events
+files stay    projects/launch-website/designs/home.png
+Proceed? [y/N]
+```
+
+These commands write these events ([the journal](#33-the-journal)):
+
+| Event | Journal | Fields |
+| --- | --- | --- |
+| `created`, `adopted` | the new entity's | its kind, name and fields, defaults included |
+| `set` | the entity's | `changes`: each field changed, with `from`, absent if it had no value, and `to`, absent if cleared |
+| `renamed` | the entity's | the old and new name |
+| `moved`, `archived`, `unarchived` | the entity's | the old and new parent's id |
+| `child-added` | the parent's | the child's id, kind and name |
+| `child-left`, `child-arrived` | the old and new parent's | the child's id, kind and name, the other parent's id, and whether it was moved, archived or unarchived |
+| `child-removed` | the parent's | the removed entity's id, kind and name |
+
+Fields and changes go in the order of the table in [fields and time input](#72-fields-and-time-input). A container `para` creates when filing gets its own `created` event, and its parent a `child-added`. Which journals a move reaches, and which it skips, is in [archiving](#25-archiving).
+
+#### 7.6.2 Notes and measurements
+The commands that add, correct and withdraw notes and measurements.
+
+#### 7.6.3 Lineage
+The commands that record files, change and attest records, and declassify.
+
+#### 7.6.4 Suppression
+The commands that set and lift suppressions.
 
 ### 7.7 `review`
 The command that answers "what needs attention?", `para`'s main daily use.
