@@ -238,7 +238,7 @@ The journal is a log. Current values live in the entity's state, config and, for
 
 Each event goes to the folder it happened to; a child arriving or leaving is its parent's event, so a move gives the old and new parent one each ([principles](#06-principles)). [Removing](#76-writing) an entity deletes its journal, and its parent's journal records the removal (a stub, having none, records nothing).
 
-A note is a short dated entry in an entity's journal, such as "waiting on the design review", and every entity that keeps a journal takes them. You add one with its own command. Any command that changes an entity can also carry a note saying why, which is part of that command's event and cannot be corrected.
+A note is a short dated entry in an entity's journal, such as "waiting on the design review", and every entity that keeps a journal takes them. You add one with [its own command](#762-notes-and-measurements). Any command that changes an entity can also carry a note saying why, which is part of that command's event and cannot be corrected.
 
 An entity's attention keeps it from going [stale](#45-staleness). Its attention time is the latest of:
 
@@ -352,7 +352,7 @@ Overdue and unchecked flags cannot be suppressed, since each has its own remedy:
 
 A suppression leaves the entity's other flags, and everything beneath it, reported as usual. A stale flag can be suppressed before it appears, such as before a trip. A status can be suppressed only while it is flagged, and the suppression holds only for that status: one suppressed while `at-risk` is reported again if it becomes `missed`, and one suppressed for `no-data` is reported again if it turns `breached`.
 
-`suppress` sets a suppression, with its end and a note, and `unsuppress` lifts it early, also with a note ([writing](#76-writing)). The suppression is stored in the entity's `state.toml`, and setting or lifting it is an event in the entity's journal. Neither counts as [attention](#18-notes-and-the-journal), so a suppression never makes neglected work look tended. When the end date passes, the suppression lapses with no event, and review checks the flag as usual ([suppression](#47-suppression)).
+`suppress` sets a suppression, with its end and a note, and `unsuppress` lifts it early, also with a note ([writing](#764-suppression)). The suppression is stored in the entity's `state.toml`, and setting or lifting it is an event in the entity's journal. Neither counts as [attention](#18-notes-and-the-journal), so a suppression never makes neglected work look tended. When the end date passes, the suppression lapses with no event, and review checks the flag as usual ([suppression](#47-suppression)).
 
 Review ends by saying how many flags its suppressions leave out, and lists each suppression with its note and end when asked ([`review`](#77-review)).
 
@@ -420,13 +420,13 @@ Every entity except the root sits directly inside another entity, so entities fo
 | `analytics/`, `metrics/`, `terms/`, `people/`, `agents/`, `origins/` | analytics, metrics, terms, people, agents or origins, as its name says |
 | a key result, indicator, analytic, metric, term, person, agent, origin or link | no entities |
 
-The four buckets always exist. Everything else in the table is optional, so a project may have no objectives and an objective no key results, just as an area may have no standards.
+A project, analytic, metric, term, person, agent or origin therefore has one live place ([writing](#761-entities)). The four buckets always exist. Everything else in the table is optional, so a project may have no objectives and an objective no key results, just as an area may have no standards.
 
 Besides its entities and `para`'s own files ([generated files](#117-generated-files)), an entity may hold content of your own, unless it is a container or a stub. [`doctor`](#82-doctor-findings) reports content found directly in a container or stub, and leaves it in place.
 
 The archive follows the same table. An archive bucket holds the archived entities its matching bucket may hold, and appears the first time anything is archived into it. A stub records the id and kind of the entity it stands for, and counts as that entity. It sits where that entity would be archived, inside an archive bucket, another stub or an archived entity, and holds what that entity's row lists ([archive](#17-archive)). How stubs follow renames, moves and removals is in [archiving](#25-archiving).
 
-A container's name comes from the row of the entity that holds it, such as `links/` in a dir. Inside that entity the name is reserved: `para` creates or [adopts](#24-adopting-existing-directories) nothing else under it, and refuses to create the container while something already has the name, saying to rename it first. Names compare as the filesystem compares them, so where case is ignored a plain `Links/` blocks `links/` ([safety guarantees](#81-safety-guarantees)). Elsewhere the name is free: `resources/cooking/measurement/` is an ordinary dir.
+A container's name comes from the row of the entity that holds it, such as `links/` in a dir. Inside that entity the name is reserved: `para` creates or [adopts](#24-adopting-existing-directories) nothing else under it, and refuses to create the container while something already has the name, saying to rename it or [adopt](#24-adopting-existing-directories) it first. Names compare as the filesystem compares them, so where case is ignored a plain `Links/` blocks `links/` ([safety guarantees](#81-safety-guarantees)). Elsewhere the name is free: `resources/cooking/measurement/` is an ordinary dir.
 
 A command refuses any change that breaks these rules, such as filing a dir in `projects/` or moving an entity into itself or anything beneath it ([writing](#76-writing)). `doctor` reports breaks made by hand or by a git merge:
 
@@ -457,13 +457,15 @@ A git merge or a hand copy of a folder can leave two entities or records with on
 
 Adopting makes a plain folder an entity. `para` adds a `.para/` and its parts of the README, moves nothing and changes none of your content, so it can take over a tree that already exists.
 
-`adopt` takes the parent entity's id, a kind, and the names of one or more plain folders directly inside that parent; a name is enough there, since those folders are not entities yet. For example, it can make `cooking/` and `travel/` in `resources/` into dirs. Any facts the kind needs when created, such as a key result's due date, apply to every folder named. `adopt` checks every folder first, then adopts all of them or none ([safety guarantees](#81-safety-guarantees)).
+`adopt` takes a kind, the parent entity's id, and the names of one or more plain folders directly inside that parent; a name is enough there, since those folders are not entities yet. For example, it can make `cooking/` and `travel/` in `resources/` into dirs. A kind with only one place, such as a project or a metric, takes no parent: its folders are looked for in its container, such as `resources/measurement/metrics/`, which must already be an entity ([writing](#761-entities)). Adopt a plain container first, or let [`add`](#761-entities) create a missing one. Any facts the kind needs when created, such as a key result's due date, apply to every folder named. `adopt` checks every folder first, then adopts all of them or none ([safety guarantees](#81-safety-guarantees)).
 
 Each adopted folder gets a new id and the files a new entity of its kind gets, with `para`'s part added to a README already there ([generated files](#117-generated-files)). Its subfolders stay plain. The adoption is an event in the new entity's journal and in its parent's.
 
 Adopt parents first: a folder inside a plain folder waits until that folder is an entity ([kinds and containment](#22-kinds-and-containment)). In a project, a plain `objectives/` can be adopted as its container, and its subfolders then as objectives. `adopt` refuses, saying why, when:
 
 - the kind is the root or a stub, or may not sit in that parent
+- the kind has only one place and its container is missing or plain
+- a name is the id of an existing entity, as when an id is given out of habit as a parent
 - the name and kind do not match: a container's name is taken only by that container, and a container only by its name
 - a name is given twice or contains `/`
 - a named folder is missing, a file or a symlink, or holds something named `.para` at any depth
@@ -498,7 +500,7 @@ Archiving moves an entity out of the live buckets into `archive/`, with its hist
 - it, or anything coming back with it, uses an archived entity that stays archived
 - an ancestor was removed, so only its stub is left, naming that ancestor; give a new parent instead
 
-A new parent is the id of a live entity to return under, such as another project for an objective. `para` files the entity in the right container under it, such as `objectives/` for an objective, creating the container if needed. A container or bucket given directly, such as `projects/` for a project, takes the entity itself. `unarchive` refuses if the entity's kind may not sit there ([kinds and containment](#22-kinds-and-containment)). Its archived ancestors stay archived.
+A new parent is the id of a live entity to return under, such as another project for an objective. `para` files the entity in the right container under it, such as `objectives/` for an objective, creating the container if needed. A container or bucket given directly, such as `areas/` for an area, takes the entity itself. `unarchive` refuses if the entity's kind may not sit there ([kinds and containment](#22-kinds-and-containment)). Its archived ancestors stay archived. A kind with only one place, such as a project or a metric, always returns there, so `unarchive` refuses a new parent for it ([writing](#761-entities)).
 
 When the path an arriving entity or stub would take is already held, `para` appends `-1` to its folder name, or `-2` and so on if that is held too, and says so. Names compare as the filesystem compares them, as for [reserved names](#22-kinds-and-containment). The suffix is then part of the name, so it stays when the entity is unarchived. For example:
 
@@ -942,9 +944,9 @@ Rows are sorted by `at`, then by `event`, and the file is written the same way e
 
 A value is typed as an optional `-`, digits, and optionally a `.` and more digits, such as `7.25`, `-3` or `007.50`, so `+7`, `.5`, `5.`, `1,000`, `1e3`, NaN and infinities are refused. Its magnitude, once stored, must be below 10^15. `para` stores the nearest 64-bit float, written as the shortest decimal that reads back to it, with no exponent: `7.5`, `0.1`, `1200`, and `0` for minus zero.
 
-Recording a measurement adds its row, with a note if you give one, and logs it in the metric's journal, with who recorded it, and adds them to the metric's `accountable` ([lineage and trust](#62-lineage-and-trust)). Its claimed time is now unless you give an earlier one, which may fall before the metric was created, as when loading old readings. It is never in the future.
+Recording a measurement with [`measure`](#762-notes-and-measurements) adds its row, with a note if you give one, and logs it in the metric's journal, with who recorded it, and adds them to the metric's `accountable`: the `sub` as a person, and any `act` as that person's unattested work ([lineage and trust](#62-lineage-and-trust)). Its claimed time is now unless you give an earlier one, which may fall before the metric was created, as when loading old readings. It is never in the future.
 
-Correcting a measurement changes its value, its note or its claimed time, which may again be any past time. Withdrawing one deletes its row ([the journal](#33-the-journal)). Correcting or withdrawing one also adds who did it to the metric's `accountable`. After the last withdrawal, the file holds only its header. An archived metric's measurements cannot be recorded, corrected or withdrawn until you unarchive it.
+Correcting a measurement changes its value, its note or its claimed time, which may again be any past time. Withdrawing one deletes its row ([the journal](#33-the-journal)). Correcting or withdrawing one updates the metric's `accountable` the same way. After the last withdrawal, the file holds only its header. An archived metric's measurements cannot be recorded, corrected or withdrawn until you unarchive it.
 
 When reading the file, `para` ignores a UTF-8 byte order mark and blank lines and accepts a field in double quotes. A value in another accepted form, such as `7.50`, is read and rewritten in stored form at the next write. Hand edits and merges can leave these behind:
 
@@ -1079,13 +1081,13 @@ A suppression keeps one flag on one entity out of review until its end ([suppres
 - `stale`, on an entity that can go stale ([staleness](#45-staleness))
 - `status`, on a project or objective while it is `blocked`, or on a key result or an indicator, for the status it shows when suppressed ([status](#114-status))
 
-`suppress` sets one, with an end and a note, and `unsuppress` lifts one early, with a note ([writing](#76-writing)). Both refuse an entity in the archive, closed, or beneath closed work ([status](#114-status)). `unsuppress` also refuses when no suppression is in force. `suppress` also refuses:
+`suppress` sets one, with an end and a note, and `unsuppress` lifts one early, with a note ([writing](#764-suppression)). Both refuse an entity in the archive, closed, or beneath closed work ([status](#114-status)). `unsuppress` also refuses when no suppression is in force. `suppress` also refuses:
 
 - an end that is not after the current time
 - `status` on an entity whose status is not flagged now
 - `stale` when no `<kind>.stale-after` reaches the entity
 
-A date alone means the end of that day, so today's date works ([time and the clock](#34-time-and-the-clock)). Suppressing a flag that is already suppressed replaces its end and note. Setting, replacing and lifting are each an event in the entity's journal, and none is attention.
+A date alone means the end of that day, so today's date works ([time and the clock](#34-time-and-the-clock)). Suppressing a flag that is already suppressed replaces its end and note, and for a status its status. Setting, replacing and lifting are each an event in the entity's journal, and none is attention.
 
 While a suppression is in force, review leaves out its flag:
 
@@ -1104,12 +1106,12 @@ Each suppression is a table in the entity's [`state.toml`](#32-statetoml), `stal
 
 ```toml
 [suppressions.stale]
-until = "2027-03-01T07:59:59Z"
+until = "2027-03-02T07:59:59Z"
 note = "Garden is dormant until spring"
 
 [suppressions.status]
 status = "at-risk"
-until = "2026-12-31T07:59:59Z"
+until = "2027-01-01T07:59:59Z"
 note = "Launch slipped a month"
 ```
 
@@ -1187,7 +1189,7 @@ para:
   classification: "AMBER"
   status: "in-progress"
   status-since: "2026-10-02T16:00:00Z"
-  due: "2026-12-01T07:59:59Z"
+  due: "2026-12-02T07:59:59Z"
 ---
 <!-- para:begin -->
 # Launch website
@@ -1652,16 +1654,16 @@ Every command has one shape:
 para <verb> [<kind> <id>] [<argument> ...] [<option> ...]
 ```
 
-The verb says what to do. A command that acts on an entity or a [lineage record](#62-lineage-and-trust) names its kind, then its id ([addressing](#23-addressing)). The kind is one of those in [directory shapes](#21-directory-shapes), or `record`. Only [`show`](#74-reading) also takes `file`, followed by a path. Other arguments are values the verb needs, such as a note's text, and any other ids, such as a new entity's parent, which take no kind:
+The verb says what to do. A command that acts on an entity or a [lineage record](#62-lineage-and-trust) names its kind, then its id ([addressing](#23-addressing)). The kind is one of those in [directory shapes](#21-directory-shapes), or `record`. Only [`show`](#74-reading) also takes `file`, followed by a path. [`correct` and `withdraw`](#762-notes-and-measurements) take `note` or `measurement`, the kind of what they fix, followed by the id of the entity that holds it. Other arguments are values the verb needs, such as a note's text, and any other ids, such as a new entity's parent, which take no kind:
 
 ```text
-para add project brain-0p1r launch-website --title "Launch website"
+para add project launch-website --title "Launch website"
 para set project brain-7k2q --status in-progress
 para archive project brain-7k2q
 para attest record brain-8d3m
 ```
 
-A kind that does not match the id's is refused, naming the id's kind, so a mistyped id fails before it changes anything. `add` and [`adopt`](#24-adopting-existing-directories) name the kind they make. Help is given for each verb and kind, such as `para set project --help`, and lists only the options that kind takes.
+A kind that does not match the id's is refused, naming the id's kind, so a mistyped id fails before it changes anything. For `correct` and `withdraw`, the kind is checked against the event. `add` and [`adopt`](#24-adopting-existing-directories) name the kind they make. Help is given for each verb and kind, such as `para set project --help`, and lists only the options that kind takes.
 
 Options are long, such as `--title`, and are written `--title "Launch website"` or `--title="Launch website"`. They may come before or after the arguments. The word after an option that takes a value is always its value, even when it starts with `-`, as in `--at-least -3`. `--` ends the options, so an argument after it may start with `-`. A command refuses an option it does not take, and an option given twice, except `--act`.
 
@@ -1675,7 +1677,7 @@ These options apply to every command that uses them:
 | `--model`, `--harness`, `--session` | `PARA_MODEL`, `PARA_HARNESS`, `PARA_SESSION` | the last actor's model id, harness and version, and session |
 | `--classification-at-most <level>` | `PARA_CLASSIFICATION_AT_MOST` | a read ceiling ([what para does with classifications](#65-what-para-does-with-classifications)) |
 | `--json` | none | output as JSON ([output and exit codes](#710-output-and-exit-codes)) |
-| `--note <text>` | none | why, on a command that changes an entity ([writing](#76-writing)) |
+| `--note <text>` | none | a one-line note, such as why a change was made ([writing](#76-writing)) |
 | `--dry-run` | none | a rehearsal, below |
 | `--force` | none | skips the question, below |
 
@@ -1956,7 +1958,7 @@ Under a read ceiling, `show`, `list` and `history` leave out what it leaves out,
 
 Every command that changes a tree follows [grammar](#71-grammar): it checks everything before it writes, takes the who options and `--dry-run`, and asks first by tier. Each change's tier is named below with its command. Each command writes its events to the journals the change reaches ([the journal](#33-the-journal)) and rewrites every generated file that shows what changed ([write-through](#51-write-through)). In the archive, only the commands [archive](#17-archive) lists may run. A command that would change nothing, such as a rename to the current name, writes nothing, its note included, and says so.
 
-A command that changes an entity takes `--note <text>`, one line saying why, in the form of a [title](#32-statetoml). The note is a `note` field on the named entity's event, or for `remove` on its parent's `child-removed`, and is refused where there is no journal to hold it. It never counts as attention, and it cannot be corrected, since only notes added with their own command can ([notes and measurements](#762-notes-and-measurements)).
+A command that changes an entity takes `--note <text>`, one line saying why, in the form of a [title](#32-statetoml). The note is a `note` field on the named entity's event, or for `remove` on its parent's `child-removed`, and is refused where there is no journal to hold it. It never counts as attention, and it cannot be corrected, since only notes added with their own command can. The commands for notes and measurements carry none ([notes and measurements](#762-notes-and-measurements)).
 
 #### 7.6.1 Entities
 
@@ -1964,8 +1966,8 @@ These commands make, change, move and remove entities:
 
 | Command | Does | Tier |
 | --- | --- | --- |
-| `add <kind> <parent-id> <name>` | makes an entity | routine |
-| [`adopt <kind> <parent-id> <name> ...`](#24-adopting-existing-directories) | makes plain folders entities | routine |
+| `add <kind> [<parent-id>] <name>` | makes an entity, with a parent for most kinds, below | routine |
+| [`adopt <kind> [<parent-id>] <name> ...`](#24-adopting-existing-directories) | makes plain folders entities | routine |
 | `set <kind> <id>`, `unset <kind> <id> <field> ...` | changes or clears its fields ([fields and time input](#72-fields-and-time-input)) | routine, except below |
 | `rename <kind> <id> <name>` | changes its folder name | routine |
 | `move <kind> <id> <parent-id>` | puts it under another parent | routine |
@@ -1975,7 +1977,9 @@ These commands make, change, move and remove entities:
 
 `add` takes any kind but the root, a container or a stub. Buckets come from [`init`](#73-init), and other containers appear when their first child arrives.
 
-The parent is the id of a live entity that will hold the new one, either directly or with only containers between them. `para` files the new entity in the right container under it, creating any that are missing, as [archiving](#25-archiving) does for a new parent. So `para add objective brain-7k2q traffic` files the objective in the project's `objectives/`, and `para add metric brain-7g8h weight`, given `resources/`, files the metric in `resources/measurement/metrics/`. Giving the container itself works too. `add` refuses a parent where the kind may not sit, or where another entity would lie between them, such as a project for a key result, which needs its objective ([kinds and containment](#22-kinds-and-containment)).
+A project, analytic, metric, term, person, agent or origin has only one live place, its container in [kinds and containment](#22-kinds-and-containment), so `add` takes no parent for it. `para add metric weight` files the metric in `resources/measurement/metrics/`, creating any container that is missing.
+
+Every other kind takes a parent: the id of a live entity that will hold the new one, either directly or with only containers between them. `para` files the new entity in the right container under it, creating any that are missing, as [archiving](#25-archiving) does for a new parent. So `para add objective brain-7k2q traffic` files the objective in the project's `objectives/`. Giving the container itself works too. `add` refuses a parent where the kind may not sit, or where another entity would lie between them, such as a project for a key result, which needs its objective ([kinds and containment](#22-kinds-and-containment)).
 
 Here `brain-5t2v` is the objective `traffic`:
 
@@ -1987,7 +1991,7 @@ created  projects/launch-website/objectives/traffic/key-results/visitors/ brain-
 
 `add` takes the kind's fields, and refuses without a required one ([fields and time input](#72-fields-and-time-input)). A new metric gets a `measurements.csv` holding only its header, and a new source starts at the lowest grade ([lineage and trust](#62-lineage-and-trust)). `add` and `set` refuse a link whose type, ref and direction match another link in the same `links/`.
 
-A name `para` creates, with `add`, `rename` or `init --person`, uses only lowercase `a` to `z`, `0` to `9` and `-`, starts and ends with a letter or digit, and is at most 64 characters, such as `taxes-2026`. Wording such as `Taxes 2026` goes in the title. `add` refuses a name already used in that folder, compared as the filesystem compares names, and a [reserved container name](#22-kinds-and-containment). An existing plain folder is never taken over; [adopt](#24-adopting-existing-directories) it instead.
+A name `para` creates, with `add`, `rename` or `init --person`, uses only lowercase `a` to `z`, `0` to `9` and `-`, starts and ends with a letter or digit, and is at most 64 characters, such as `taxes-2026`. Wording such as `Taxes 2026` goes in the title. `add` refuses a name already used in that folder, compared as the filesystem compares names, a [reserved container name](#22-kinds-and-containment), and a name that is the id of an existing entity, so an id given out of habit as a parent fails. An existing plain folder is never taken over; [adopt](#24-adopting-existing-directories) it instead.
 
 `set` and `unset` follow [fields and time input](#72-fields-and-time-input). They refuse a field value naming a missing, archived or wrong-kind entity ([measurement](#15-measurement)), a due date that breaks the rule for key results ([targets](#43-targets-key-results-and-indicators)), and `blocked` without `--note`. The note becomes the blocked reason ([status](#114-status)). Setting `blocked` again with a new note is a change, unlike setting any other field to the value it holds: it replaces the reason, keeps `status-since`, and writes a `set` event whose `changes` hold the old and new reason. Two changes are a person's act:
 
@@ -2000,7 +2004,7 @@ When one command makes such a change along with routine ones, the whole command 
 
 - the root, a container, a stub or an archived entity
 - a name already taken in the new place, or a reserved container name there; the entity's own folder never counts, so a change of case alone works
-- for `move`, a parent where the kind may not sit, the entity itself or anything beneath it, a due date that would break the rule for key results, and a level that would loosen for anything that moves ([how classifications flow](#64-how-classifications-flow))
+- for `move`, a kind with only one place, which has nowhere else to go, a parent where the kind may not sit, the entity itself or anything beneath it, a due date that would break the rule for key results, and a level that would loosen for anything that moves ([how classifications flow](#64-how-classifications-flow))
 
 Everything beneath moves with it, lineage records included. Its stubs, and those of anything beneath it, follow, with what is archived beneath them, and a stub whose new path is taken gets a suffix ([archiving](#25-archiving)).
 
@@ -2039,13 +2043,107 @@ These commands write these events ([the journal](#33-the-journal)):
 Fields and changes go in the order of the table in [fields and time input](#72-fields-and-time-input). A container `para` creates when filing gets its own `created` event, and its parent a `child-added`. Which journals a move reaches, and which it skips, is in [archiving](#25-archiving).
 
 #### 7.6.2 Notes and measurements
-The commands that add, correct and withdraw notes and measurements.
+
+These commands add, correct and withdraw [notes](#18-notes-and-the-journal) and [measurements](#42-recording-measurements):
+
+| Command | Does | Tier |
+| --- | --- | --- |
+| `note <kind> <id> <text>` | adds a note to an entity | routine |
+| `measure metric <id> <value>` | records a measurement | routine |
+| `correct note <id> <event-id>`, `correct measurement <id> <event-id>` | corrects a note or a measurement | routine |
+| `withdraw note <id> <event-id>`, `withdraw measurement <id> <event-id>` | withdraws one | routine |
+
+None of them takes `--note` as a note saying why ([writing](#76-writing)). On `measure` and `correct measurement`, `--note` is the measurement's own note, and `correct` and `withdraw` take `--reason` instead, below. All four refuse an archived entity, since the archive is read-only ([archive](#17-archive)).
+
+`note` adds a note to any entity but a stub, which has no journal. The text is one line, in the form of a [title](#32-statetoml). `--attention` marks it as attention, which keeps the entity from going [stale](#45-staleness), and is refused on the root and containers, which never go stale. `--at` backdates it, to no earlier than the entity's `created` time ([the journal](#33-the-journal)).
+
+```text
+para note project brain-7k2q "Waiting on design review"
+para note project brain-7k2q "Shipped the new header" --attention --at 2026-11-10
+```
+
+`measure` records one value for a metric, typed as [recording measurements](#42-recording-measurements) says. `--at` gives its claimed time, which may be any past time, and `--note` its note. A negative value follows `--`, as in `para measure metric brain-w8t2 -- -3` ([grammar](#71-grammar)). To load old readings, run `measure` once for each.
+
+```text
+$ para measure metric brain-w8t2 71.9 --at 2026-11-17T07:00 --note "after a long run"
+measured  brain-w8t2  71.9 at 2026-11-17 07:00  event m4k8p2qa
+```
+
+`correct` and `withdraw` name what they fix, `note` or `measurement`, then the id of the entity that holds it, then the event id. The entity is needed because an event id is unique only within its journal. [`history`](#74-reading) gives a note's event id, and the `event` column of `measurements.csv` a measurement's. `para` refuses an event of the other kind. For `note`, it refuses an event id that no event carries, or two do ([the journal](#33-the-journal)). For `measurement`, it refuses an entity that is not a metric, and an event id that no row carries, or two do ([recording measurements](#42-recording-measurements)).
+
+`correct` takes only the values that change. The rest keep the values they last had:
+
+| Fixes | Options |
+| --- | --- |
+| a note | `--text`, `--at`, `--no-at`, `--attention`, `--no-attention` |
+| a measurement | `--value`, `--at`, `--note`, `--no-note` |
+
+`--no-at` drops a note's claimed time, so it dates from when it was written. `--no-attention` drops its mark, and `--no-note` clears a measurement's note. A measurement takes no `--no-at`, since it always has a claimed time. An option and its `--no-` form cannot be given together. `--attention` is refused on the root and containers, as on `note`. A corrected claimed time keeps the limits it had when written ([the journal](#33-the-journal)).
+
+```text
+$ para correct measurement brain-w8t2 m4k8p2qa --value 72.9 --no-note
+corrected  measurement m4k8p2qa on brain-w8t2
+  value    71.9, now 72.9
+  note     "after a long run", now none
+```
+
+`withdraw` takes no values. A withdrawn note stays in the journal and counts for nothing. Correcting it brings it back, starting from the values it had when withdrawn, even with no options. Withdrawing a measurement deletes its row, so its event id is then refused; record it again with `measure`.
+
+`correct` and `withdraw` take `--reason <text>`, one line saying why, which stays on their event and is never corrected. A correction that changes nothing, or withdrawing a note already withdrawn, writes nothing and says so.
+
+A correction or withdrawal can reset the attention time ([staleness](#45-staleness)). Recording, correcting and withdrawing a measurement update the metric's `accountable` as recording work on a file does ([lineage and trust](#62-lineage-and-trust)).
+
+These commands write these events ([the journal](#33-the-journal)):
+
+| Event | Journal | Fields |
+| --- | --- | --- |
+| `note` | the entity's | `text`, and `"attention": true` when marked |
+| `correction` | the entity's | `of`; `values` (`text`, `at` when claimed, `attention` when marked) or `"withdrawn": true`; `reason` when given |
+| `measurement` | the metric's | `value`, and `note` when given |
+| `measurement-corrected` | the metric's | `of`; `changes`: each of `at`, `value` and `note` that changed, with `from`, absent if it had no value, and `to`, absent if cleared; `reason` when given |
+| `measurement-withdrawn` | the metric's | `of`; `values`: the row's `at`, `value` and `note` as they were; `reason` when given |
+
+The two measurement commands above write:
+
+```json
+{"time":"2026-11-18T15:02:11Z","id":"m4k8p2qa","type":"measurement","sub":"brain-s0me","at":"2026-11-17T15:00:00Z","value":71.9,"note":"after a long run"}
+{"time":"2026-11-19T09:00:00Z","id":"t6r1c9zd","type":"measurement-corrected","sub":"brain-s0me","of":"m4k8p2qa","changes":{"value":{"from":71.9,"to":72.9},"note":{"from":"after a long run"}}}
+```
 
 #### 7.6.3 Lineage
 The commands that record files, change and attest records, and declassify.
 
 #### 7.6.4 Suppression
-The commands that set and lift suppressions.
+
+Two commands set and lift a [suppression](#47-suppression):
+
+```text
+para suppress <kind> <id> stale|status --until <time> --note <text>
+para unsuppress <kind> <id> stale|status --note <text>
+```
+
+`--until` is the end, typed as a deadline ([fields and time input](#72-fields-and-time-input)). Both commands require `--note`, which is the `note` field on their event, like any carried note ([writing](#76-writing)). For `suppress` it is also the suppression's note in state. Both are routine. [Suppression](#47-suppression) says which entities and flags they take and what they refuse.
+
+```text
+para suppress area brain-g4rd stale --until 2027-03-01 --note "Garden is dormant until spring"
+para suppress key-result brain-2q7d status --until 2026-12-31 --note "Launch slipped a month"
+para unsuppress key-result brain-2q7d status --note "Launch back on track"
+```
+
+A status suppression holds for the status the entity shows when it is set, so `suppress` takes no status. Suppressing a flag again with the same end, note and status writes nothing.
+
+These commands write these events in the entity's journal ([the journal](#33-the-journal)):
+
+| Event | Fields |
+| --- | --- |
+| `suppressed` | `flag`; `status` for a status suppression; `until`; `note`; and `replaces`, holding the old `status`, `until` and `note`, when one was in force |
+| `unsuppressed` | `flag`, `note` |
+
+While the key result's suppression above is in force and it is still `at-risk`, `para suppress key-result brain-2q7d status --until 2027-01-31 --note "Slipped again"` writes, in Los Angeles:
+
+```json
+{"time":"2026-12-20T18:00:00Z","id":"p8d2v6ke","type":"suppressed","sub":"brain-s0me","flag":"status","status":"at-risk","until":"2027-02-01T07:59:59Z","note":"Slipped again","replaces":{"status":"at-risk","until":"2027-01-01T07:59:59Z","note":"Launch slipped a month"}}
+```
 
 ### 7.7 `review`
 The command that answers "what needs attention?", `para`'s main daily use.
